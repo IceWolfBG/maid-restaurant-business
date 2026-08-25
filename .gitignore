@@ -2,6 +2,7 @@
 .gradle/
 .gradle_repo/
 build/
+libs/
 !gradle/wrapper/gradle-wrapper.jar
 
 # IDE
