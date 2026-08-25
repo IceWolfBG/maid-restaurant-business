@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.icewolf.maidrestaurant.business.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "MaidCookingTaskMixin",
+    "TaskWaiterMixin"
+  ],
+  "client": [],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

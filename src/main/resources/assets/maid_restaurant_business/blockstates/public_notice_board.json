@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,half=left": { "model": "maid_restaurant_business:block/public_notice_board_left" },
+    "facing=south,half=left": { "model": "maid_restaurant_business:block/public_notice_board_left", "y": 180 },
+    "facing=west,half=left": { "model": "maid_restaurant_business:block/public_notice_board_left", "y": 270 },
+    "facing=east,half=left": { "model": "maid_restaurant_business:block/public_notice_board_left", "y": 90 },
+    "facing=north,half=right": { "model": "maid_restaurant_business:block/public_notice_board_right" },
+    "facing=south,half=right": { "model": "maid_restaurant_business:block/public_notice_board_right", "y": 180 },
+    "facing=west,half=right": { "model": "maid_restaurant_business:block/public_notice_board_right", "y": 270 },
+    "facing=east,half=right": { "model": "maid_restaurant_business:block/public_notice_board_right", "y": 90 }
+  }
+}

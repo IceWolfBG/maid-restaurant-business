@@ -1,0 +1,12 @@
+{
+  "item.maid_restaurant_business.health_certificate": "§6Health Certificate",
+  "item.maid_restaurant_business.health_certificate.tip": "Maid Restaurant Business Bauble",
+  "block.maid_restaurant_business.public_notice_board": "§6Public Notice Board",
+  "block.maid_restaurant_business.schedule_board": "§6Schedule Board",
+  "itemGroup.maid_restaurant_business": "Maid Restaurant: Now Open",
+  "tooltips.maid_restaurant_business.health_certificate.bound_machine": "Bound to Order Machine",
+  "tooltips.maid_restaurant_business.health_certificate.no_machine": "Not bound, right-click an order machine",
+  "tooltips.maid_restaurant_business.health_certificate.bound_maid": "Bound to Maid",
+  "tooltips.maid_restaurant_business.health_certificate.no_maid": "Not bound, right-click a maid",
+  "tooltips.maid_restaurant_business.health_certificate.equip": "Equip in maid bauble slot"
+}

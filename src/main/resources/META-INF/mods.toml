@@ -1,0 +1,63 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="maid_restaurant_business"
+version="0.1.2"
+displayName="Maid Restaurant: Now Open"
+authors="IceWolf"
+logoFile="maid_restaurant_business.png"
+description='''
+Maid Restaurant Business - Maid Restaurant: Now Open
+
+Touhou Little Maid x Maid Restaurant x Order to Cook integration addon.
+
+Automated restaurant management with maids:
+- Auto order: select orders based on ingredients and value
+- Auto cooking: chef maids cook food according to orders
+- Auto prep: take ready food from containers to countertop
+- Auto packaging: waiter maids pack or plate orders
+- Auto delivery: waiter maids deliver plates to customers
+- Auto dishwashing: waiter maids collect and wash dirty plates
+
+Unlock automation features by order machine level. Configurable.
+'''
+
+[[mixins]]
+config="maid_restaurant_business.mixins.json"
+
+[[dependencies.maid_restaurant_business]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.maid_restaurant_business]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1]"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.maid_restaurant_business]]
+    modId="touhou_little_maid"
+    mandatory=true
+    versionRange="[1.5.3,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.maid_restaurant_business]]
+    modId="maid_restaurant"
+    mandatory=true
+    versionRange="[0.2.9,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.maid_restaurant_business]]
+    modId="ordertocook"
+    mandatory=true
+    versionRange="[1.0.0,)"
+    ordering="AFTER"
+    side="BOTH"

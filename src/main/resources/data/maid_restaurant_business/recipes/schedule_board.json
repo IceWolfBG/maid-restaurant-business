@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PPP",
+    "PMP",
+    "PPP"
+  ],
+  "key": {
+    "P": {
+      "tag": "minecraft:planks"
+    },
+    "M": {
+      "item": "maid_restaurant:order_menu"
+    }
+  },
+  "result": {
+    "item": "maid_restaurant_business:schedule_board",
+    "count": 1
+  }
+}
