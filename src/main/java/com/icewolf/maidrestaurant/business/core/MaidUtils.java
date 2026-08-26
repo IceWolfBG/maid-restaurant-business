@@ -788,6 +788,8 @@ public class MaidUtils {
             double dy;
             double dx;
             double dist;
+            // 检查TaskManager任务：避免返回有卡住任务的女仆
+            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
             if (MaidUtils.isMaidBusy(m) || taskUid != null && !taskUid.equals(MaidUtils.getTaskUid(m)) || !((dist = (dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5)) * dx + (dy = MaidUtils.getY((Entity)m) - (double)center.getY()) * dy + (dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5)) * dz) < minDist)) continue;
             minDist = dist;
             nearest = m;
@@ -814,6 +816,8 @@ public class MaidUtils {
         double minDist = Double.MAX_VALUE;
         for (EntityMaid m : maids) {
             if (MaidUtils.isMaidBusy(m)) continue;
+            // 检查TaskManager任务：避免返回有卡住任务的女仆
+            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
             if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
             if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
             double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
@@ -838,6 +842,8 @@ public class MaidUtils {
         double minDist = Double.MAX_VALUE;
         for (EntityMaid m : maids) {
             if (MaidUtils.isMaidBusy(m)) continue;
+            // 检查TaskManager任务：避免返回有卡住任务的女仆
+            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
             if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
             if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
             double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);

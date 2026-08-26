@@ -110,10 +110,16 @@ public class PackagingBridge {
             PackTask task = entry.getValue();
             EntityMaid maid = (EntityMaid)task.maidRef.get();
             if (maid == null || !(level.getBlockEntity(counterPos) instanceof TakeoutBoxBlockEntity)) {
+                // TaskManager：任务失败
+                if (maid != null) {
+                    TaskManager.getInstance().failTask(maid.getUUID(), "packaging target missing");
+                }
                 task.cleanup();
                 it.remove();
                 continue;
             }
+            // TaskManager心跳更新
+            TaskManager.getInstance().heartbeat(maid.getUUID(), manager.getTickCounter());
             long now = level.getGameTime();
             if (task.startTime == 0L) {
                 task.startTime = now;
@@ -139,7 +145,11 @@ public class PackagingBridge {
                 }
                 case 1: {
                     MaidRestaurantBusiness.LOGGER.info("打包：执行打包 counter={}", counterPos);
+                    // TaskManager：标记开始交互
+                    TaskManager.getInstance().startInteraction(maid.getUUID());
                     PackagingBridge.executePack(level, counterPos, manager);
+                    // TaskManager：完成任务
+                    TaskManager.getInstance().completeTask(maid.getUUID());
                     task.cleanup();
                     it.remove();
                 }
@@ -201,8 +211,24 @@ public class PackagingBridge {
             MaidRestaurantBusiness.LOGGER.info("打包: 没有找到可用的侍者女仆 at counter={} (有绑定女仆时仅绑定女仆可工作)", counterPos);
             return;
         }
+        // 任务冲突检查：如果女仆已有任务在执行，不分配打包任务
+        if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
+            MaidRestaurantBusiness.LOGGER.info("打包: 女仆 {} 已有任务在执行，跳过分配", maid.getName().getString());
+            return;
+        }
+        if (MaidUtils.isOccupied(maid)) {
+            MaidRestaurantBusiness.LOGGER.info("打包: 女仆 {} 被标记为忙碌，跳过分配", maid.getName().getString());
+            return;
+        }
         packTasks.put(counterPos, new PackTask(maid, machinePos, manager.getTickCounter()));
         MaidRestaurantBusiness.LOGGER.info("打包：女仆前往打包台 {}", counterPos);
+
+        // TaskManager集成：创建打包任务并分配给女仆
+        String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_PACKAGING, counterPos, machinePos);
+        if (taskId != null) {
+            TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_PACKAGING, level);
+            MaidRestaurantBusiness.LOGGER.info("打包: TaskManager创建任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
+        }
     }
 
     private static void executePack(ServerLevel level, BlockPos counterPos, BusinessManager manager) {

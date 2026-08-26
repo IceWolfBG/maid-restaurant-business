@@ -39,6 +39,7 @@ public class BusinessManager {
     private long lastPackagingTick = -10L;
     private long lastDeliveryTick = -10L;
     private long lastDishwashTick = -10L;
+    private long lastStaleCleanupTick = -1200L;
     private final Map<BlockPos, Long> orderCooldowns = new HashMap<BlockPos, Long>();
     private final Map<BlockPos, BlockPos> counterToMachine = new HashMap<BlockPos, BlockPos>();
     private final Map<BlockPos, ActiveOrder> activeOrders = new HashMap<BlockPos, ActiveOrder>();
@@ -53,6 +54,13 @@ public class BusinessManager {
         for (ServerLevel level : server.getAllLevels()) {
             try {
                 this.cleanupExpiredOrders(level);
+                // 定期清理残留烹饪任务（每1200tick=60秒）
+                if (this.tickCounter - this.lastStaleCleanupTick >= 1200L) {
+                    CookingBridge.cleanupStaleTasks(level, this.activeOrders.keySet());
+                    this.lastStaleCleanupTick = this.tickCounter;
+                }
+                // TaskManager超时检测和异常处理（每10tick=0.5秒检测一次）
+                TaskManager.getInstance().tick(this.tickCounter, level);
                 // 女仆卡住自愈检测（每100tick=5秒检测一次）
                 if (this.tickCounter % 100L == 0L) {
                     // 主动从女仆饰品栏维护绑定关系（不依赖饰品的onTick）
@@ -77,6 +85,19 @@ public class BusinessManager {
                     this.lastOrderTick = this.tickCounter;
                 }
                 if (this.tickCounter - this.lastCookingTick >= 10L) {
+                    // 更新全局厨具状态（在烹饪任务分配前更新）
+                    if (!this.getActivatedMachines().isEmpty()) {
+                        BlockPos center = this.getActivatedMachines().iterator().next();
+                        // 初始化持久化保存（只初始化一次）
+                        CookingDeviceManager.getInstance().initSavedData(level);
+                        CookingDeviceManager.getInstance().update(level, center, 32, this.tickCounter);
+                        // 每200tick输出一次厨具状态统计
+                        if (this.tickCounter % 200L == 0L) {
+                            Map<String, Integer> stats = CookingDeviceManager.getInstance().getStats();
+                            MaidRestaurantBusiness.LOGGER.info("厨具状态统计: 总数={}, 占用={}, 可用={}",
+                                    stats.get("total"), stats.get("occupied"), stats.get("available"));
+                        }
+                    }
                     CookingBridge.tickCooking(level, this);
                     this.lastCookingTick = this.tickCounter;
                 }

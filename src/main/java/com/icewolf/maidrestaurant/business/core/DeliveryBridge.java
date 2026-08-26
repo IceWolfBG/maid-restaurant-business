@@ -66,8 +66,8 @@ public class DeliveryBridge {
 
     private static void tickMaidDelivery(ServerLevel level, BusinessManager manager) {
         debugTickCounter++;
-        // 获取所有女仆（使用更大的范围）
-        List<EntityMaid> allMaids = level.getEntitiesOfClass(EntityMaid.class, new AABB(-1000, -256, -1000, 1000, 256, 1000));
+        // 使用TaskManager的中心化检索缓存，避免重复获取所有女仆
+        List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
         
         // 每100tick打印一次调试信息
         if (debugTickCounter % 100 == 0) {
@@ -96,6 +96,8 @@ public class DeliveryBridge {
             if (!isWaiterMaid(maid)) continue;
             CompoundTag data = maid.getPersistentData();
             if (data.contains(TAG_COUNTER_POS)) continue;
+            // TaskManager智能任务分配：检查女仆是否有任务在执行，避免任务冲突
+            if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) continue;
             assignDeliveryTask(level, maid, manager);
         }
     }
@@ -186,6 +188,14 @@ public class DeliveryBridge {
         // 记录任务跟踪信息（用于卡住自愈和人数统计）
         MaidUtils.startTask(maid, machinePos, "delivery", manager.getTickCounter());
 
+        // TaskManager集成：创建送餐任务并分配给女仆
+        String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DELIVERY, counterPos, machinePos);
+        if (taskId != null) {
+            // 直接分配（因为已经找到了目标）
+            TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DELIVERY, level);
+            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager创建任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
+        }
+
         // 使用车万女仆标准寻路方式
         boolean navResult = maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
         MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 开始前往操作台 {}, 寻路结果={}", maid.getName().getString(), counterPos, navResult);
@@ -195,6 +205,9 @@ public class DeliveryBridge {
         CompoundTag data = maid.getPersistentData();
         int stage = data.getInt(TAG_STAGE);
         BlockPos counterPos = BlockPos.of(data.getLong(TAG_COUNTER_POS));
+
+        // TaskManager心跳更新
+        TaskManager.getInstance().heartbeat(maid.getUUID(), manager.getTickCounter());
 
         if (stage == STAGE_GO_TO_COUNTER) {
             double dist = maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5);
@@ -245,6 +258,9 @@ public class DeliveryBridge {
     }
 
     private static void deliverToCustomer(ServerLevel level, EntityMaid maid, LivingEntity customer, BlockPos counterPos, BusinessManager manager) {
+        // TaskManager：标记开始交互
+        TaskManager.getInstance().startInteraction(maid.getUUID());
+
         CombinedInvWrapper inv = maid.getAvailableInv(false);
         if (inv == null) {
             finishDelivery(maid, false);
@@ -390,6 +406,13 @@ public class DeliveryBridge {
     }
 
     private static void finishDelivery(EntityMaid maid, boolean success) {
+        // TaskManager：完成或失败任务
+        if (success) {
+            TaskManager.getInstance().completeTask(maid.getUUID());
+        } else {
+            TaskManager.getInstance().failTask(maid.getUUID(), "delivery failed");
+        }
+
         CompoundTag data = maid.getPersistentData();
         if (!success) {
             CombinedInvWrapper maidInv = maid.getAvailableInv(false);
@@ -545,6 +568,22 @@ public class DeliveryBridge {
         BlockPos maidPos = maid.blockPosition();
         BlockPos nearest = null;
         double nearestDist = Double.MAX_VALUE;
+
+        // 先尝试使用TaskManager的中心化检索缓存
+        List<BlockPos> countersWithPlates = TaskManager.getInstance().getCachedCountersWithPlates(level);
+        if (countersWithPlates != null && !countersWithPlates.isEmpty()) {
+            for (BlockPos counterPos : countersWithPlates) {
+                double dist = counterPos.distSqr((Vec3i) maidPos);
+                if (dist > 256.0) continue; // 16格范围内
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = counterPos;
+                }
+            }
+            if (nearest != null) return nearest;
+        }
+
+        // 缓存为空或没有找到，使用原来的检索逻辑
         int chunkX = maidPos.getX() >> 4;
         int chunkZ = maidPos.getZ() >> 4;
         for (int cx = chunkX - 2; cx <= chunkX + 2; ++cx) {
