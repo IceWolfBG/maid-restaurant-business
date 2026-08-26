@@ -20,6 +20,7 @@
 package com.icewolf.maidrestaurant.business;
 
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
 import com.icewolf.maidrestaurant.business.network.ModMessages;
 import com.icewolf.maidrestaurant.business.registry.ModBlockEntities;
@@ -27,8 +28,11 @@ import com.icewolf.maidrestaurant.business.registry.ModBlocks;
 import com.icewolf.maidrestaurant.business.registry.ModCreativeTabs;
 import com.icewolf.maidrestaurant.business.registry.ModItems;
 import com.icewolf.maidrestaurant.business.registry.ModMenuTypes;
+import com.icewolf.maidrestaurant.business.registry.ModSounds;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -54,6 +58,7 @@ public class MaidRestaurantBusiness {
         ModBlockEntities.register(modEventBus);
         ModMenuTypes.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
+        ModSounds.register(modEventBus);
         ModMessages.register();
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)BusinessConfig.SPEC, "maid_restaurant_business-common.toml");
         MinecraftForge.EVENT_BUS.register(this);
@@ -62,7 +67,23 @@ public class MaidRestaurantBusiness {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         manager = new BusinessManager(event.getServer());
-        LOGGER.info("\u5973\u4ec6\u9910\u5385\uff1a\u7ecf\u8425 \u5df2\u542f\u52a8");
+        LOGGER.info("女仆餐厅：经营 已启动");
+    }
+
+    @SubscribeEvent
+    public void onLevelLoad(LevelEvent.Load event) {
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            ActivationCache.initLevel(serverLevel);
+            LOGGER.info("已初始化维度 {} 的激活缓存，共 {} 个已激活打单机",
+                    serverLevel.dimension().location(), ActivationCache.getActivatedCount(serverLevel));
+        }
+    }
+
+    @SubscribeEvent
+    public void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            ActivationCache.clearLevel(serverLevel);
+        }
     }
 
     @SubscribeEvent

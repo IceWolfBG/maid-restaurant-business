@@ -1,7 +1,9 @@
 package com.icewolf.maidrestaurant.business.block.entity;
 
+import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
 import com.icewolf.maidrestaurant.business.registry.ModBlockEntities;
+import com.icewolf.maidrestaurant.business.registry.ModSounds;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -93,6 +95,16 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         this.boundMachinePos = machinePos;
         this.hasBoundMachine = true;
         this.setChanged();
+        com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] bindMachine被调用 machinePos={}, autoEnabled={}, level={}", machinePos, this.autoEnabled, this.level);
+        // 如果已启用自动化，立即激活打单机
+        if (this.autoEnabled && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            ActivationCache.activate(serverLevel, machinePos);
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] bindMachine中调用ActivationCache.activate和notifyActivationIfChanged machinePos={}", machinePos);
+            // 即时触发激活通知，不需要等待10秒检测
+            notifyActivationIfChanged(serverLevel, machinePos, true);
+        } else {
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("[激活调试] bindMachine中条件不满足 autoEnabled={}, level类型={}", this.autoEnabled, this.level == null ? "null" : this.level.getClass().getName());
+        }
     }
 
     public boolean tryBindNearestMachine(Level level) {
@@ -136,7 +148,47 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
 
     // Getters and setters for config
     public boolean isAutoEnabled() { return autoEnabled; }
-    public void setAutoEnabled(boolean v) { this.autoEnabled = v; syncToClient(); }
+    public void setAutoEnabled(boolean v) {
+        boolean oldValue = this.autoEnabled;
+        this.autoEnabled = v;
+        syncToClient();
+        // 更新激活缓存
+        if (this.hasBoundMachine && this.boundMachinePos != null && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            if (v) {
+                ActivationCache.activate(serverLevel, this.boundMachinePos);
+            } else {
+                ActivationCache.deactivate(serverLevel, this.boundMachinePos);
+            }
+            // 状态变化时即时触发通知
+            if (oldValue != v) {
+                notifyActivationIfChanged(serverLevel, this.boundMachinePos, v);
+            }
+        }
+    }
+
+    // 即时触发激活状态变化通知（避免等待10秒检测）
+    private void notifyActivationIfChanged(net.minecraft.server.level.ServerLevel level, BlockPos machinePos, boolean activated) {
+        try {
+            var manager = com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.getManager();
+            if (manager == null) {
+                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("[激活调试] manager为null，无法触发通知 machinePos={}, activated={}", machinePos, activated);
+                return;
+            }
+            boolean wasActive = manager.getActivatedMachines().contains(machinePos);
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] notifyActivationIfChanged machinePos={}, activated={}, wasActive={}", machinePos, activated, wasActive);
+            if (activated && !wasActive) {
+                com.icewolf.maidrestaurant.business.core.OrderBridge.notifyActivation(level, machinePos, true);
+                manager.getActivatedMachines().add(machinePos);
+                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] 已触发激活通知 machinePos={}", machinePos);
+            } else if (!activated && wasActive) {
+                com.icewolf.maidrestaurant.business.core.OrderBridge.notifyActivation(level, machinePos, false);
+                manager.getActivatedMachines().remove(machinePos);
+                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] 已触发停用通知 machinePos={}", machinePos);
+            }
+        } catch (Exception e) {
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("[激活调试] notifyActivationIfChanged异常 machinePos={}, activated={}", machinePos, activated, e);
+        }
+    }
     
     public boolean isAutoDelivery() { return autoDelivery; }
     public void setAutoDelivery(boolean v) { this.autoDelivery = v; syncToClient(); }
@@ -306,11 +358,11 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         }
     }
     
-    // 播放下班铃声（玩家升级声，清脆有上升感）
+    // 播放下班铃声（仙女铃铛，柔和梦幻）
     private void playBellSound() {
         if (!this.bellEnabled) return;
         if (this.level == null || this.level.isClientSide) return;
-        this.level.playSound(null, this.worldPosition, SoundEvents.PLAYER_LEVELUP, SoundSource.BLOCKS, 0.6f, 1.0f);
+        this.level.playSound(null, this.worldPosition, ModSounds.CLOSING_BELL.get(), SoundSource.BLOCKS, 0.8f, 1.0f);
     }
     
     // tick方法
@@ -341,6 +393,28 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         this.setChanged();
         if (this.level != null && !this.level.isClientSide) {
             this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+        }
+    }
+
+    // 方块被移除时清理激活缓存
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (this.hasBoundMachine && this.boundMachinePos != null && this.autoEnabled
+                && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            ActivationCache.deactivate(serverLevel, this.boundMachinePos);
+            // 即时触发停用通知
+            notifyActivationIfChanged(serverLevel, this.boundMachinePos, false);
+        }
+    }
+
+    // 方块加载时注册到缓存
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (this.hasBoundMachine && this.boundMachinePos != null && this.autoEnabled
+                && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            ActivationCache.activate(serverLevel, this.boundMachinePos);
         }
     }
 

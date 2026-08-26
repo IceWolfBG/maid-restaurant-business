@@ -8,5 +8,6 @@
   "tooltips.maid_restaurant_business.health_certificate.no_machine": "未绑定打单机，右键打单机绑定",
   "tooltips.maid_restaurant_business.health_certificate.bound_maid": "已绑定女仆",
   "tooltips.maid_restaurant_business.health_certificate.no_maid": "未绑定女仆，右键女仆绑定",
-  "tooltips.maid_restaurant_business.health_certificate.usage": "需要放置在女仆的饰品栏中"
+  "tooltips.maid_restaurant_business.health_certificate.usage": "需要放置在女仆的饰品栏中",
+  "maid_restaurant_business.subtitle.closing_bell": "下班铃声响起"
 }

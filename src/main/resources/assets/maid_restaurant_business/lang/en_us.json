@@ -8,5 +8,6 @@
   "tooltips.maid_restaurant_business.health_certificate.no_machine": "Not bound, right-click an order machine",
   "tooltips.maid_restaurant_business.health_certificate.bound_maid": "Bound to Maid",
   "tooltips.maid_restaurant_business.health_certificate.no_maid": "Not bound, right-click a maid",
-  "tooltips.maid_restaurant_business.health_certificate.equip": "Equip in maid bauble slot"
+  "tooltips.maid_restaurant_business.health_certificate.equip": "Equip in maid bauble slot",
+  "maid_restaurant_business.subtitle.closing_bell": "Closing bell rings"
 }

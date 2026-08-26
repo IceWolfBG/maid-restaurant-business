@@ -243,30 +243,8 @@ public class OrderBridge {
     }
 
     public static boolean isActivated(ServerLevel level, BlockPos pos) {
-        // 检查1：展示框包含餐厅菜单（3格范围内）
-        AABB area = new AABB(pos).inflate(3.0);
-        List<ItemFrame> frames = (List)level.getEntitiesOfClass(ItemFrame.class, area);
-        for (ItemFrame frame : frames) {
-            String itemId;
-            ItemStack frameStack = frame.getItem();
-            if (frameStack.isEmpty() || !(itemId = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(frameStack.getItem())).toString()).equals("maid_restaurant:order_menu")) continue;
-            return true;
-        }
-        // 检查2：排班表绑定了该打单机且已启用自动化（16格范围内）
-        try {
-            for (BlockPos checkPos : BlockPos.betweenClosed(pos.offset(-16, -8, -16), pos.offset(16, 8, 16))) {
-                BlockEntity be = level.getBlockEntity(checkPos);
-                if (be instanceof com.icewolf.maidrestaurant.business.block.entity.ScheduleBoardBlockEntity board) {
-                    if (board.hasBoundMachine() && board.getBoundMachinePos() != null 
-                        && board.getBoundMachinePos().equals(pos) && board.isAutoEnabled()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // 静默失败，避免影响展示框检查
-        }
-        return false;
+        // 使用集中缓存，O(1)查询，避免每次遍历
+        return ActivationCache.isActivated(level, pos);
     }
 
     private static String getUnlockedFeatures(ServerLevel level, BlockPos pos) {
@@ -289,7 +267,7 @@ public class OrderBridge {
         return sb.toString();
     }
 
-    private static void notifyActivation(ServerLevel level, BlockPos pos, boolean activated) {
+    public static void notifyActivation(ServerLevel level, BlockPos pos, boolean activated) {
         MutableComponent msg;
         if (activated) {
             int rl = ProgressionManager.getRestaurantLevel(level, pos);
@@ -298,7 +276,7 @@ public class OrderBridge {
             level.playSound(null, pos, SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 0.5f, 1.2f);
             level.playSound(null, pos, SoundEvents.VILLAGER_YES, SoundSource.BLOCKS, 0.3f, 1.0f);
         } else {
-            msg = Component.literal((String)"[\u5973\u4ec6\u9910\u5385\uff1a\u7ecf\u8425] ").withStyle(ChatFormatting.GOLD).append((Component)Component.literal((String)"\u81ea\u52a8\u5316\u5df2\u505c\u6b62\uff08\u672a\u68c0\u6d4b\u5230\u8ba2\u5355\u83dc\u5355\u5c55\u793a\u6846\uff09").withStyle(ChatFormatting.GRAY));
+            msg = Component.literal((String)"[\u5973\u4ec6\u9910\u5385\uff1a\u7ecf\u8425] ").withStyle(ChatFormatting.GOLD).append((Component)Component.literal((String)"\u81ea\u52a8\u5316\u5df2\u505c\u6b62\uff08\u672a\u7ed1\u5b9a\u6392\u73ed\u8868\u6216\u6392\u73ed\u8868\u672a\u542f\u7528\u81ea\u52a8\u5316\uff09").withStyle(ChatFormatting.GRAY));
             level.playSound(null, pos, SoundEvents.VILLAGER_NO, SoundSource.BLOCKS, 0.3f, 0.8f);
         }
         for (ServerPlayer player : level.getPlayers(p -> p.distanceToSqr((double)pos.getX() + 0.5, (double)pos.getY() + 0.5, (double)pos.getZ() + 0.5) <= 64.0)) {
