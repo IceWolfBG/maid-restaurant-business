@@ -47,6 +47,8 @@ public class BusinessManager {
 
     public BusinessManager(MinecraftServer server) {
         this.server = server;
+        // 设置TaskManager的BusinessManager引用，用于自动接单等功能
+        TaskManager.getInstance().setBusinessManager(this);
     }
 
     public void tick(MinecraftServer server) {
@@ -80,10 +82,8 @@ public class BusinessManager {
                         MaidRestaurantBusiness.LOGGER.info("绑定调试: 打单机 {} 绑定女仆数={}/{}, 有绑定时仅绑定女仆可工作", machinePos, boundCount, maxWorkers);
                     }
                 }
-                if (this.tickCounter - this.lastOrderTick >= 200L) {
-                    OrderBridge.tickOrders(level, this);
-                    this.lastOrderTick = this.tickCounter;
-                }
+                // 自动接单已集成到TaskManager中，每10tick检查一次，这里不需要单独调用了
+                // TaskManager.tick会调用OrderBridge.tickOrders，少一次监测，提高性能
                 if (this.tickCounter - this.lastCookingTick >= 10L) {
                     // 更新全局厨具状态（在烹饪任务分配前更新）
                     if (!this.getActivatedMachines().isEmpty()) {

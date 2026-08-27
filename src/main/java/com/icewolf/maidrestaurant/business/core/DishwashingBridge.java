@@ -829,6 +829,10 @@ public class DishwashingBridge {
             this.currentPlatePos = platePos;
             MaidUtils.setOccupied(maid, true);
             MaidRestaurantBusiness.LOGGER.info("收盘子: 任务创建 女仆={} 盘子={}", maid.getName().getString(), platePos);
+            // 显示侍者收盘子气泡
+            try {
+                com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterCollectPlate(maid);
+            } catch (Exception e) {}
         }
 
         void cleanup() {
@@ -872,6 +876,10 @@ public class DishwashingBridge {
             this.currentPlatePos = null;
             MaidUtils.setOccupied(maid, true);
             MaidRestaurantBusiness.LOGGER.info("洗碗: 任务创建 女仆={} 洗碗机={} 开始时间={}", maid.getName().getString(), dishwasherPos, this.startTime);
+            // 显示侍者洗碗气泡
+            try {
+                com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterWashing(maid);
+            } catch (Exception e) {}
         }
 
         void cleanup() {

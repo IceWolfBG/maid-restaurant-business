@@ -5,7 +5,8 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "MaidCookingTaskMixin",
-    "TaskWaiterMixin"
+    "TaskWaiterMixin",
+    "OrderMachineBlockEntityMixin"
   ],
   "client": [],
   "server": [],

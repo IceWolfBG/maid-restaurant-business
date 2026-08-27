@@ -106,6 +106,9 @@ public class TaskManager {
 
     private long lastCheckTick = 0;
     private long currentTick = 0; // 当前游戏tick，在tick方法中更新
+    
+    // BusinessManager引用，用于自动接单等功能
+    private BusinessManager businessManager;
 
     // 中心化检索缓存
     private List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> cachedMaids = new ArrayList<>();
@@ -147,6 +150,13 @@ public class TaskManager {
             instance = new TaskManager();
         }
         return instance;
+    }
+    
+    /**
+     * 设置BusinessManager引用，用于自动接单等功能
+     */
+    public void setBusinessManager(BusinessManager businessManager) {
+        this.businessManager = businessManager;
     }
 
     /**
@@ -505,6 +515,15 @@ public class TaskManager {
         this.currentTick = currentTick;
         if (currentTick - lastCheckTick < CHECK_INTERVAL) return;
         lastCheckTick = currentTick;
+
+        // 自动接单：集成到TaskManager中，每10tick检查一次，少一次监测
+        if (businessManager != null) {
+            try {
+                OrderBridge.tickOrders(level, businessManager);
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.error("TaskManager: 自动接单异常", t);
+            }
+        }
 
         // 每200tick（10秒）输出一次任务统计信息
         if (currentTick % 200L == 0L) {

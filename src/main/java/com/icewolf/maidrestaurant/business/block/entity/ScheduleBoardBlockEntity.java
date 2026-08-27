@@ -38,6 +38,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     public static final String TAG_MIN_PLATES_TO_WASH = "MinPlatesToWash";
     public static final String TAG_WORK_SCHEDULE = "WorkSchedule"; // 0=白天, 1=黑天, 2=全天, 3=歇业
     public static final String TAG_BELL_ENABLED = "BellEnabled";
+    public static final String TAG_AUTO_ACCEPT = "AutoAccept";
     
     // 营业时间常量
     public static final int SCHEDULE_DAY = 0;
@@ -67,6 +68,9 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     // 营业时间配置（默认全天）
     private int workSchedule = SCHEDULE_ALL;
     private boolean bellEnabled = true;
+    
+    // 自动接单配置（默认关闭，需要玩家手动开启）
+    private boolean autoAccept = false;
     
     // tick相关
     private long lastCheckTick = 0;
@@ -207,6 +211,9 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     
     public boolean isAutoWash() { return autoWash; }
     public void setAutoWash(boolean v) { this.autoWash = v; syncToClient(); }
+    
+    public boolean isAutoAccept() { return autoAccept; }
+    public void setAutoAccept(boolean v) { this.autoAccept = v; syncToClient(); }
     
     public int getMinPlatesToWash() { return minPlatesToWash; }
     public void setMinPlatesToWash(int v) { this.minPlatesToWash = Math.max(1, Math.min(10, v)); syncToClient(); }
@@ -448,6 +455,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         if (this.minPlatesToWash < 1) this.minPlatesToWash = 3;
         this.workSchedule = tag.contains(TAG_WORK_SCHEDULE) ? tag.getInt(TAG_WORK_SCHEDULE) : SCHEDULE_ALL;
         this.bellEnabled = tag.contains(TAG_BELL_ENABLED) ? tag.getBoolean(TAG_BELL_ENABLED) : true;
+        this.autoAccept = tag.contains(TAG_AUTO_ACCEPT) ? tag.getBoolean(TAG_AUTO_ACCEPT) : false;
     }
 
     protected void saveAdditional(CompoundTag tag) {
@@ -468,6 +476,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         tag.putInt(TAG_MIN_PLATES_TO_WASH, this.minPlatesToWash);
         tag.putInt(TAG_WORK_SCHEDULE, this.workSchedule);
         tag.putBoolean(TAG_BELL_ENABLED, this.bellEnabled);
+        tag.putBoolean(TAG_AUTO_ACCEPT, this.autoAccept);
     }
 
     // ========== 客户端同步方法 ==========

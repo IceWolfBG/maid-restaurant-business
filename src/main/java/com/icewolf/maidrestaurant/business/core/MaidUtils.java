@@ -1077,6 +1077,7 @@ public class MaidUtils {
     public static final int SCHED_AUTO_PREP = 4;
     public static final int SCHED_AUTO_COLLECT = 5;
     public static final int SCHED_AUTO_WASH = 6;
+    public static final int SCHED_AUTO_ACCEPT = 7;
 
     /**
      * 查找打单机附近16格内绑定了该打单机的排班表方块实体
@@ -1112,6 +1113,7 @@ public class MaidUtils {
             case SCHED_AUTO_PREP: return board.isAutoPrep();
             case SCHED_AUTO_COLLECT: return board.isAutoCollect();
             case SCHED_AUTO_WASH: return board.isAutoWash();
+            case SCHED_AUTO_ACCEPT: return board.isAutoAccept();
             default: return true;
         }
     }

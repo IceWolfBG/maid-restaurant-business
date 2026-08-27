@@ -19,6 +19,7 @@ public class ScheduleBoardUpdatePacket {
     public static final int TYPE_MIN_PLATES = 7;
     public static final int TYPE_WORK_SCHEDULE = 8;
     public static final int TYPE_BELL_ENABLED = 9;
+    public static final int TYPE_AUTO_ACCEPT = 10;
 
     private final BlockPos pos;
     private final int type;
@@ -75,6 +76,7 @@ public class ScheduleBoardUpdatePacket {
                 case TYPE_MIN_PLATES: board.setMinPlatesToWash(msg.intValue); break;
                 case TYPE_WORK_SCHEDULE: board.setWorkSchedule(msg.intValue); break;
                 case TYPE_BELL_ENABLED: board.setBellEnabled(msg.boolValue); break;
+                case TYPE_AUTO_ACCEPT: board.setAutoAccept(msg.boolValue); break;
             }
         });
         ctx.get().setPacketHandled(true);

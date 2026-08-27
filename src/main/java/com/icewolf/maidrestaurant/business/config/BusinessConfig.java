@@ -36,6 +36,7 @@ public class BusinessConfig {
     public static final ForgeConfigSpec.IntValue MIN_PLATES_TO_WASH;
     public static final ForgeConfigSpec.IntValue DISH_SCAN_RANGE;
     public static final ForgeConfigSpec.DoubleValue FAVORABILITY_BONUS;
+    public static final ForgeConfigSpec.IntValue BUBBLE_COOLDOWN;
     public static boolean autoAccept;
     public static boolean acceptDelivery;
     public static boolean autoPack;
@@ -49,6 +50,7 @@ public class BusinessConfig {
     public static int minPlatesToWash;
     public static int dishScanRange;
     public static double favorabilityBonus;
+    public static int bubbleCooldown;
 
     @SubscribeEvent
     static void onLoad(ModConfigEvent event) {
@@ -66,6 +68,7 @@ public class BusinessConfig {
             minPlatesToWash = (Integer)MIN_PLATES_TO_WASH.get();
             dishScanRange = (Integer)DISH_SCAN_RANGE.get();
             favorabilityBonus = (Double)FAVORABILITY_BONUS.get();
+            bubbleCooldown = (Integer)BUBBLE_COOLDOWN.get();
         }
     }
 
@@ -84,6 +87,7 @@ public class BusinessConfig {
         MIN_PLATES_TO_WASH = BUILDER.comment("\u5973\u4ec6\u6536\u96c6\u5230\u591a\u5c11\u4e2a\u810f\u76d8\u5b50\u540e\u624d\u53bb\u6d17\u7897\uff081-10\uff0c\u9ed8\u8ba43\uff09").defineInRange("minPlatesToWash", 3, 1, 10);
         DISH_SCAN_RANGE = BUILDER.comment("\u6536\u76d8\u5b50\u548c\u6d17\u7897\u7684\u626b\u63cf\u8303\u56f4\uff08\u4ee5\u6253\u5355\u673a\u4e3a\u4e2d\u5fc3\uff0c\u65b9\u5757\uff0c\u9ed8\u8ba424\uff0c\u6700\u592748\uff09").defineInRange("dishScanRange", 24, 4, 48);
         FAVORABILITY_BONUS = BUILDER.comment("女仆好感度每级的收益加成比例（0-1.0，默认0.1=10%，0级无加成，1级+10%，2级+20%，3级+30%）").defineInRange("favorabilityBonus", 0.1, 0.0, 1.0);
+        BUBBLE_COOLDOWN = BUILDER.comment("女仆对话气泡冷却时间（tick，20tick=1秒，默认200=10秒，0=无冷却）").defineInRange("bubbleCooldown", 200, 0, 1200);
         BUILDER.pop();
         SPEC = BUILDER.build();
         autoAccept = false;
@@ -99,6 +103,14 @@ public class BusinessConfig {
         minPlatesToWash = 3;
         dishScanRange = 24;
         favorabilityBonus = 0.1;
+        bubbleCooldown = 200;
+    }
+
+    /**
+     * 获取气泡冷却时间
+     */
+    public static long getBubbleCooldown() {
+        return bubbleCooldown;
     }
 
     public static enum PriorityMode {

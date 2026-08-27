@@ -74,5 +74,6 @@ public class ScheduleBoardMenu extends AbstractContainerMenu {
     public int getMinPlatesToWash() { return blockEntity != null ? blockEntity.getMinPlatesToWash() : 3; }
     public int getWorkSchedule() { return blockEntity != null ? blockEntity.getWorkSchedule() : 2; }
     public boolean isBellEnabled() { return blockEntity != null && blockEntity.isBellEnabled(); }
+    public boolean isAutoAccept() { return blockEntity != null && blockEntity.isAutoAccept(); }
     public String getScheduleName() { return blockEntity != null ? blockEntity.getScheduleName() : "全天"; }
 }

@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
@@ -80,10 +81,27 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.registries.ForgeRegistries;
 
 public class OrderBridge {
+    // 记录每个打单机的订单刷新时间（key: machinePos.asLong(), value: 刷新时的游戏tick）
+    private static final Map<Long, Long> orderRefreshTimes = new HashMap<>();
+    
+    /**
+     * 由Mixin调用，记录订单刷新时间
+     */
+    public static void onOrderMachineRefreshed(Level level, BlockPos pos) {
+        if (level != null && !level.isClientSide) {
+            long key = pos.asLong();
+            long now = level.getGameTime();
+            orderRefreshTimes.put(key, now);
+            MaidRestaurantBusiness.LOGGER.info("[订单刷新] 记录打单机 {} 刷新时间 tick={}", pos, now);
+        }
+    }
+    
     public static void tickOrders(ServerLevel level, BusinessManager manager) {
         List<BlockPos> machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
         List<BlockPos> counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
+        MaidRestaurantBusiness.LOGGER.info("OrderBridge.tickOrders: 扫描到 {} 个打单机, {} 个操作台", machines.size(), counters.size());
         if (machines.isEmpty()) {
+            MaidRestaurantBusiness.LOGGER.warn("OrderBridge.tickOrders: 没有扫描到打单机，直接返回");
             return;
         }
         HashMap<BlockPos, BlockPos> newMapping = new HashMap<BlockPos, BlockPos>();
@@ -124,11 +142,16 @@ public class OrderBridge {
             manager.getActivatedMachines().remove(pos);
         }
         manager.getActivatedMachines().retainAll(currentActivated);
+        // 全局开关关闭，所有打单机都不自动接单
         if (!BusinessConfig.autoAccept) {
             return;
         }
         for (BlockPos machinePos : machines) {
             if (!currentActivated.contains(machinePos)) continue;
+            // 检查排班表的自动接单开关（没有排班表默认开启，有排班表则按排班表设置）
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_ACCEPT)) {
+                continue;
+            }
             try {
                 OrderBridge.processMachine(level, machinePos, counters, manager);
             }
@@ -151,18 +174,22 @@ public class OrderBridge {
             return true;
         }
         long now = level.getGameTime();
-        Long lastTick = manager.getOrderCooldowns().get(machinePos);
-        if (lastTick == null) {
-            // 首次接单：设置初始冷却时间，确保不会立即接单
-            manager.getOrderCooldowns().put(machinePos, now);
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 首次检测，设置初始冷却时间 {} tick", machinePos, BusinessConfig.acceptDelay);
+        // 基于订单刷新时间的延迟：只有订单刷新后超过acceptDelay才接单
+        Long refreshTime = orderRefreshTimes.get(machinePos.asLong());
+        if (refreshTime == null) {
+            // 还没有检测到订单刷新，不接单
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 还没有订单刷新记录，等待刷新", machinePos);
             return true;
         }
-        if (now - lastTick < (long)BusinessConfig.acceptDelay) {
+        long elapsed = now - refreshTime;
+        if (elapsed < (long)BusinessConfig.acceptDelay) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 订单刷新后仅 {} tick，未达到延迟 {} tick，等待", machinePos, elapsed, BusinessConfig.acceptDelay);
             return true;
         }
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 订单刷新后已 {} tick，达到延迟 {} tick，可以接单", machinePos, elapsed, BusinessConfig.acceptDelay);
         IItemHandler machineInv = OrderBridge.getItemHandler(be);
         if (machineInv == null) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 无法获取物品处理器，跳过", machinePos);
             return true;
         }
         ArrayList<OrderEntry> orders = new ArrayList<OrderEntry>();
@@ -173,10 +200,13 @@ public class OrderBridge {
             orders.add(new OrderEntry(i, stack, nbt));
         }
         if (orders.isEmpty()) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有订单，跳过", machinePos);
             return true;
         }
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 找到 {} 个订单", machinePos, orders.size());
         long activeCount = manager.getActiveOrders().values().stream().filter(o -> o.machinePos.equals(machinePos)).count();
         if (activeCount >= (long)BusinessConfig.maxPendingOrders) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 活跃订单数 {}/{} 已达上限，跳过", machinePos, activeCount, BusinessConfig.maxPendingOrders);
             return true;
         }
         ArrayList<OrderEntry> candidates = new ArrayList<OrderEntry>();
@@ -186,25 +216,32 @@ public class OrderBridge {
             candidates.add(orderEntry);
         }
         if (candidates.isEmpty()) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有满足条件的候选订单（外卖单未开启或无FoodList），跳过", machinePos);
             return true;
         }
-        if (ProgressionManager.isAutoOrderUnlocked(level, machinePos)) {
-            ArrayList<OrderEntry> feasible = new ArrayList<OrderEntry>();
-            for (OrderEntry orderEntry : candidates) {
-                if (!OrderBridge.canFulfillOrder(level, machinePos, orderEntry.nbt)) continue;
-                feasible.add(orderEntry);
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 筛选出 {} 个候选订单", machinePos, candidates.size());
+        // 自动接单时检查操作台和冰箱里有没有现成的成品食物
+        // 有就接（可以直接打包送餐），没有就不接（避免订单卡在操作台）
+        ArrayList<OrderEntry> readyOrders = new ArrayList<OrderEntry>();
+        for (OrderEntry orderEntry : candidates) {
+            if (OrderBridge.hasReadyFood(level, machinePos, orderEntry.nbt)) {
+                readyOrders.add(orderEntry);
             }
-            if (feasible.isEmpty()) {
-                return true;
-            }
-            candidates = feasible;
         }
+        if (readyOrders.isEmpty()) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 操作台和冰箱里没有现成的成品食物，跳过", machinePos);
+            return true;
+        }
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 有 {} 个订单有现成的成品食物，可以接单", machinePos, readyOrders.size());
+        candidates = readyOrders;
         if (BusinessConfig.priorityMode == BusinessConfig.PriorityMode.PRESTIGE) {
             candidates.sort((a, b) -> Integer.compare(b.nbt.getInt("Prestige"), a.nbt.getInt("Prestige")));
         }
         if ((counterPos = OrderBridge.findNearestFreeCounter(level, machinePos, counters, manager)) == null) {
+            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有找到空闲的操作台，跳过", machinePos);
             return true;
         }
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 找到空闲操作台 {}", machinePos, counterPos);
         OrderEntry orderEntry = (OrderEntry)candidates.get(0);
         OrderBridge.transferOrderToCounter(level, machineInv, orderEntry, counterPos, machinePos);
         manager.getOrderCooldowns().put(machinePos, now);
@@ -238,6 +275,69 @@ public class OrderBridge {
             int required = foodList.getInt(key);
             if (available.getOrDefault(key, 0) >= required) continue;
             return false;
+        }
+        return true;
+    }
+    
+    /**
+     * 检查操作台和冰箱里有没有订单所需的现成成品食物
+     * 用于自动接单判断：有现成食物就接（可以直接打包），没有就不接
+     */
+    private static boolean hasReadyFood(ServerLevel level, BlockPos machinePos, CompoundTag orderNbt) {
+        if (!orderNbt.contains("FoodList")) {
+            return false;
+        }
+        CompoundTag foodList = orderNbt.getCompound("FoodList");
+        int range = BusinessConfig.searchRange;
+        HashMap<String, Integer> available = new HashMap<String, Integer>();
+        int containerCount = 0;
+        
+        // 只检测操作台（TakeoutBoxBlockEntity）和冰箱（RefrigeratorBlockEntity），其他容器都不检测
+        for (BlockPos check : BlockPos.betweenClosed(
+            (BlockPos)machinePos.offset(-range, -range, -range), 
+            (BlockPos)machinePos.offset(range, range, range))) {
+            try {
+                BlockEntity be = level.getBlockEntity(check);
+                if (be == null) continue;
+                
+                // 只处理操作台和冰箱
+                boolean isTarget = be instanceof TakeoutBoxBlockEntity || 
+                                   be.getClass().getSimpleName().equals("RefrigeratorBlockEntity");
+                if (!isTarget) continue;
+                
+                // 操作台和冰箱都实现了Container接口，直接当作Container使用
+                if (be instanceof net.minecraft.world.Container) {
+                    net.minecraft.world.Container container = (net.minecraft.world.Container)be;
+                    containerCount++;
+                    String beName = be.getClass().getSimpleName();
+                    String typeName = be instanceof TakeoutBoxBlockEntity ? "操作台" : "冰箱";
+                    for (int i = 0; i < container.getContainerSize(); ++i) {
+                        ItemStack stack = container.getItem(i);
+                        if (stack.isEmpty()) continue;
+                        String id = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
+                        available.merge(id, stack.getCount(), Integer::sum);
+                        MaidRestaurantBusiness.LOGGER.info("自动接单: {} {}({}) 槽位{} 有 {} * {}", 
+                            typeName, check, beName, i, id, stack.getCount());
+                    }
+                } else {
+                    MaidRestaurantBusiness.LOGGER.warn("自动接单: {}({}) 不是Container，无法获取物品栏", check, be.getClass().getSimpleName());
+                }
+            }
+            catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("自动接单: 检查容器 {} 时出错: {}", check, t.toString());
+            }
+        }
+        
+        MaidRestaurantBusiness.LOGGER.info("自动接单: 扫描到 {} 个操作台/冰箱，可用食物: {}", containerCount, available);
+        
+        // 检查是否有足够的成品食物
+        for (String key : foodList.getAllKeys()) {
+            int required = foodList.getInt(key);
+            int have = available.getOrDefault(key, 0);
+            if (have < required) {
+                MaidRestaurantBusiness.LOGGER.info("自动接单: 订单需要 {} * {}，但只有 {} 个现成食物", key, required, have);
+                return false;
+            }
         }
         return true;
     }

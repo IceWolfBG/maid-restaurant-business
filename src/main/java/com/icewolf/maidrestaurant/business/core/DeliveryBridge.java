@@ -115,6 +115,7 @@ public class DeliveryBridge {
     }
 
     private static void assignDeliveryTask(ServerLevel level, EntityMaid maid, BusinessManager manager) {
+        MaidRestaurantBusiness.LOGGER.info("[气泡调试] assignDeliveryTask 被调用 maid={}", maid.getName().getString());
         // 任务互斥：如果女仆正在执行其他任务（打包/洗碗），不分配送餐任务
         if (MaidUtils.isOccupied(maid)) {
             // 幽灵忙碌检测：如果女仆被标记为忙碌但没有实际任务标记，立即清理
@@ -187,6 +188,14 @@ public class DeliveryBridge {
         MaidUtils.setOccupied(maid, true);
         // 记录任务跟踪信息（用于卡住自愈和人数统计）
         MaidUtils.startTask(maid, machinePos, "delivery", manager.getTickCounter());
+        // 显示侍者开始送餐气泡
+        try {
+            MaidRestaurantBusiness.LOGGER.info("[气泡调试] 准备调用 waiterStartDelivery maid={}", maid.getName().getString());
+            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterStartDelivery(maid);
+            MaidRestaurantBusiness.LOGGER.info("[气泡调试] waiterStartDelivery 调用完成 maid={}", maid.getName().getString());
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("[气泡调试] waiterStartDelivery 调用失败 maid={} error={}", maid.getName().getString(), e.toString(), e);
+        }
 
         // TaskManager集成：创建送餐任务并分配给女仆
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DELIVERY, counterPos, machinePos);
@@ -353,6 +362,10 @@ public class DeliveryBridge {
             MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 送餐成功（API方式）", maid.getName().getString());
             // 好感度收益加成
             applyFavorabilityBonus(level, maid, plateStack, deliverPlayer);
+            // 显示送餐完成气泡
+            try {
+                com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterDeliveryDone(maid);
+            } catch (Exception e) {}
             finishDelivery(maid, true);
         } else {
             // Fallback: 通过反射直接调用completeDelivery，确保收益发放
@@ -372,6 +385,10 @@ public class DeliveryBridge {
                         MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 送餐成功（反射方式）", maid.getName().getString());
                         // 好感度收益加成
                         applyFavorabilityBonus(level, maid, plateStack, deliverPlayer);
+                        // 显示送餐完成气泡
+                        try {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterDeliveryDone(maid);
+                        } catch (Exception e) {}
                         finishDelivery(maid, true);
                     } else {
                         // 终极回退：手动发放收益

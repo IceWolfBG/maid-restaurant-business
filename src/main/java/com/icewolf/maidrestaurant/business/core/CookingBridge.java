@@ -778,6 +778,10 @@ public class CookingBridge {
                         finalHandler.add(request);
                         MaidRestaurantBusiness.LOGGER.info("烹饪: 已直接添加任务到厨师 {} 的handler，任务详情: recipeId={}, remain={}, requested={}", 
                             targetMaid.getName().getString(), request.id, request.remain, request.requested);
+                        // 显示厨师开始烹饪气泡
+                        try {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefStartCooking(targetMaid);
+                        } catch (Exception e) {}
                     } else {
                         MaidRestaurantBusiness.LOGGER.error("烹饪: 无法获取厨师 {} 的CookRequestHandler，跳过此任务", targetMaid.getName().getString());
                         continue;

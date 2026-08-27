@@ -62,23 +62,33 @@ public class PackagingBridge {
             List<BlockPos> counters = null;
             try {
                 counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
+                MaidRestaurantBusiness.LOGGER.info("打包: 扫描到 {} 个操作台", counters != null ? counters.size() : 0);
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("打包: 扫描操作台失败", t);
             }
-            if (counters != null) {
+            if (counters != null && !counters.isEmpty()) {
+                List<BlockPos> machines = null;
+                try {
+                    machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
+                    MaidRestaurantBusiness.LOGGER.info("打包: 扫描到 {} 个打单机", machines != null ? machines.size() : 0);
+                } catch (Throwable t) {
+                    MaidRestaurantBusiness.LOGGER.error("打包: 扫描打单机失败", t);
+                }
                 for (BlockPos counterPos : counters) {
                     // 查找附近的打单机
                     BlockPos machinePos = null;
-                    try {
-                        List<BlockPos> machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
+                    if (machines != null) {
                         for (BlockPos mp : machines) {
                             if (counterPos.distSqr(mp) <= 64.0) {
                                 machinePos = mp;
                                 break;
                             }
                         }
-                    } catch (Throwable t) {}
-                    if (machinePos == null) continue;
+                    }
+                    if (machinePos == null) {
+                        MaidRestaurantBusiness.LOGGER.info("打包: 操作台 {} 附近没有打单机（8格内），跳过", counterPos);
+                        continue;
+                    }
                     // 临时添加到counterToMachine
                     manager.getCounterToMachine().put(counterPos, machinePos);
                     MaidRestaurantBusiness.LOGGER.info("打包: 临时添加操作台 {} -> 打单机 {}", counterPos, machinePos);
@@ -340,6 +350,10 @@ public class PackagingBridge {
             this.maidRef = new WeakReference<EntityMaid>(maid);
             MaidUtils.setOccupied(maid, true);
             MaidUtils.startTask(maid, machinePos, "packaging", currentTick);
+            // 显示侍者开始打包气泡
+            try {
+                com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterPacking(maid);
+            } catch (Exception e) {}
         }
 
         void cleanup() {
