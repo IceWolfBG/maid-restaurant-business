@@ -31,15 +31,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value={TaskWaiter.class})
 public class TaskWaiterMixin {
     static {
-        MaidRestaurantBusiness.LOGGER.info("TaskWaiterMixin: class loaded");
+        MaidRestaurantBusiness.LOGGER.info("TaskWaiterMixin: class loaded (MaidDeliverOrderTask已禁用，统一使用DeliveryBridge)");
     }
 
     @Inject(method={"createBrainTasks(Lcom/github/tartaricacid/touhoulittlemaid/entity/passive/EntityMaid;)Ljava/util/List;"}, at={@At(value="RETURN")}, cancellable=true, remap=false)
     private void addDeliverOrderTask(EntityMaid maid, CallbackInfoReturnable<List<Pair<Integer, BehaviorControl<? super EntityMaid>>>> cir) {
-        MaidRestaurantBusiness.LOGGER.info("TaskWaiterMixin: adding MaidDeliverOrderTask to brain tasks for maid {}", maid.getName().getString());
-        ArrayList tasks = Lists.newArrayList((Iterable)((Iterable)cir.getReturnValue()));
-        MaidDeliverOrderTask deliverTask = new MaidDeliverOrderTask(0.4f, 2.0);
-        tasks.add(Pair.of((Object)3, (Object)(deliverTask)));
-        cir.setReturnValue(tasks);
+        // 已禁用 MaidDeliverOrderTask，统一使用 DeliveryBridge 作为唯一的配送系统
+        // 避免两套配送系统同时运行导致女仆状态混乱和卡住
+        MaidRestaurantBusiness.LOGGER.debug("TaskWaiterMixin: 跳过添加MaidDeliverOrderTask，女仆={} (统一使用DeliveryBridge)", maid.getName().getString());
+        // 不修改返回值，保持女仆餐厅原有的大脑任务
     }
 }

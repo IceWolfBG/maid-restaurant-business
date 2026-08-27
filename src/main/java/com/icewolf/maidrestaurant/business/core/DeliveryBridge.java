@@ -209,9 +209,28 @@ public class DeliveryBridge {
         // TaskManager心跳更新
         TaskManager.getInstance().heartbeat(maid.getUUID(), manager.getTickCounter());
 
+        // 详细调试日志：每20tick输出一次女仆状态
+        if (maid.tickCount % 20 == 0) {
+            MaidRestaurantBusiness.LOGGER.info("送餐状态: 女仆={}, 阶段={}, 操作台={}, 距离={}, isOccupied={}, 导航中={}", 
+                maid.getName().getString(), 
+                stage == STAGE_GO_TO_COUNTER ? "前往操作台" : "前往顾客",
+                counterPos,
+                String.format("%.2f", Math.sqrt(maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5))),
+                MaidUtils.isOccupied(maid),
+                maid.getNavigation().isInProgress());
+        }
+
+        // 目标消失检测：操作台是否还存在
+        if (!(level.getBlockEntity(counterPos) instanceof TakeoutBoxBlockEntity)) {
+            MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 的操作台 {} 已消失，立即结束任务", maid.getName().getString(), counterPos);
+            finishDelivery(maid, false);
+            return;
+        }
+
         if (stage == STAGE_GO_TO_COUNTER) {
             double dist = maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5);
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 到达操作台 {}, 开始拿取餐盘", maid.getName().getString(), counterPos);
                 ItemStack plate = pickUpPlate(level, counterPos, maid);
                 if (!plate.isEmpty()) {
                     String orderId = "";
@@ -243,13 +262,27 @@ public class DeliveryBridge {
             String customerId = data.getString(TAG_CUSTOMER_ID);
             LivingEntity customer = findCustomerById(level, counterPos, customerId);
             if (customer == null) {
+                MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 找不到顾客 customerId={}, 立即结束任务", maid.getName().getString(), customerId);
+                finishDelivery(maid, false);
+                return;
+            }
+            // 顾客消失检测：顾客是否还活着
+            if (!customer.isAlive()) {
+                MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 的顾客 {} 已死亡，立即结束任务", maid.getName().getString(), customerId);
                 finishDelivery(maid, false);
                 return;
             }
             BlockPos customerPos = customer.blockPosition();
             BlockPos targetPos = findSafeDeliveryPos(level, customerPos);
             double dist = maid.distanceToSqr(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5);
+            // 详细调试日志：每20tick输出一次
+            if (maid.tickCount % 20 == 0) {
+                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 前往顾客 {}, 顾客位置={}, 目标位置={}, 距离={}", 
+                    maid.getName().getString(), customerId, customerPos, targetPos,
+                    String.format("%.2f", Math.sqrt(dist)));
+            }
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST * 2.25) {
+                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 到达顾客 {} 附近，开始交付", maid.getName().getString(), customerId);
                 deliverToCustomer(level, maid, customer, counterPos, manager);
             } else {
                 maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
@@ -406,32 +439,45 @@ public class DeliveryBridge {
     }
 
     private static void finishDelivery(EntityMaid maid, boolean success) {
+        MaidRestaurantBusiness.LOGGER.info("送餐: 任务结束开始 女仆={}, success={}, 当前isOccupied={}", 
+            maid.getName().getString(), success, MaidUtils.isOccupied(maid));
+        
         // TaskManager：完成或失败任务
         if (success) {
             TaskManager.getInstance().completeTask(maid.getUUID());
+            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager任务已完成 女仆={}", maid.getName().getString());
         } else {
             TaskManager.getInstance().failTask(maid.getUUID(), "delivery failed");
+            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager任务已失败 女仆={}", maid.getName().getString());
         }
 
         CompoundTag data = maid.getPersistentData();
         if (!success) {
+            // 失败时清除女仆背包中的餐盘，避免卡住
             CombinedInvWrapper maidInv = maid.getAvailableInv(false);
             if (maidInv != null) {
+                int removedPlates = 0;
                 for (int i = 0; i < maidInv.getSlots(); ++i) {
                     ItemStack stack = maidInv.getStackInSlot(i);
                     if (stack.isEmpty() || !stack.is((Item) OtcCompat.FOOD_PLATE())) continue;
                     maidInv.extractItem(i, stack.getCount(), false);
+                    removedPlates++;
                     break;
+                }
+                if (removedPlates > 0) {
+                    MaidRestaurantBusiness.LOGGER.info("送餐: 失败时清除女仆 {} 背包中的餐盘 {} 个", maid.getName().getString(), removedPlates);
                 }
             }
         }
-        maid.getNavigation().stop();
-        maid.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
-        data.remove(TAG_COUNTER_POS);
-        data.remove(TAG_CUSTOMER_ID);
-        data.remove(TAG_STAGE);
-        // 解除女仆忙碌标记
-        MaidUtils.setOccupied(maid, false);
+        
+        // 防卡死：强制重置女仆状态（确保不会因为任务失败而卡住）
+        TaskSafetyUtils.resetMaidState(maid);
+        
+        // 验证状态是否已清除
+        MaidRestaurantBusiness.LOGGER.info("送餐: 任务结束完成 女仆={}, success={}, 重置后isOccupied={}, 有任务标记={}", 
+            maid.getName().getString(), success, MaidUtils.isOccupied(maid),
+            data.contains("BusinessDeliverCounter") || data.contains("BusinessPackCounter") || 
+            data.contains("BusinessWashCounter") || data.contains("BusinessCookCounter"));
     }
 
     /**

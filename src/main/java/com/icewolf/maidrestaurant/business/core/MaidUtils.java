@@ -733,23 +733,55 @@ public class MaidUtils {
                 // 检测2：女仆被标记为忙碌，但没有正在执行的任务（任务异常结束）
                 // 检查女仆的持久化数据中是否有任务标记（送餐/打包/洗碗）
                 boolean hasActiveTask = false;
+                String activeTaskType = "none";
                 try {
                     net.minecraft.nbt.CompoundTag data = maid.getPersistentData();
-                    if (data.contains("BusinessDeliverCounter") || 
-                        data.contains("BusinessPackCounter") || 
-                        data.contains("BusinessWashCounter") ||
-                        data.contains("BusinessCookCounter")) {
+                    if (data.contains("BusinessDeliverCounter")) {
                         hasActiveTask = true;
+                        activeTaskType = "delivery";
+                    } else if (data.contains("BusinessPackCounter")) {
+                        hasActiveTask = true;
+                        activeTaskType = "pack";
+                    } else if (data.contains("BusinessWashCounter")) {
+                        hasActiveTask = true;
+                        activeTaskType = "wash";
+                    } else if (data.contains("BusinessCookCounter")) {
+                        hasActiveTask = true;
+                        activeTaskType = "cook";
+                    } else if (data.contains("BusinessCollectPlate")) {
+                        hasActiveTask = true;
+                        activeTaskType = "collect";
                     }
                 } catch (Throwable t) {}
                 // 检查taskTracker中是否有记录
                 boolean hasTaskTracker = taskTracker.containsKey(maid.getUUID());
                 
-                if (!hasActiveTask && !hasTaskTracker) {
-                    // 女仆被标记为忙碌，但没有任何任务记录，说明任务异常结束，清理忙碌标记
-                    MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但没有任何任务记录，清理忙碌标记", maid.getName().getString());
+                // 检查女仆是否在移动（如果导航在进行中，说明可能真的在工作）
+                boolean isNavigating = false;
+                try {
+                    isNavigating = maid.getNavigation().isInProgress();
+                } catch (Throwable t) {}
+                
+                if (!hasActiveTask && !hasTaskTracker && !isNavigating) {
+                    // 女仆被标记为忙碌，但没有任何任务记录，也没有在导航，说明任务异常结束，清理忙碌标记
+                    MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但没有任何任务记录也没有在导航，清理忙碌标记", 
+                        maid.getName().getString());
                     setOccupied(maid, false);
+                    // 同时调用TaskSafetyUtils彻底重置女仆状态
+                    try {
+                        Class<?> safetyUtils = Class.forName("com.icewolf.maidrestaurant.business.core.TaskSafetyUtils");
+                        java.lang.reflect.Method resetMethod = safetyUtils.getMethod("resetMaidState", EntityMaid.class);
+                        resetMethod.invoke(null, maid);
+                    } catch (Throwable t) {
+                        MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 调用TaskSafetyUtils.resetMaidState失败", t);
+                    }
                     resetCount++;
+                } else {
+                    // 女仆确实有任务在执行，输出调试信息
+                    if (maid.tickCount % 200 == 0) {
+                        MaidRestaurantBusiness.LOGGER.info("女仆忙碌状态调试: 女仆 {} 任务类型={} 有TaskTracker={} 导航中={}", 
+                            maid.getName().getString(), activeTaskType, hasTaskTracker, isNavigating);
+                    }
                 }
             }
         } catch (Throwable t) {
@@ -808,53 +840,167 @@ public class MaidUtils {
     /**
      * 查找绑定到指定打单机的侍者女仆
      * 如果没有绑定女仆，返回null（由调用方决定是否回退到自动分配）
+     * 使用UUID查找女仆，避免getEntitiesOfClass在多模组环境中找不到女仆的问题
      */
     public static EntityMaid findBoundWaiterMaid(ServerLevel level, BlockPos center, int range, BlockPos machinePos) {
         if (machinePos == null) return null;
-        List<EntityMaid> maids = (List)level.getEntitiesOfClass(EntityMaid.class, new AABB(center).inflate((double)range));
+        
+        // 方式1：从maidBindings中获取绑定到该打单机的所有女仆UUID，用UUID查找
         EntityMaid nearest = null;
         double minDist = Double.MAX_VALUE;
-        for (EntityMaid m : maids) {
-            if (MaidUtils.isMaidBusy(m)) continue;
-            // 检查TaskManager任务：避免返回有卡住任务的女仆
-            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
-            if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
-            if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+        int boundCount = 0;
+        int foundByUuid = 0;
+        int inRange = 0;
+        int isWaiter = 0;
+        int isFree = 0;
+        
+        for (Map.Entry<UUID, BlockPos> entry : maidBindings.entrySet()) {
+            if (entry.getValue() == null || !entry.getValue().equals(machinePos)) continue;
+            boundCount++;
+            UUID maidUUID = entry.getKey();
+            
+            // 用UUID在所有维度查找女仆
+            Entity maidEntity = null;
+            for (ServerLevel lvl : level.getServer().getAllLevels()) {
+                maidEntity = lvl.getEntity(maidUUID);
+                if (maidEntity != null) break;
+            }
+            if (maidEntity == null || !(maidEntity instanceof EntityMaid)) continue;
+            foundByUuid++;
+            
+            EntityMaid m = (EntityMaid) maidEntity;
+            // 检查是否在范围内
             double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
             double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
             double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
             double dist = dx * dx + dy * dy + dz * dz;
+            if (dist > (double)range * range) continue;
+            inRange++;
+            
+            // 检查是否是侍者职业
+            if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
+            isWaiter++;
+            
+            // 检查是否忙碌
+            if (MaidUtils.isMaidBusy(m)) continue;
+            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
+            isFree++;
+            
             if (dist < minDist) {
                 minDist = dist;
                 nearest = m;
             }
         }
+        
+        // 方式2：如果UUID查找失败，回退到getEntitiesOfClass（兼容旧绑定）
+        if (nearest == null) {
+            List<EntityMaid> maids = (List)level.getEntitiesOfClass(EntityMaid.class, new AABB(center).inflate((double)range));
+            for (EntityMaid m : maids) {
+                if (MaidUtils.isMaidBusy(m)) continue;
+                if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
+                if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
+                if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+                double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
+                double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
+                double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
+                double dist = dx * dx + dy * dy + dz * dz;
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = m;
+                }
+            }
+        }
+        
+        if (nearest == null) {
+            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundWaiterMaid: 打单机={}, 绑定总数={}, UUID找到={}, 范围内={}, 侍者职业={}, 空闲={}, 结果=null", 
+                machinePos, boundCount, foundByUuid, inRange, isWaiter, isFree);
+        } else {
+            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundWaiterMaid: 找到女仆={}, 距离={}", nearest.getName().getString(), Math.sqrt(minDist));
+        }
+        
         return nearest;
     }
     
     /**
      * 查找绑定到指定打单机的厨师女仆
+     * 使用UUID查找女仆，避免getEntitiesOfClass在多模组环境中找不到女仆的问题
      */
     public static EntityMaid findBoundCookMaid(ServerLevel level, BlockPos center, int range, BlockPos machinePos) {
         if (machinePos == null) return null;
-        List<EntityMaid> maids = (List)level.getEntitiesOfClass(EntityMaid.class, new AABB(center).inflate((double)range));
+        
+        // 方式1：从maidBindings中获取绑定到该打单机的所有女仆UUID，用UUID查找
         EntityMaid nearest = null;
         double minDist = Double.MAX_VALUE;
-        for (EntityMaid m : maids) {
-            if (MaidUtils.isMaidBusy(m)) continue;
-            // 检查TaskManager任务：避免返回有卡住任务的女仆
-            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
-            if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
-            if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+        int boundCount = 0;
+        int foundByUuid = 0;
+        int inRange = 0;
+        int isCook = 0;
+        int isFree = 0;
+        
+        for (Map.Entry<UUID, BlockPos> entry : maidBindings.entrySet()) {
+            if (entry.getValue() == null || !entry.getValue().equals(machinePos)) continue;
+            boundCount++;
+            UUID maidUUID = entry.getKey();
+            
+            // 用UUID在所有维度查找女仆
+            Entity maidEntity = null;
+            for (ServerLevel lvl : level.getServer().getAllLevels()) {
+                maidEntity = lvl.getEntity(maidUUID);
+                if (maidEntity != null) break;
+            }
+            if (maidEntity == null || !(maidEntity instanceof EntityMaid)) continue;
+            foundByUuid++;
+            
+            EntityMaid m = (EntityMaid) maidEntity;
+            // 检查是否在范围内
             double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
             double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
             double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
             double dist = dx * dx + dy * dy + dz * dz;
+            if (dist > (double)range * range) continue;
+            inRange++;
+            
+            // 检查是否是厨师职业
+            if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
+            isCook++;
+            
+            // 检查是否忙碌
+            if (MaidUtils.isMaidBusy(m)) continue;
+            if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
+            isFree++;
+            
             if (dist < minDist) {
                 minDist = dist;
                 nearest = m;
             }
         }
+        
+        // 方式2：如果UUID查找失败，回退到getEntitiesOfClass（兼容旧绑定）
+        if (nearest == null) {
+            List<EntityMaid> maids = (List)level.getEntitiesOfClass(EntityMaid.class, new AABB(center).inflate((double)range));
+            for (EntityMaid m : maids) {
+                if (MaidUtils.isMaidBusy(m)) continue;
+                if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
+                if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
+                if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+                double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
+                double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
+                double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
+                double dist = dx * dx + dy * dy + dz * dz;
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = m;
+                }
+            }
+        }
+        
+        if (nearest == null) {
+            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundCookMaid: 打单机={}, 绑定总数={}, UUID找到={}, 范围内={}, 厨师职业={}, 空闲={}, 结果=null", 
+                machinePos, boundCount, foundByUuid, inRange, isCook, isFree);
+        } else {
+            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundCookMaid: 找到女仆={}, 距离={}", nearest.getName().getString(), Math.sqrt(minDist));
+        }
+        
         return nearest;
     }
     

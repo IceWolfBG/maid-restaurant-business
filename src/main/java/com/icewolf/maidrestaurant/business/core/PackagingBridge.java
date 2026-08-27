@@ -206,7 +206,7 @@ public class PackagingBridge {
             return;
         }
         // 智能查找女仆：有绑定女仆时只找绑定的，否则回退到自动分配
-        EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, counterPos, 16, machinePos);
+        EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, counterPos, 24, machinePos);
         if (maid == null) {
             MaidRestaurantBusiness.LOGGER.info("打包: 没有找到可用的侍者女仆 at counter={} (有绑定女仆时仅绑定女仆可工作)", counterPos);
             return;
@@ -345,15 +345,22 @@ public class PackagingBridge {
         void cleanup() {
             EntityMaid maid = (EntityMaid)this.maidRef.get();
             if (maid != null) {
+                MaidRestaurantBusiness.LOGGER.info("打包: 任务清理开始 女仆={}, 当前状态={}, 当前isOccupied={}", 
+                    maid.getName().getString(), this.state, MaidUtils.isOccupied(maid));
                 try {
-                    // 停止寻路，清除大脑记忆，防止女仆AI状态卡住
-                    maid.getNavigation().stop();
-                    maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
-                    maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+                    // 调用TaskSafetyUtils彻底重置女仆状态
+                    TaskSafetyUtils.resetMaidState(maid);
                 } catch (Throwable t) {
-                    MaidRestaurantBusiness.LOGGER.warn("打包任务清理时重置女仆AI状态失败", t);
+                    MaidRestaurantBusiness.LOGGER.warn("打包任务清理时TaskSafetyUtils.resetMaidState失败", t);
+                    // 回退：手动清理
+                    try {
+                        maid.getNavigation().stop();
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+                    } catch (Throwable t2) {}
+                    MaidUtils.setOccupied(maid, false);
                 }
-                MaidUtils.setOccupied(maid, false);
+                MaidRestaurantBusiness.LOGGER.info("打包: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
             }
         }
     }

@@ -398,6 +398,9 @@ public class CookingBridge {
             PrepTask task = entry.getValue();
             EntityMaid maid = (EntityMaid)task.maidRef.get();
             if (maid == null || !(level.getBlockEntity(counterPos) instanceof TakeoutBoxBlockEntity)) {
+                if (maid != null) {
+                    TaskManager.getInstance().failTask(maid.getUUID(), "prep target missing");
+                }
                 task.cleanup();
                 it.remove();
                 continue;
@@ -423,9 +426,11 @@ public class CookingBridge {
                     if (CookingBridge.extractFromContainer(level, maid, task)) {
                         task.state = 2;
                         task.lastChange = now;
-                        MaidRestaurantBusiness.LOGGER.info("\u5907\u83dc\uff1a\u63d0\u53d6 {} x{}", task.itemId, task.needed);
+                        MaidRestaurantBusiness.LOGGER.info("备菜：提取 {} x{}", task.itemId, task.needed);
                         break;
                     }
+                    MaidRestaurantBusiness.LOGGER.warn("备菜：从容器提取失败，结束任务 女仆={}", maid.getName().getString());
+                    TaskManager.getInstance().failTask(maid.getUUID(), "extract from container failed");
                     task.cleanup();
                     it.remove();
                     break;
@@ -458,9 +463,11 @@ public class CookingBridge {
                         }
                         if (remaining.values().stream().allMatch(c -> c <= 0) && (request = (CookRequest)RequestManager.peek((EntityMaid)maid, (int)0)) != null && request.extraData != null && request.extraData.contains("BusinessCounter")) {
                             RequestManager.pop((EntityMaid)maid, (int)0);
-                            MaidRestaurantBusiness.LOGGER.info("\u5907\u83dc\uff1a\u8ba2\u5355\u5df2\u6ee1\u8db3\uff0c\u53d6\u6d88\u70f9\u996a\u4efb\u52a1");
+                            MaidRestaurantBusiness.LOGGER.info("备菜：订单已满足，取消烹饪任务");
                         }
                     }
+                    MaidRestaurantBusiness.LOGGER.info("备菜：任务完成 女仆={}", maid.getName().getString());
+                    TaskManager.getInstance().completeTask(maid.getUUID());
                     task.cleanup();
                     it.remove();
                 }
@@ -537,7 +544,7 @@ public class CookingBridge {
             Class<?> ingredientSourceApi = Class.forName("cn.breezeth.ordertocook.api.IngredientSourceCompatApi");
             java.lang.reflect.Method countAllNearby = ingredientSourceApi.getMethod("countAllNearby", net.minecraft.world.level.Level.class, BlockPos.class, int.class, java.util.Collection.class);
             if (countAllNearby != null && !foods.isEmpty()) {
-                Object fridgeResult = countAllNearby.invoke(null, level, counterPos, 16, foods.keySet());
+                Object fridgeResult = countAllNearby.invoke(null, level, counterPos, 24, foods.keySet());
                 if (fridgeResult instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Integer> fridgeItems = (Map<String, Integer>)fridgeResult;
@@ -582,7 +589,7 @@ public class CookingBridge {
                 MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 活跃订单超时({}tick), 取消旧烹饪任务并移除活跃订单", elapsed);
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 // 重置卡住的女仆状态
-                EntityMaid stuckMaid = MaidUtils.findCookMaid(level, counterPos, 16);
+                EntityMaid stuckMaid = MaidUtils.findCookMaid(level, counterPos, 24);
                 if (stuckMaid != null) {
                     MaidUtils.resetMaidState(level, stuckMaid);
                     MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 重置卡住的女仆 {}", stuckMaid.getName().getString());
@@ -611,7 +618,7 @@ public class CookingBridge {
         List<EntityMaid> idleCooks = new ArrayList<>();
         if (MaidTracker.maids != null) {
             for (EntityMaid m : MaidTracker.maids) {
-                if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 256.0) {
+                if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                     // 只统计厨师女仆（当前任务是TaskCook）
                     // 通过类名判断，避免编译时依赖问题
                     String taskClassName = m.getTask() != null ? m.getTask().getClass().getSimpleName() : "";
@@ -842,7 +849,7 @@ public class CookingBridge {
         List<EntityMaid> allCooks = new ArrayList<>();
         if (MaidTracker.maids != null) {
             for (EntityMaid m : MaidTracker.maids) {
-                if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 256.0) {
+                if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                     allCooks.add(m);
                 }
             }
@@ -937,7 +944,7 @@ public class CookingBridge {
                     if (matchId != null) recipeItemIds.add(matchId.toString());
                 }
             }
-            for (BlockPos check : BlockPos.betweenClosed((BlockPos)counterPos.offset(-16, -8, -16), (BlockPos)counterPos.offset(16, 8, 16))) {
+            for (BlockPos check : BlockPos.betweenClosed((BlockPos)counterPos.offset(-24, -8, -24), (BlockPos)counterPos.offset(24, 8, 24))) {
                 IItemHandler inv;
                 if (check.equals(counterPos) || (inv = MaidStorages.tryGetHandler((Level)level, (BlockPos)check)) == null) continue;
                 for (int slot = 0; slot < inv.getSlots(); ++slot) {
@@ -952,7 +959,7 @@ public class CookingBridge {
                 Class<?> ingredientSourceApi = Class.forName("cn.breezeth.ordertocook.api.IngredientSourceCompatApi");
                 java.lang.reflect.Method countAllNearby = ingredientSourceApi.getMethod("countAllNearby", net.minecraft.world.level.Level.class, BlockPos.class, int.class, java.util.Collection.class);
                 if (countAllNearby != null && !recipeItemIds.isEmpty()) {
-                    Object fridgeResult = countAllNearby.invoke(null, level, counterPos, 16, recipeItemIds);
+                    Object fridgeResult = countAllNearby.invoke(null, level, counterPos, 24, recipeItemIds);
                     if (fridgeResult instanceof Map) {
                         @SuppressWarnings("unchecked")
                         Map<String, Integer> fridgeItems = (Map<String, Integer>)fridgeResult;
@@ -1019,7 +1026,7 @@ public class CookingBridge {
             List<EntityMaid> allCooks = new ArrayList<>();
             if (MaidTracker.maids != null) {
                 for (EntityMaid m : MaidTracker.maids) {
-                    if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 256.0) {
+                    if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                         allCooks.add(m);
                     }
                 }
@@ -1224,7 +1231,16 @@ public class CookingBridge {
         void cleanup() {
             EntityMaid maid = (EntityMaid)this.maidRef.get();
             if (maid != null) {
-                MaidUtils.setOccupied(maid, false);
+                MaidRestaurantBusiness.LOGGER.info("备菜: 任务清理开始 女仆={}, 当前状态={}, 当前isOccupied={}", 
+                    maid.getName().getString(), this.state, MaidUtils.isOccupied(maid));
+                try {
+                    // 调用TaskSafetyUtils彻底重置女仆状态
+                    TaskSafetyUtils.resetMaidState(maid);
+                } catch (Throwable t) {
+                    MaidRestaurantBusiness.LOGGER.warn("备菜任务清理时TaskSafetyUtils.resetMaidState失败", t);
+                    MaidUtils.setOccupied(maid, false);
+                }
+                MaidRestaurantBusiness.LOGGER.info("备菜: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
             }
         }
     }

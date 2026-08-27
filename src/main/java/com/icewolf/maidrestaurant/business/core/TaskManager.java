@@ -30,6 +30,7 @@ public class TaskManager {
     public static final String TYPE_COOKING = "cooking";
     public static final String TYPE_PREP = "prep";
     public static final String TYPE_DISHWASHING = "dishwashing";
+    public static final String TYPE_COLLECT_PLATE = "collect_plate";
 
     // 任务状态
     public enum TaskStatus {
@@ -53,6 +54,7 @@ public class TaskManager {
         TIMEOUT_TICKS.put(TYPE_COOKING, 1800L);      // 90秒（每道菜独立计时）
         TIMEOUT_TICKS.put(TYPE_PREP, 1200L);          // 60秒
         TIMEOUT_TICKS.put(TYPE_DISHWASHING, 1200L);   // 60秒
+        TIMEOUT_TICKS.put(TYPE_COLLECT_PLATE, 300L);    // 15秒（收盘子很快）
     }
 
     // 最大重试次数

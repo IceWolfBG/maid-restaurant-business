@@ -34,6 +34,7 @@ public class BusinessConfig {
     public static final ForgeConfigSpec.IntValue ACCEPT_DELAY;
     public static final ForgeConfigSpec.BooleanValue LEVEL_BASED_PROGRESSION;
     public static final ForgeConfigSpec.IntValue MIN_PLATES_TO_WASH;
+    public static final ForgeConfigSpec.IntValue DISH_SCAN_RANGE;
     public static final ForgeConfigSpec.DoubleValue FAVORABILITY_BONUS;
     public static boolean autoAccept;
     public static boolean acceptDelivery;
@@ -46,6 +47,7 @@ public class BusinessConfig {
     public static int searchRange;
     public static int acceptDelay;
     public static int minPlatesToWash;
+    public static int dishScanRange;
     public static double favorabilityBonus;
 
     @SubscribeEvent
@@ -62,6 +64,7 @@ public class BusinessConfig {
             acceptDelay = (Integer)ACCEPT_DELAY.get();
             levelBasedProgression = (Boolean)LEVEL_BASED_PROGRESSION.get();
             minPlatesToWash = (Integer)MIN_PLATES_TO_WASH.get();
+            dishScanRange = (Integer)DISH_SCAN_RANGE.get();
             favorabilityBonus = (Double)FAVORABILITY_BONUS.get();
         }
     }
@@ -79,6 +82,7 @@ public class BusinessConfig {
         ACCEPT_DELAY = BUILDER.comment("\u81ea\u52a8\u63a5\u5355\u5ef6\u8fdf\uff08tick\uff0c20tick=1\u79d2\uff0c\u9ed8\u8ba4200=10\u79d2\uff09").defineInRange("acceptDelay", 200, 0, 1200);
         LEVEL_BASED_PROGRESSION = BUILDER.comment("\u662f\u5426\u6309\u6253\u5355\u673a\u7b49\u7ea7\u89e3\u9501\u81ea\u52a8\u5316\u529f\u80fd\uff08false=\u5168\u90e8\u529f\u80fd\u76f4\u63a5\u5f00\u542f\uff09").define("levelBasedProgression", true);
         MIN_PLATES_TO_WASH = BUILDER.comment("\u5973\u4ec6\u6536\u96c6\u5230\u591a\u5c11\u4e2a\u810f\u76d8\u5b50\u540e\u624d\u53bb\u6d17\u7897\uff081-10\uff0c\u9ed8\u8ba43\uff09").defineInRange("minPlatesToWash", 3, 1, 10);
+        DISH_SCAN_RANGE = BUILDER.comment("\u6536\u76d8\u5b50\u548c\u6d17\u7897\u7684\u626b\u63cf\u8303\u56f4\uff08\u4ee5\u6253\u5355\u673a\u4e3a\u4e2d\u5fc3\uff0c\u65b9\u5757\uff0c\u9ed8\u8ba424\uff0c\u6700\u592748\uff09").defineInRange("dishScanRange", 24, 4, 48);
         FAVORABILITY_BONUS = BUILDER.comment("女仆好感度每级的收益加成比例（0-1.0，默认0.1=10%，0级无加成，1级+10%，2级+20%，3级+30%）").defineInRange("favorabilityBonus", 0.1, 0.0, 1.0);
         BUILDER.pop();
         SPEC = BUILDER.build();
@@ -93,6 +97,7 @@ public class BusinessConfig {
         searchRange = 16;
         acceptDelay = 200;
         minPlatesToWash = 3;
+        dishScanRange = 24;
         favorabilityBonus = 0.1;
     }
 

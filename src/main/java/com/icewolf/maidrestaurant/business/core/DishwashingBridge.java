@@ -83,6 +83,7 @@ public class DishwashingBridge {
     private static final int STATE_PUT_TO_RACK = 7;
     private static final int MAX_PLATES_PER_WASH = 16;
     private static final Map<BlockPos, DishTask> dishTasks = new HashMap<BlockPos, DishTask>();
+    private static final Map<BlockPos, CollectPlateTask> collectTasks = new HashMap<BlockPos, CollectPlateTask>();
     private static Method isDirtyStageMethod = null;
     private static boolean reflectionInit = false;
 
@@ -135,24 +136,102 @@ public class DishwashingBridge {
     }
 
     public static void tickDishwashing(ServerLevel level, BusinessManager manager) {
+        // 处理进行中的任务（收盘子和洗碗）
+        DishwashingBridge.tickCollectTasks(level);
         DishwashingBridge.tickDishTasks(level);
-        boolean unlocked = false;
+        
+        boolean collectUnlocked = false;
+        boolean washUnlocked = false;
         for (BlockPos machinePos : manager.getActivatedMachines()) {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
-            // 排班表配置检查：如果附近有排班表且关闭了自动洗碗，则跳过该打单机
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) continue;
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) continue;
-            unlocked = true;
-            break;
+            // 排班表配置检查
+            if (MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) {
+                collectUnlocked = true;
+            }
+            if (MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) {
+                washUnlocked = true;
+            }
+            if (collectUnlocked && washUnlocked) break;
         }
-        if (!unlocked) {
-            return;
-        }
+        
         try {
-            DishwashingBridge.scanAndStartTasks(level, manager);
+            if (collectUnlocked) {
+                DishwashingBridge.scanAndStartCollectTasks(level, manager);
+            }
+            if (washUnlocked) {
+                DishwashingBridge.scanMaidBackpacksAndStartWashing(level, manager);
+            }
         }
         catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("Error in dishwashing scan", t);
+        }
+    }
+
+    private static void tickCollectTasks(ServerLevel level) {
+        Iterator<Map.Entry<BlockPos, CollectPlateTask>> it = collectTasks.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<BlockPos, CollectPlateTask> entry = it.next();
+            CollectPlateTask task = entry.getValue();
+            EntityMaid maid = (EntityMaid)task.maidRef.get();
+            if (maid == null) {
+                TaskManager.getInstance().failTask(null, "collect plate maid missing");
+                task.cleanup();
+                it.remove();
+                continue;
+            }
+            TaskManager.getInstance().heartbeat(maid.getUUID(), level.getGameTime());
+            long now = level.getGameTime();
+            
+            // 总超时保护：300tick（15秒）
+            long taskDuration = now - task.startTime;
+            if (taskDuration > 300L) {
+                MaidRestaurantBusiness.LOGGER.warn("收盘子: 任务总超时（{}tick），强制结束 女仆={}", taskDuration, maid.getName().getString());
+                TaskManager.getInstance().failTask(maid.getUUID(), "collect plate timeout");
+                task.cleanup();
+                it.remove();
+                continue;
+            }
+            
+            switch (task.state) {
+                case 0: { // 前往脏盘子
+                    if (task.currentPlatePos == null) {
+                        task.currentPlatePos = DishwashingBridge.findNearestDirtyPlate(level, maid);
+                        task.lastChange = now;
+                        if (task.currentPlatePos == null) {
+                            MaidRestaurantBusiness.LOGGER.info("收盘子: 没有更多脏盘子，任务结束 女仆={}", maid.getName().getString());
+                            TaskManager.getInstance().completeTask(maid.getUUID());
+                            task.cleanup();
+                            it.remove();
+                            break;
+                        }
+                        MaidRestaurantBusiness.LOGGER.info("收盘子: 找到脏盘子 女仆={} 目标={}", maid.getName().getString(), task.currentPlatePos);
+                    }
+                    // 移动超时保护
+                    if (now - task.lastChange > 100L && !MaidUtils.isNear(maid, task.currentPlatePos, 3.0)) {
+                        MaidRestaurantBusiness.LOGGER.info("收盘子: 移动超时，重新找脏盘子 女仆={}", maid.getName().getString());
+                        task.currentPlatePos = null;
+                        break;
+                    }
+                    if (MaidUtils.isNear(maid, task.currentPlatePos, 3.0)) {
+                        task.state = 1;
+                        break;
+                    }
+                    MaidUtils.moveToSide(maid, task.currentPlatePos, 0.3);
+                    break;
+                }
+                case 1: { // 收取脏盘子
+                    if (DishwashingBridge.collectDirtyPlate(level, maid, task.currentPlatePos)) {
+                        MaidRestaurantBusiness.LOGGER.info("收盘子: 收走脏盘子 {} 女仆={}", task.currentPlatePos, maid.getName().getString());
+                        TaskManager.getInstance().completeTask(maid.getUUID());
+                        task.cleanup();
+                        it.remove();
+                    } else {
+                        task.currentPlatePos = null;
+                        task.state = 0;
+                    }
+                    break;
+                }
+            }
         }
     }
 
@@ -173,6 +252,19 @@ public class DishwashingBridge {
             TaskManager.getInstance().heartbeat(maid.getUUID(), level.getGameTime());
             long now = level.getGameTime();
             
+            // 目标消失检测：洗碗机是否还存在（每10tick检测一次）
+            if (task.dishwasherPos != null && now % 10L == 0L) {
+                BlockEntity be = level.getBlockEntity(task.dishwasherPos);
+                if (!(be instanceof DishwasherBlockEntity)) {
+                    MaidRestaurantBusiness.LOGGER.warn("洗碗: 洗碗机 {} 已消失，立即结束任务 女仆={} 当前状态={}", 
+                        task.dishwasherPos, maid.getName().getString(), task.state);
+                    TaskManager.getInstance().failTask(maid.getUUID(), "dishwasher disappeared");
+                    task.cleanup();
+                    it.remove();
+                    continue;
+                }
+            }
+            
             // 总超时保护：如果任务持续超过1200tick（60秒），强制结束，避免女仆永远卡住
             long taskDuration = now - task.startTime;
             if (taskDuration > 1200L) {
@@ -192,59 +284,31 @@ public class DishwashingBridge {
             }
             
             switch (task.state) {
-                case 0: {
-                    int dirtyCount;
-                    if (task.currentPlatePos == null) {
-                        task.currentPlatePos = DishwashingBridge.findNearestDirtyPlate(level, maid);
-                        task.lastChange = now;
-                        if (task.currentPlatePos == null) {
-                            dirtyCount = DishwashingBridge.countDirtyPlatesInMaid(maid);
-                            if (dirtyCount >= DishwashingBridge.getMinPlatesToWash(level, task.machinePos)) {
-                                task.state = 2;
-                                break;
-                            }
-                            MaidRestaurantBusiness.LOGGER.info("洗碗: 没有更多脏盘子且未达阈值，任务结束 女仆={} 身上脏盘子={}", maid.getName().getString(), dirtyCount);
-                            TaskManager.getInstance().completeTask(maid.getUUID());
-                            task.cleanup();
-                            it.remove();
-                            break;
-                        }
-                        MaidRestaurantBusiness.LOGGER.info("洗碗: 找到脏盘子 女仆={} 目标={}", maid.getName().getString(), task.currentPlatePos);
-                    }
-                    // 移动超时保护：如果100tick（5秒）还没到，重新找脏盘子，避免卡在无法到达的位置
-                    if (now - task.lastChange > 100L && !MaidUtils.isNear(maid, task.currentPlatePos, 3.0)) {
-                        MaidRestaurantBusiness.LOGGER.info("洗碗: 移动超时，重新找脏盘子 女仆={} 当前目标={}", maid.getName().getString(), task.currentPlatePos);
-                        task.currentPlatePos = null;
+                case 0: { // 检查女仆背包脏盘子，达到阈值就去洗碗机
+                    int dirtyCount = DishwashingBridge.countDirtyPlatesInMaid(maid);
+                    if (dirtyCount <= 0) {
+                        MaidRestaurantBusiness.LOGGER.info("洗碗: 女仆背包没有脏盘子，任务结束 女仆={}", maid.getName().getString());
+                        TaskManager.getInstance().completeTask(maid.getUUID());
+                        task.cleanup();
+                        it.remove();
                         break;
                     }
-                    if (MaidUtils.isNear(maid, task.currentPlatePos, 3.0)) {
-                        task.state = 1;
+                    if (task.dishwasherPos == null) {
+                        MaidRestaurantBusiness.LOGGER.warn("洗碗: 无洗碗机位置，任务结束 女仆={}", maid.getName().getString());
+                        TaskManager.getInstance().failTask(maid.getUUID(), "no dishwasher position");
+                        task.cleanup();
+                        it.remove();
                         break;
                     }
-                    MaidUtils.moveToSide(maid, task.currentPlatePos, 0.3);
-                    break;
-                }
-                case 1: {
-                    int dirtyCount;
-                    if (DishwashingBridge.collectDirtyPlate(level, maid, task.currentPlatePos)) {
-                        MaidRestaurantBusiness.LOGGER.info("\u6d17\u7897\uff1a\u6536\u8d70\u810f\u76d8\u5b50 {}", task.currentPlatePos);
-                        task.currentPlatePos = null;
-                        dirtyCount = DishwashingBridge.countDirtyPlatesInMaid(maid);
-                        if (dirtyCount >= DishwashingBridge.getMinPlatesToWash(level, task.machinePos)) {
-                            task.state = 2;
-                            MaidRestaurantBusiness.LOGGER.info("\u6d17\u7897\uff1a\u6536\u96c6{}\u4e2a\u810f\u76d8\u5b50\uff0c\u524d\u5f80\u6d17\u7897\u673a", dirtyCount);
-                            break;
-                        }
-                        task.state = 0;
-                        break;
-                    }
-                    task.currentPlatePos = null;
-                    task.state = 0;
+                    MaidRestaurantBusiness.LOGGER.info("洗碗: 女仆背包有{}个脏盘子，前往洗碗机 {}", dirtyCount, task.dishwasherPos);
+                    task.state = 2;
+                    task.lastChange = now;
                     break;
                 }
                 case 2: {
                     if (task.dishwasherPos == null) {
-                        MaidRestaurantBusiness.LOGGER.info("\u6d17\u7897\uff1a\u65e0\u6d17\u7897\u673a\uff0c\u4efb\u52a1\u7ed3\u675f\uff08\u810f\u76d8\u5b50\u4fdd\u7559\u5728\u80cc\u5305\uff09");
+                        MaidRestaurantBusiness.LOGGER.info("洗碗：无洗碗机，任务结束（脏盘子保留在背包）");
+                        TaskManager.getInstance().failTask(maid.getUUID(), "dishwasher pos null in state 2");
                         task.cleanup();
                         it.remove();
                         break;
@@ -252,7 +316,8 @@ public class DishwashingBridge {
                     if (now - task.lastChange > 200L) {
                         BlockEntity be = level.getBlockEntity(task.dishwasherPos);
                         if (!(be instanceof DishwasherBlockEntity)) {
-                            MaidRestaurantBusiness.LOGGER.warn("\u6d17\u7897\uff1a\u6d17\u7897\u673a\u4e0d\u5b58\u5728\uff0c\u4efb\u52a1\u7ed3\u675f");
+                            MaidRestaurantBusiness.LOGGER.warn("洗碗：洗碗机不存在，任务结束");
+                            TaskManager.getInstance().failTask(maid.getUUID(), "dishwasher not exist in state 2");
                             task.cleanup();
                             it.remove();
                             break;
@@ -279,10 +344,11 @@ public class DishwashingBridge {
                     if (DishwashingBridge.insertDirtyPlatesToDishwasher(level, maid, task.dishwasherPos)) {
                         task.state = 4;
                         task.lastChange = now;
-                        MaidRestaurantBusiness.LOGGER.info("\u6d17\u7897\uff1a\u653e\u5165\u810f\u76d8\u5b50\uff0c\u5f00\u59cb\u6d17\u6da4");
+                        MaidRestaurantBusiness.LOGGER.info("洗碗：放入脏盘子，开始洗涤");
                         break;
                     }
-                    MaidRestaurantBusiness.LOGGER.warn("\u6d17\u7897\uff1a\u653e\u5165\u810f\u76d8\u5b50\u5931\u8d25");
+                    MaidRestaurantBusiness.LOGGER.warn("洗碗：放入脏盘子失败，结束任务 女仆={}", maid.getName().getString());
+                    TaskManager.getInstance().failTask(maid.getUUID(), "insert dirty plates failed");
                     task.cleanup();
                     it.remove();
                     break;
@@ -293,7 +359,8 @@ public class DishwashingBridge {
                         break;
                     }
                     if (now - task.lastChange <= 200L) break;
-                    MaidRestaurantBusiness.LOGGER.warn("\u6d17\u7897\uff1a\u7b49\u5f85\u8d85\u65f6");
+                    MaidRestaurantBusiness.LOGGER.warn("洗碗：等待超时，结束任务 女仆={}", maid.getName().getString());
+                    TaskManager.getInstance().failTask(maid.getUUID(), "wait for clean plates timeout");
                     task.cleanup();
                     it.remove();
                     break;
@@ -590,80 +657,138 @@ public class DishwashingBridge {
         }
     }
 
-    private static void scanAndStartTasks(ServerLevel level, BusinessManager manager) {
+    /**
+     * 扫描脏盘子并创建收盘子任务（独立任务，只负责收盘子）
+     * 以打单机为中心扫描，不依赖玩家位置
+     */
+    private static void scanAndStartCollectTasks(ServerLevel level, BusinessManager manager) {
+        int scanRange = BusinessConfig.dishScanRange;
         ArrayList<BlockPos> dirtyPlates = new ArrayList<BlockPos>();
-        ArrayList<BlockPos> dishwashers = new ArrayList<BlockPos>();
-        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        if (server == null) {
-            return;
-        }
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            double px = MaidUtils.getX((Entity)player);
-            double py = MaidUtils.getY((Entity)player);
-            double pz = MaidUtils.getZ((Entity)player);
-            BlockPos center = BlockPos.containing((double)px, (double)py, (double)pz);
-            for (BlockPos pos : BlockPos.betweenClosed((BlockPos)center.offset(-16, -4, -16), (BlockPos)center.offset(16, 4, 16))) {
+        
+        // 以所有已激活打单机为中心扫描
+        for (BlockPos machinePos : manager.getActivatedMachines()) {
+            if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) continue;
+            
+            for (BlockPos pos : BlockPos.betweenClosed(
+                    machinePos.offset(-scanRange, -4, -scanRange), 
+                    machinePos.offset(scanRange, 4, scanRange))) {
                 BlockState state = level.getBlockState(pos);
                 if (state.getBlock().getClass().getName().contains("FoodPlateBlock") && DishwashingBridge.isDirtyStage(state)) {
-                    dirtyPlates.add(pos.immutable());
+                    if (!dirtyPlates.contains(pos.immutable())) {
+                        dirtyPlates.add(pos.immutable());
+                    }
                 }
-                if (!(level.getBlockEntity(pos) instanceof DishwasherBlockEntity)) continue;
-                dishwashers.add(pos.immutable());
             }
         }
+        
         if (dirtyPlates.isEmpty()) {
             return;
         }
-        if (!dishwashers.isEmpty()) {
-            for (BlockPos dwPos : dishwashers) {
-                EntityMaid maid;
-                // 找到最近的已激活打单机作为绑定参考
-                BlockPos nearestMachine = findNearestActivatedMachine(level, dwPos, manager);
-                if (dishTasks.containsKey(dwPos) || (maid = MaidUtils.findWaiterMaidSmart(level, dwPos, 16, nearestMachine)) == null) continue;
-                // 任务冲突检查：如果女仆已有任务在执行，不分配洗碗任务
-                if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
-                    MaidRestaurantBusiness.LOGGER.info("洗碗: 女仆 {} 已有任务在执行，跳过分配", maid.getName().getString());
-                    continue;
-                }
-                if (MaidUtils.isOccupied(maid)) {
-                    MaidRestaurantBusiness.LOGGER.info("洗碗: 女仆 {} 被标记为忙碌，跳过分配", maid.getName().getString());
-                    continue;
-                }
-                dishTasks.put(dwPos, new DishTask(dwPos, maid, nearestMachine));
-                MaidRestaurantBusiness.LOGGER.info("洗碗：发起任务 洗碗机={}", dwPos);
-
-                // TaskManager集成：创建洗碗任务
-                String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DISHWASHING, dwPos, nearestMachine);
-                if (taskId != null) {
-                    TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DISHWASHING, level);
-                    MaidRestaurantBusiness.LOGGER.info("洗碗: TaskManager创建任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
+        
+        // 为每个脏盘子创建收盘子任务
+        for (BlockPos platePos : dirtyPlates) {
+            if (collectTasks.containsKey(platePos)) continue;
+            
+            BlockPos nearestMachine = findNearestActivatedMachine(level, platePos, manager);
+            EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, platePos, scanRange, nearestMachine);
+            if (maid == null) continue;
+            
+            // 任务冲突检查
+            if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
+                continue;
+            }
+            if (MaidUtils.isOccupied(maid)) {
+                continue;
+            }
+            
+            collectTasks.put(platePos, new CollectPlateTask(platePos, maid, nearestMachine));
+            MaidRestaurantBusiness.LOGGER.info("收盘子: 发起任务 位置={} 女仆={}", platePos, maid.getName().getString());
+            
+            // TaskManager集成
+            String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_COLLECT_PLATE, platePos, nearestMachine);
+            if (taskId != null) {
+                TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_COLLECT_PLATE, level);
+            }
+            break; // 每次只分配一个收盘子任务，避免多个女仆抢
+        }
+    }
+    
+    /**
+     * 扫描女仆背包，超过阈值且有洗碗机时创建洗碗任务（独立任务，基于背包检测）
+     * 以打单机为中心扫描，不依赖玩家位置
+     */
+    private static void scanMaidBackpacksAndStartWashing(ServerLevel level, BusinessManager manager) {
+        int scanRange = BusinessConfig.dishScanRange;
+        
+        // 遍历所有已激活打单机
+        for (BlockPos machinePos : manager.getActivatedMachines()) {
+            if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) continue;
+            
+            // 以打单机为中心扫描洗碗机
+            ArrayList<BlockPos> dishwashers = new ArrayList<BlockPos>();
+            for (BlockPos pos : BlockPos.betweenClosed(
+                    machinePos.offset(-scanRange, -4, -scanRange), 
+                    machinePos.offset(scanRange, 4, scanRange))) {
+                if (level.getBlockEntity(pos) instanceof DishwasherBlockEntity) {
+                    dishwashers.add(pos.immutable());
                 }
             }
-        } else {
-            for (BlockPos platePos : dirtyPlates) {
-                EntityMaid maid;
-                BlockPos taskKey = platePos;
-                BlockPos nearestMachine = findNearestActivatedMachine(level, platePos, manager);
-                if (dishTasks.containsKey(taskKey) || (maid = MaidUtils.findWaiterMaidSmart(level, platePos, 16, nearestMachine)) == null) continue;
-                // 任务冲突检查：如果女仆已有任务在执行，不分配收盘子任务
-                if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
-                    MaidRestaurantBusiness.LOGGER.info("收盘子: 女仆 {} 已有任务在执行，跳过分配", maid.getName().getString());
-                    continue;
+            if (dishwashers.isEmpty()) {
+                continue; // 这台打单机附近没有洗碗机，跳过
+            }
+            
+            // 查找附近的侍者女仆（scanRange格范围内）
+            List<EntityMaid> nearbyMaids = new ArrayList<>();
+            for (ServerLevel lvl : level.getServer().getAllLevels()) {
+                nearbyMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, 
+                    new AABB(machinePos).inflate(scanRange)));
+            }
+            
+            for (EntityMaid maid : nearbyMaids) {
+                if (maid == null || !maid.isAlive()) continue;
+                
+                // 只处理侍者职业的女仆
+                if (!MaidUtils.TASK_WAITER.equals(MaidUtils.getTaskUid(maid))) continue;
+                
+                // 检查女仆是否绑定到该打单机（如果有绑定的话）
+                if (MaidUtils.getWorkerCountForMachine(machinePos) > 0) {
+                    if (!MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) continue;
                 }
-                if (MaidUtils.isOccupied(maid)) {
-                    MaidRestaurantBusiness.LOGGER.info("收盘子: 女仆 {} 被标记为忙碌，跳过分配", maid.getName().getString());
-                    continue;
+                
+                // 任务冲突检查
+                if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) continue;
+                if (MaidUtils.isOccupied(maid)) continue;
+                
+                // 检查背包脏盘子数量
+                int dirtyCount = DishwashingBridge.countDirtyPlatesInMaid(maid);
+                int minPlates = DishwashingBridge.getMinPlatesToWash(level, machinePos);
+                
+                if (dirtyCount >= minPlates) {
+                    // 找到最近的洗碗机
+                    BlockPos nearestDw = null;
+                    double minDist = Double.MAX_VALUE;
+                    for (BlockPos dwPos : dishwashers) {
+                        double dist = dwPos.distSqr(maid.blockPosition());
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearestDw = dwPos;
+                        }
+                    }
+                    
+                    if (nearestDw != null && !dishTasks.containsKey(nearestDw)) {
+                        dishTasks.put(nearestDw, new DishTask(nearestDw, maid, machinePos));
+                        MaidRestaurantBusiness.LOGGER.info("洗碗: 女仆背包有{}个脏盘子（阈值{}），发起洗碗任务 洗碗机={} 女仆={}", 
+                            dirtyCount, minPlates, nearestDw, maid.getName().getString());
+                        
+                        // TaskManager集成
+                        String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DISHWASHING, nearestDw, machinePos);
+                        if (taskId != null) {
+                            TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DISHWASHING, level);
+                        }
+                    }
                 }
-                dishTasks.put(taskKey, new DishTask(null, maid, nearestMachine));
-                MaidRestaurantBusiness.LOGGER.info("洗碗：无洗碗机，仅收脏盘子 位置={}", platePos);
-
-                // TaskManager集成：创建收盘子任务
-                String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DISHWASHING, platePos, nearestMachine);
-                if (taskId != null) {
-                    TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DISHWASHING, level);
-                    MaidRestaurantBusiness.LOGGER.info("洗碗: TaskManager创建收盘子任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
-                }
-                break;
             }
         }
     }
@@ -682,6 +807,50 @@ public class DishwashingBridge {
             }
         }
         return nearest;
+    }
+
+    /**
+     * 收盘子任务（独立任务，只负责收一个脏盘子）
+     */
+    private static class CollectPlateTask {
+        final BlockPos machinePos;
+        int state; // 0=前往盘子, 1=收取
+        long lastChange;
+        final long startTime;
+        final WeakReference<EntityMaid> maidRef;
+        BlockPos currentPlatePos;
+
+        CollectPlateTask(BlockPos platePos, EntityMaid maid, BlockPos machinePos) {
+            this.machinePos = machinePos;
+            this.state = 0;
+            this.lastChange = 0L;
+            this.startTime = maid.level().getGameTime();
+            this.maidRef = new WeakReference<EntityMaid>(maid);
+            this.currentPlatePos = platePos;
+            MaidUtils.setOccupied(maid, true);
+            MaidRestaurantBusiness.LOGGER.info("收盘子: 任务创建 女仆={} 盘子={}", maid.getName().getString(), platePos);
+        }
+
+        void cleanup() {
+            EntityMaid maid = (EntityMaid)this.maidRef.get();
+            if (maid != null) {
+                MaidRestaurantBusiness.LOGGER.info("收盘子: 任务清理开始 女仆={}, 当前isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
+                try {
+                    // 调用TaskSafetyUtils彻底重置女仆状态
+                    TaskSafetyUtils.resetMaidState(maid);
+                } catch (Throwable t) {
+                    MaidRestaurantBusiness.LOGGER.warn("收盘子任务清理时TaskSafetyUtils.resetMaidState失败", t);
+                    // 回退：手动清理
+                    try {
+                        maid.getNavigation().stop();
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+                    } catch (Throwable t2) {}
+                    MaidUtils.setOccupied(maid, false);
+                }
+                MaidRestaurantBusiness.LOGGER.info("收盘子: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
+            }
+        }
     }
 
     private static class DishTask {
@@ -708,15 +877,22 @@ public class DishwashingBridge {
         void cleanup() {
             EntityMaid maid = (EntityMaid)this.maidRef.get();
             if (maid != null) {
+                MaidRestaurantBusiness.LOGGER.info("洗碗: 任务清理开始 女仆={}, 当前状态={}, 洗碗机={}, 当前isOccupied={}", 
+                    maid.getName().getString(), this.state, this.dishwasherPos, MaidUtils.isOccupied(maid));
                 try {
-                    // 停止寻路，清除大脑记忆，防止女仆AI状态卡住
-                    maid.getNavigation().stop();
-                    maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
-                    maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+                    // 调用TaskSafetyUtils彻底重置女仆状态
+                    TaskSafetyUtils.resetMaidState(maid);
                 } catch (Throwable t) {
-                    MaidRestaurantBusiness.LOGGER.warn("洗碗任务清理时重置女仆AI状态失败", t);
+                    MaidRestaurantBusiness.LOGGER.warn("洗碗任务清理时TaskSafetyUtils.resetMaidState失败", t);
+                    // 回退：手动清理
+                    try {
+                        maid.getNavigation().stop();
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+                        maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+                    } catch (Throwable t2) {}
+                    MaidUtils.setOccupied(maid, false);
                 }
-                MaidUtils.setOccupied(maid, false);
+                MaidRestaurantBusiness.LOGGER.info("洗碗: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
             }
         }
     }
