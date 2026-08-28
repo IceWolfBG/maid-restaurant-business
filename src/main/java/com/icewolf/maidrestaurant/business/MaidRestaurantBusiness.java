@@ -67,15 +67,12 @@ public class MaidRestaurantBusiness {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         manager = new BusinessManager(event.getServer());
-        LOGGER.info("女仆餐厅：经营 已启动");
     }
 
     @SubscribeEvent
     public void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
             ActivationCache.initLevel(serverLevel);
-            LOGGER.info("已初始化维度 {} 的激活缓存，共 {} 个已激活打单机",
-                    serverLevel.dimension().location(), ActivationCache.getActivatedCount(serverLevel));
         }
     }
 

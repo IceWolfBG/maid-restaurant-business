@@ -99,11 +99,9 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         this.boundMachinePos = machinePos;
         this.hasBoundMachine = true;
         this.setChanged();
-        com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] bindMachine被调用 machinePos={}, autoEnabled={}, level={}", machinePos, this.autoEnabled, this.level);
         // 如果已启用自动化，立即激活打单机
         if (this.autoEnabled && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
             ActivationCache.activate(serverLevel, machinePos);
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] bindMachine中调用ActivationCache.activate和notifyActivationIfChanged machinePos={}", machinePos);
             // 即时触发激活通知，不需要等待10秒检测
             notifyActivationIfChanged(serverLevel, machinePos, true);
         } else {
@@ -179,15 +177,12 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
                 return;
             }
             boolean wasActive = manager.getActivatedMachines().contains(machinePos);
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] notifyActivationIfChanged machinePos={}, activated={}, wasActive={}", machinePos, activated, wasActive);
             if (activated && !wasActive) {
                 com.icewolf.maidrestaurant.business.core.OrderBridge.notifyActivation(level, machinePos, true);
                 manager.getActivatedMachines().add(machinePos);
-                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] 已触发激活通知 machinePos={}", machinePos);
             } else if (!activated && wasActive) {
                 com.icewolf.maidrestaurant.business.core.OrderBridge.notifyActivation(level, machinePos, false);
                 manager.getActivatedMachines().remove(machinePos);
-                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[激活调试] 已触发停用通知 machinePos={}", machinePos);
             }
         } catch (Exception e) {
             com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("[激活调试] notifyActivationIfChanged异常 machinePos={}, activated={}", machinePos, activated, e);

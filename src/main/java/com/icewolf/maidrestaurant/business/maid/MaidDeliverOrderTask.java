@@ -122,18 +122,15 @@ implements IStep {
         }
         IMaidTask task = maid.getTask();
         if (!(task instanceof TaskWaiter)) {
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: maid task is {}, not waiter", task);
             return false;
         }
         BlockPos counterPos = this.findCounterWithPlate(level, maid);
         if (counterPos == null) {
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: no counter with plate found");
             return false;
         }
         // 多侍者任务锁：检查该操作台是否已被其他侍者接取送餐任务
         long counterLong = counterPos.asLong();
         if (activeDeliveries.contains(counterLong)) {
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: counter {} already being delivered by another maid, skipping", counterPos);
             return false;
         }
         boolean hasActivatedMachine = false;
@@ -143,10 +140,8 @@ implements IStep {
             break;
         }
         if (!hasActivatedMachine) {
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: no activated machine near counter {}", counterPos);
             return false;
         }
-        MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: maid starting delivery to counter {}", counterPos);
         // 多侍者任务锁：标记该操作台正在被送餐，防止其他侍者同时接取
         activeDeliveries.add(counterLong);
         EntityMaid maidLE = maid;
@@ -194,7 +189,6 @@ implements IStep {
                     BlockPos targetPos = MaidDeliverOrderTask.findSafeDeliveryPos(level, MaidDeliverOrderTask.customerPos(customer));
                     BehaviorUtils.setTargetPos((LivingEntity)maidLE, (PositionTracker)new BlockPosTracker(targetPos), (int)5);
                     BehaviorUtils.setWalkAndLookTargetMemories((LivingEntity)maidLE, (BlockPos)targetPos, (BlockPos)targetPos, (float)this.movementSpeed, (int)0);
-                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: plate picked up, orderId={}, customer={}", orderId, CustomerCompat.getCustomerId(customer));
                 } else {
                     // 拿不到餐盘，增加重试次数
                     int retry = data.getInt(TAG_PICKUP_RETRY) + 1;
@@ -240,7 +234,6 @@ implements IStep {
         long counterLong = data.getLong(TAG_COUNTER_POS);
         if (counterLong != 0L) {
             activeDeliveries.remove(counterLong);
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: released delivery lock for counter {}", BlockPos.of(counterLong));
         }
         int stage = data.getInt(TAG_STAGE);
         if (stage == 1) {
@@ -275,7 +268,6 @@ implements IStep {
             CompoundTag data = maidLE.getPersistentData();
             long counterLong = data.getLong(TAG_COUNTER_POS);
             if (counterLong != 0L) {
-                MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: task failed for counter {}, plate kept in inventory", BlockPos.of(counterLong));
             }
             return;
         }
@@ -289,7 +281,6 @@ implements IStep {
                 manager.getCounterToMachine().remove(counterPos);
             }
         }
-        MaidRestaurantBusiness.LOGGER.info("\u4f8d\u8005\u5973\u4ec6 {} \u9001\u9910\u6210\u529f", maidLE.getName().getString());
     }
 
     private BlockPos findCounterWithPlate(ServerLevel level, EntityMaid maid) {
@@ -325,7 +316,6 @@ implements IStep {
                     BlockPos abovePos = counterPos.above();
                     net.minecraft.world.level.block.state.BlockState aboveState = level.getBlockState(abovePos);
                     BlockEntity aboveBe = level.getBlockEntity(abovePos);
-                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: 操作台 {} 上方方块={}, 方块实体={}", counterPos, aboveState.getBlock().getClass().getSimpleName(), aboveBe != null ? aboveBe.getClass().getSimpleName() : "null");
                     for (int dy = 0; dy <= 2 && !plateFound; ++dy) {
                         for (int dx = -2; dx <= 2 && !plateFound; ++dx) {
                             for (int dz = -2; dz <= 2 && !plateFound; ++dz) {
@@ -334,14 +324,11 @@ implements IStep {
                                 BlockEntity plateBe = level.getBlockEntity(platePos);
                                 if (plateBe != null && !(plateBe instanceof FoodPlateBlockEntity)) {
                                     // 调试：列出操作台周围的非餐盘方块实体
-                                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: BE at {} near counter {} is {} (not FoodPlateBlockEntity)", platePos, counterPos, plateBe.getClass().getSimpleName());
                                 }
                                 if (!(plateBe instanceof FoodPlateBlockEntity) || (plateEntity = (FoodPlateBlockEntity)plateBe).getPlateStack().isEmpty()) continue;
                                 ++foundPlate;
-                                MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: found plate at {} near counter {} item={}", platePos, counterPos, plateEntity.getPlateStack().getItem());
                                 BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
                                 if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) {
-                                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: counter {} level locked", counterPos);
                                     continue;
                                 }
                                 if (!(dist < nearestDist)) continue;
@@ -355,7 +342,6 @@ implements IStep {
             }
         }
         if (nearest == null) {
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: no plate. scannedBE={} foundCounter={} foundPlate={}", scannedBE, foundCounter, foundPlate);
         }
         return nearest;
     }
@@ -395,9 +381,6 @@ implements IStep {
                     
                     // 调试：记录餐盘的NBT信息
                     CompoundTag plateTag = plateStack.getTag();
-                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: found plate at {}, item={}, hasTag={}, orderId={}", 
-                        abovePos, plateStack.getItem(), plateTag != null, 
-                        plateTag != null && plateTag.contains("OrderId") ? plateTag.getString("OrderId") : "none");
                     
                     // 先模拟插入，检查是否有空间
                     ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler)inv, (ItemStack)plateStack.copy(), (boolean)true);
@@ -420,7 +403,6 @@ implements IStep {
                         return ItemStack.EMPTY;
                     }
                     
-                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: picked up plate at {} into maid inventory successfully", abovePos);
                     return plateStack;
                 }
             }
@@ -463,7 +445,6 @@ implements IStep {
                 LivingEntity correctCustomer = this.findCustomerByOrderId(level, counterPos, plateOrderId);
                 if (correctCustomer != null) {
                     customer = correctCustomer;
-                    MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: found correct customer by orderId={}", plateOrderId);
                 } else {
                     MaidRestaurantBusiness.LOGGER.warn("DeliverOrderTask: no matching customer for orderId={}", plateOrderId);
                     this.accept(level, maid, StepResult.FAIL);
@@ -477,7 +458,6 @@ implements IStep {
             UUID ownerUuid = maidLE.getOwnerUUID();
             if (ownerUuid != null && level.getServer() != null) {
                 ownerPlayer = level.getServer().getPlayerList().getPlayer(ownerUuid);
-                MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: getOwnerUUID={}, ownerPlayer={}", ownerUuid, ownerPlayer != null ? ownerPlayer.getName().getString() : "null (player offline)");
             }
             // 如果getOwnerUUID()获取不到（比如玩家离线），再尝试反射getOwner()
             if (ownerPlayer == null) {
@@ -486,7 +466,6 @@ implements IStep {
                     Object owner = getOwner.invoke(maidLE);
                     if (owner instanceof ServerPlayer) {
                         ownerPlayer = (ServerPlayer)owner;
-                        MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: got owner via reflection getOwner()={}", ownerPlayer.getName().getString());
                     }
                 } catch (Exception e2) {
                     MaidRestaurantBusiness.LOGGER.warn("DeliverOrderTask: reflection getOwner() failed: {}", e2.getMessage());
@@ -505,7 +484,6 @@ implements IStep {
         InteractionResult result = TakeoutBagItem.trySubmitDineInFromEntityUse((ServerLevel)level, (Player)deliverPlayer, (ItemStack)plateStack.copy(), (Entity)customer);
         if (result.consumesAction()) {
             inv.extractItem(plateSlot, 1, false);
-            MaidRestaurantBusiness.LOGGER.info("DeliverOrderTask: delivery successful, plate consumed from slot {}", plateSlot);
             // 好感度收益加成（调用公共方法，确保两个送餐系统都能触发）
             com.icewolf.maidrestaurant.business.core.DeliveryBridge.applyFavorabilityBonus(level, maidLE, plateStack, deliverPlayer);
             this.accept(level, maid, StepResult.SUCCESS);

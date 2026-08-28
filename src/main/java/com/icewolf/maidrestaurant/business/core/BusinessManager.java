@@ -73,13 +73,11 @@ public class BusinessManager {
                     // 检测被标记为不忙碌但AI状态卡住的女仆（任务清理不彻底导致的）
                     int idleStuckCount = MaidUtils.checkAndResetIdleStuckMaids(level);
                     if (resetCount > 0 || idleStuckCount > 0) {
-                        MaidRestaurantBusiness.LOGGER.info("女仆卡住自愈: 本轮重置了 {} 个任务中卡住的女仆, {} 个空闲但AI卡住的女仆", resetCount, idleStuckCount);
                     }
                     // 绑定关系统计调试（每100tick=5秒输出一次）
                     for (BlockPos machinePos : this.getActivatedMachines()) {
                         int boundCount = MaidUtils.getWorkerCountForMachine(machinePos);
                         int maxWorkers = ProgressionManager.getMaxWorkers(level, machinePos);
-                        MaidRestaurantBusiness.LOGGER.info("绑定调试: 打单机 {} 绑定女仆数={}/{}, 有绑定时仅绑定女仆可工作", machinePos, boundCount, maxWorkers);
                     }
                 }
                 // 自动接单已集成到TaskManager中，每10tick检查一次，这里不需要单独调用了
@@ -94,8 +92,6 @@ public class BusinessManager {
                         // 每200tick输出一次厨具状态统计
                         if (this.tickCounter % 200L == 0L) {
                             Map<String, Integer> stats = CookingDeviceManager.getInstance().getStats();
-                            MaidRestaurantBusiness.LOGGER.info("厨具状态统计: 总数={}, 占用={}, 可用={}",
-                                    stats.get("total"), stats.get("occupied"), stats.get("available"));
                         }
                     }
                     CookingBridge.tickCooking(level, this);
@@ -152,7 +148,6 @@ public class BusinessManager {
             Map.Entry<BlockPos, ActiveOrder> entry = it.next();
             ActiveOrder order = entry.getValue();
             if (this.tickCounter - order.createdTick > ACTIVE_ORDER_TIMEOUT) {
-                MaidRestaurantBusiness.LOGGER.info("ActiveOrder expired at counter {}, removing (age={} ticks) and cancelling cooking tasks", entry.getKey(), this.tickCounter - order.createdTick);
                 try {
                     CookingBridge.cancelCookRequestsForCounter(level, entry.getKey());
                 } catch (Throwable t) {

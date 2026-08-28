@@ -54,15 +54,12 @@ public class PackagingBridge {
         PackagingBridge.tickPackTasks(level, manager);
         int counterCount = manager.getCounterToMachine().size();
         // 每次都输出调试日志，方便排查问题
-        MaidRestaurantBusiness.LOGGER.info("打包: tickPackaging 被调用，counterToMachine操作台数量={}", counterCount);
         
         // 如果counterToMachine为空，直接扫描附近的操作台
         if (counterCount == 0) {
-            MaidRestaurantBusiness.LOGGER.info("打包: counterToMachine为空，直接扫描操作台");
             List<BlockPos> counters = null;
             try {
                 counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
-                MaidRestaurantBusiness.LOGGER.info("打包: 扫描到 {} 个操作台", counters != null ? counters.size() : 0);
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("打包: 扫描操作台失败", t);
             }
@@ -70,7 +67,6 @@ public class PackagingBridge {
                 List<BlockPos> machines = null;
                 try {
                     machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
-                    MaidRestaurantBusiness.LOGGER.info("打包: 扫描到 {} 个打单机", machines != null ? machines.size() : 0);
                 } catch (Throwable t) {
                     MaidRestaurantBusiness.LOGGER.error("打包: 扫描打单机失败", t);
                 }
@@ -86,12 +82,10 @@ public class PackagingBridge {
                         }
                     }
                     if (machinePos == null) {
-                        MaidRestaurantBusiness.LOGGER.info("打包: 操作台 {} 附近没有打单机（8格内），跳过", counterPos);
                         continue;
                     }
                     // 临时添加到counterToMachine
                     manager.getCounterToMachine().put(counterPos, machinePos);
-                    MaidRestaurantBusiness.LOGGER.info("打包: 临时添加操作台 {} -> 打单机 {}", counterPos, machinePos);
                 }
             }
         }
@@ -101,7 +95,6 @@ public class PackagingBridge {
             BlockPos machinePos = entry.getValue();
             boolean deliveryUnlocked = ProgressionManager.isDeliveryUnlocked(level, machinePos);
             boolean activated = OrderBridge.isActivated(level, machinePos);
-            MaidRestaurantBusiness.LOGGER.info("打包: 检查操作台={}, 打单机={}, 送餐解锁={}, 已激活={}", counterPos, machinePos, deliveryUnlocked, activated);
             if (!deliveryUnlocked || !activated) continue;
             try {
                 PackagingBridge.checkAndStart(level, counterPos, manager);
@@ -141,20 +134,17 @@ public class PackagingBridge {
                     boolean bl = timeout = now - task.startTime > 60L;
                     if (near || timeout) {
                         if (timeout) {
-                            MaidRestaurantBusiness.LOGGER.info("\u6253\u5305\uff1a\u5973\u4ec6\u8d85\u65f6\uff0c\u76f4\u63a5\u6253\u5305 counter={} maidPos=({},{},{})", counterPos, MaidUtils.getX((Entity)maid), MaidUtils.getY((Entity)maid), MaidUtils.getZ((Entity)maid));
                         }
                         task.state = 1;
                         break;
                     }
                     if (now - task.lastChange > 20L) {
-                        MaidRestaurantBusiness.LOGGER.info("\u6253\u5305\uff1a\u5973\u4ec6\u524d\u5f80\u6253\u5305\u53f0 counter={} maidPos=({},{},{}) near={}", counterPos, MaidUtils.getX((Entity)maid), MaidUtils.getY((Entity)maid), MaidUtils.getZ((Entity)maid), near);
                         task.lastChange = now;
                     }
                     MaidUtils.moveToSide(maid, counterPos, 0.4);
                     break;
                 }
                 case 1: {
-                    MaidRestaurantBusiness.LOGGER.info("打包：执行打包 counter={}", counterPos);
                     // TaskManager：标记开始交互
                     TaskManager.getInstance().startInteraction(maid.getUUID());
                     PackagingBridge.executePack(level, counterPos, manager);
@@ -182,29 +172,23 @@ public class PackagingBridge {
         }
         IItemHandler inv = OrderBridge.getItemHandler(be);
         if (inv == null) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 操作台 {} 没有物品处理器", counterPos);
             return;
         }
         ItemStack orderStack = inv.getStackInSlot(0);
-        MaidRestaurantBusiness.LOGGER.info("打包: 操作台 {} 槽位0物品={}, 数量={}, 是空={}", counterPos, orderStack.getItem(), orderStack.getCount(), orderStack.isEmpty());
         if (orderStack.isEmpty() || !orderStack.is((Item)OtcCompat.ORDER())) {
             return;
         }
         CompoundTag nbt = orderStack.getTag();
         if (nbt == null) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 操作台 {} 订单没有NBT", counterPos);
             return;
         }
         boolean isDelivery = nbt.getBoolean("Delivery");
-        MaidRestaurantBusiness.LOGGER.info("打包: 检测到订单 at counter={}, isDelivery={}, OrderId={}", counterPos, isDelivery, nbt.getString("OrderId"));
         // 使用兼容层执行打包/装盘（同时支持 Forge 和 Fabric 版本）
         boolean success = PackagingCompat.execute(level, counterPos, isDelivery, null, true);
-        MaidRestaurantBusiness.LOGGER.info("打包: 模拟检查结果={} at counter={}", success, counterPos);
         if (!success) {
             return;
         }
         if (!level.getBlockState(counterPos.above()).isAir()) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 操作台上方不是空气，跳过 at counter={}", counterPos);
             return;
         }
         // 打单机员工人数限制检查
@@ -212,32 +196,26 @@ public class PackagingBridge {
             machinePos = manager.getCounterToMachine().get(counterPos);
         }
         if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 打单机 {} 已达员工上限，跳过分配", machinePos);
             return;
         }
         // 智能查找女仆：有绑定女仆时只找绑定的，否则回退到自动分配
         EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, counterPos, 24, machinePos);
         if (maid == null) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 没有找到可用的侍者女仆 at counter={} (有绑定女仆时仅绑定女仆可工作)", counterPos);
             return;
         }
         // 任务冲突检查：如果女仆已有任务在执行，不分配打包任务
         if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 女仆 {} 已有任务在执行，跳过分配", maid.getName().getString());
             return;
         }
         if (MaidUtils.isOccupied(maid)) {
-            MaidRestaurantBusiness.LOGGER.info("打包: 女仆 {} 被标记为忙碌，跳过分配", maid.getName().getString());
             return;
         }
         packTasks.put(counterPos, new PackTask(maid, machinePos, manager.getTickCounter()));
-        MaidRestaurantBusiness.LOGGER.info("打包：女仆前往打包台 {}", counterPos);
 
         // TaskManager集成：创建打包任务并分配给女仆
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_PACKAGING, counterPos, machinePos);
         if (taskId != null) {
             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_PACKAGING, level);
-            MaidRestaurantBusiness.LOGGER.info("打包: TaskManager创建任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
         }
     }
 
@@ -267,7 +245,6 @@ public class PackagingBridge {
         // 使用兼容层执行打包/装盘（同时支持 Forge 和 Fabric 版本）
         boolean actual = PackagingCompat.execute(level, counterPos, isDelivery, null, false);
         if (actual) {
-            MaidRestaurantBusiness.LOGGER.info("自动装盘成功 at {}", counterPos);
         }
     }
 
@@ -295,7 +272,6 @@ public class PackagingBridge {
             int machineId = getMachineIdFromOrderMachine(machineBe, level);
             if (machineId > 0) {
                 nbt.putInt("order_machine.id", machineId);
-                MaidRestaurantBusiness.LOGGER.info("打包: 为订单设置machineId={} at counter={}", machineId, counterPos);
             }
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("设置订单machineId失败", t);
@@ -359,8 +335,6 @@ public class PackagingBridge {
         void cleanup() {
             EntityMaid maid = (EntityMaid)this.maidRef.get();
             if (maid != null) {
-                MaidRestaurantBusiness.LOGGER.info("打包: 任务清理开始 女仆={}, 当前状态={}, 当前isOccupied={}", 
-                    maid.getName().getString(), this.state, MaidUtils.isOccupied(maid));
                 try {
                     // 调用TaskSafetyUtils彻底重置女仆状态
                     TaskSafetyUtils.resetMaidState(maid);
@@ -374,7 +348,6 @@ public class PackagingBridge {
                     } catch (Throwable t2) {}
                     MaidUtils.setOccupied(maid, false);
                 }
-                MaidRestaurantBusiness.LOGGER.info("打包: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
             }
         }
     }

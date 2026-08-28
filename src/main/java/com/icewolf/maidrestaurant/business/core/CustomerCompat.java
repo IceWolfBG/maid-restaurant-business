@@ -153,31 +153,23 @@ public class CustomerCompat {
         
         // 调试：列出所有可能的顾客
         List<LivingEntity> allLiving = level.getEntitiesOfClass(LivingEntity.class, area, c -> c.isAlive());
-        MaidRestaurantBusiness.LOGGER.info("CustomerCompat: 搜索顾客 orderId={}, 范围内活体数={}", orderId, allLiving.size());
         for (LivingEntity le : allLiving) {
             boolean hasOtcNpc = hasCommandTag(le, "otc_npc");
             boolean hasOrder = hasOrderTag(le, orderId);
             boolean isChair = isChairCustomer(le);
             boolean hasTouhouCompletion = hasCommandTag(le, "otc_touhou_completion");
-            MaidRestaurantBusiness.LOGGER.info("  活体: {}={}, pos={}, isChair={}, otc_npc={}, orderTag={}, touhouCompletion={}, tags={}, commandTags={}", 
-                le.getType().toShortString(), le.getName().getString(), le.blockPosition(), 
-                isChair, hasOtcNpc, hasOrder, hasTouhouCompletion,
-                le.getTags(), getCommandTagsSafe(le));
         }
         
         List<LivingEntity> customers = level.getEntitiesOfClass(LivingEntity.class, area, 
             c -> c.isAlive() && isChairCustomer(c) && hasOrderTag(c, orderId));
         if (customers.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("CustomerCompat: 没有找到匹配的顾客 orderId={}, 尝试最近的顾客", orderId);
             List<LivingEntity> allCustomers = level.getEntitiesOfClass(LivingEntity.class, area, 
                 c -> c.isAlive() && isChairCustomer(c) && hasCommandTag(c, "otc_npc") && !isEatingActionActive(c));
             if (!allCustomers.isEmpty()) {
-                MaidRestaurantBusiness.LOGGER.info("CustomerCompat: 使用最近的顾客 {} 作为后备", allCustomers.get(0).getName().getString());
                 return allCustomers.get(0);
             }
             return null;
         }
-        MaidRestaurantBusiness.LOGGER.info("CustomerCompat: 找到匹配的顾客 {} orderId={}", customers.get(0).getName().getString(), orderId);
         return customers.get(0);
     }
     
@@ -203,24 +195,18 @@ public class CustomerCompat {
         AABB area = new AABB(center).inflate(range);
         List<LivingEntity> customers = level.getEntitiesOfClass(LivingEntity.class, area, 
             c -> c.isAlive() && isChairCustomer(c));
-        MaidRestaurantBusiness.LOGGER.info("CustomerCompat.findCustomerById: customerId={}, 找到坐在椅子上的活体数={}", customerId, customers.size());
         for (LivingEntity c : customers) {
-            MaidRestaurantBusiness.LOGGER.info("  顾客候选: {}={}, uuid={}, customerId={}, tags={}", 
-                c.getType().toShortString(), c.getName().getString(), c.getStringUUID(), getCustomerId(c), c.getTags());
         }
         if (customerId != null && !customerId.isEmpty()) {
             for (LivingEntity c : customers) {
                 if (customerId.equals(getCustomerId(c))) {
-                    MaidRestaurantBusiness.LOGGER.info("CustomerCompat.findCustomerById: 找到匹配的顾客 {}", c.getName().getString());
                     return c;
                 }
             }
         }
         if (customers.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("CustomerCompat.findCustomerById: 没有找到任何顾客");
             return null;
         }
-        MaidRestaurantBusiness.LOGGER.info("CustomerCompat.findCustomerById: 使用第一个顾客 {} 作为后备", customers.get(0).getName().getString());
         return customers.get(0);
     }
 }

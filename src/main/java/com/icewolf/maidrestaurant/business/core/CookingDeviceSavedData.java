@@ -129,7 +129,6 @@ public class CookingDeviceSavedData extends SavedData {
             deviceList.add(deviceTag);
         }
         tag.put("devices", deviceList);
-        MaidRestaurantBusiness.LOGGER.info("[厨具持久化] 保存厨具状态: {}个厨具", devices.size());
         return tag;
     }
 
@@ -143,7 +142,6 @@ public class CookingDeviceSavedData extends SavedData {
                 DeviceOccupancy info = DeviceOccupancy.load(deviceTag);
                 data.devices.put(pos, info);
             }
-            MaidRestaurantBusiness.LOGGER.info("[厨具持久化] 加载厨具状态: {}个厨具", data.devices.size());
         }
         return data;
     }

@@ -231,26 +231,22 @@ public class MaidChatBubbleHelper {
         
         // 获取冷却时间（从配置读取，默认200tick=10秒）
         long cooldown = getBubbleCooldown();
-        com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[气泡] 调用 showBubble maid={} type={} 冷却={} 当前tick={}", maidName, type, cooldown, now);
         
         // 检查全局冷却
         Long lastTime = lastBubbleTime.get(uuid);
         if (lastTime != null && now - lastTime < cooldown) {
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[气泡] 冷却中，跳过 maid={} type={} 上次={} 间隔={} 需要={}", maidName, type, lastTime, now - lastTime, cooldown);
             return;
         }
         
         // 同类气泡去重（状态没变就不显示）
         String lastType = lastBubbleType.get(uuid);
         if (type.equals(lastType)) {
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[气泡] 同类气泡去重，跳过 maid={} type={} lastType={}", maidName, type, lastType);
             return;
         }
         
         // 随机选一条消息
         String msg = messages[RANDOM.nextInt(messages.length)];
         Component text = Component.literal(msg);
-        com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[气泡] 准备添加气泡 maid={} type={} msg={} duration={}", maidName, type, msg, duration);
         
         try {
             // 显示气泡（使用create方法自定义持续时间）
@@ -269,7 +265,6 @@ public class MaidChatBubbleHelper {
             }
             
             long key = maid.getChatBubbleManager().addChatBubble(bubbleData);
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info("[气泡] 添加成功 maid={} type={} msg={} key={}", maidName, type, msg, key);
             
             // 记录状态
             lastBubbleTime.put(uuid, now);

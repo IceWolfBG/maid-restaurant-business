@@ -92,16 +92,13 @@ public class OrderBridge {
             long key = pos.asLong();
             long now = level.getGameTime();
             orderRefreshTimes.put(key, now);
-            MaidRestaurantBusiness.LOGGER.info("[订单刷新] 记录打单机 {} 刷新时间 tick={}", pos, now);
         }
     }
     
     public static void tickOrders(ServerLevel level, BusinessManager manager) {
         List<BlockPos> machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
         List<BlockPos> counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
-        MaidRestaurantBusiness.LOGGER.info("OrderBridge.tickOrders: 扫描到 {} 个打单机, {} 个操作台", machines.size(), counters.size());
         if (machines.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.warn("OrderBridge.tickOrders: 没有扫描到打单机，直接返回");
             return;
         }
         HashMap<BlockPos, BlockPos> newMapping = new HashMap<BlockPos, BlockPos>();
@@ -178,18 +175,14 @@ public class OrderBridge {
         Long refreshTime = orderRefreshTimes.get(machinePos.asLong());
         if (refreshTime == null) {
             // 还没有检测到订单刷新，不接单
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 还没有订单刷新记录，等待刷新", machinePos);
             return true;
         }
         long elapsed = now - refreshTime;
         if (elapsed < (long)BusinessConfig.acceptDelay) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 订单刷新后仅 {} tick，未达到延迟 {} tick，等待", machinePos, elapsed, BusinessConfig.acceptDelay);
             return true;
         }
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 订单刷新后已 {} tick，达到延迟 {} tick，可以接单", machinePos, elapsed, BusinessConfig.acceptDelay);
         IItemHandler machineInv = OrderBridge.getItemHandler(be);
         if (machineInv == null) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 无法获取物品处理器，跳过", machinePos);
             return true;
         }
         ArrayList<OrderEntry> orders = new ArrayList<OrderEntry>();
@@ -200,13 +193,10 @@ public class OrderBridge {
             orders.add(new OrderEntry(i, stack, nbt));
         }
         if (orders.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有订单，跳过", machinePos);
             return true;
         }
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 找到 {} 个订单", machinePos, orders.size());
         long activeCount = manager.getActiveOrders().values().stream().filter(o -> o.machinePos.equals(machinePos)).count();
         if (activeCount >= (long)BusinessConfig.maxPendingOrders) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 活跃订单数 {}/{} 已达上限，跳过", machinePos, activeCount, BusinessConfig.maxPendingOrders);
             return true;
         }
         ArrayList<OrderEntry> candidates = new ArrayList<OrderEntry>();
@@ -216,10 +206,8 @@ public class OrderBridge {
             candidates.add(orderEntry);
         }
         if (candidates.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有满足条件的候选订单（外卖单未开启或无FoodList），跳过", machinePos);
             return true;
         }
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 筛选出 {} 个候选订单", machinePos, candidates.size());
         // 自动接单时检查操作台和冰箱里有没有现成的成品食物
         // 有就接（可以直接打包送餐），没有就不接（避免订单卡在操作台）
         ArrayList<OrderEntry> readyOrders = new ArrayList<OrderEntry>();
@@ -229,24 +217,19 @@ public class OrderBridge {
             }
         }
         if (readyOrders.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 操作台和冰箱里没有现成的成品食物，跳过", machinePos);
             return true;
         }
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 有 {} 个订单有现成的成品食物，可以接单", machinePos, readyOrders.size());
         candidates = readyOrders;
         if (BusinessConfig.priorityMode == BusinessConfig.PriorityMode.PRESTIGE) {
             candidates.sort((a, b) -> Integer.compare(b.nbt.getInt("Prestige"), a.nbt.getInt("Prestige")));
         }
         if ((counterPos = OrderBridge.findNearestFreeCounter(level, machinePos, counters, manager)) == null) {
-            MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 没有找到空闲的操作台，跳过", machinePos);
             return true;
         }
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 打单机 {} 找到空闲操作台 {}", machinePos, counterPos);
         OrderEntry orderEntry = (OrderEntry)candidates.get(0);
         OrderBridge.transferOrderToCounter(level, machineInv, orderEntry, counterPos, machinePos);
         manager.getOrderCooldowns().put(machinePos, now);
         manager.getCounterToMachine().put(counterPos, machinePos);
-        MaidRestaurantBusiness.LOGGER.info("\u8ba2\u5355\u5df2\u4ece\u6253\u5355\u673a {} \u4f20\u9001\u5230\u6253\u5305\u53f0 {}", machinePos, counterPos);
         return true;
     }
 
@@ -305,22 +288,47 @@ public class OrderBridge {
                                    be.getClass().getSimpleName().equals("RefrigeratorBlockEntity");
                 if (!isTarget) continue;
                 
-                // 操作台和冰箱都实现了Container接口，直接当作Container使用
+                // 操作台实现了Container接口，直接处理
                 if (be instanceof net.minecraft.world.Container) {
                     net.minecraft.world.Container container = (net.minecraft.world.Container)be;
                     containerCount++;
-                    String beName = be.getClass().getSimpleName();
-                    String typeName = be instanceof TakeoutBoxBlockEntity ? "操作台" : "冰箱";
                     for (int i = 0; i < container.getContainerSize(); ++i) {
                         ItemStack stack = container.getItem(i);
                         if (stack.isEmpty()) continue;
                         String id = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
                         available.merge(id, stack.getCount(), Integer::sum);
-                        MaidRestaurantBusiness.LOGGER.info("自动接单: {} {}({}) 槽位{} 有 {} * {}", 
-                            typeName, check, beName, i, id, stack.getCount());
                     }
-                } else {
-                    MaidRestaurantBusiness.LOGGER.warn("自动接单: {}({}) 不是Container，无法获取物品栏", check, be.getClass().getSimpleName());
+                } else if (be.getClass().getSimpleName().equals("RefrigeratorBlockEntity")) {
+                    // 冰箱没有直接实现Container接口，用反射访问upperInventory和lowerInventory
+                    try {
+                        java.lang.reflect.Field upperField = be.getClass().getDeclaredField("upperInventory");
+                        java.lang.reflect.Field lowerField = be.getClass().getDeclaredField("lowerInventory");
+                        upperField.setAccessible(true);
+                        lowerField.setAccessible(true);
+                        Object upperInv = upperField.get(be);
+                        Object lowerInv = lowerField.get(be);
+                        if (upperInv instanceof net.minecraft.core.NonNullList) {
+                            @SuppressWarnings("unchecked")
+                            net.minecraft.core.NonNullList<ItemStack> items = (net.minecraft.core.NonNullList<ItemStack>) upperInv;
+                            for (ItemStack stack : items) {
+                                if (stack.isEmpty()) continue;
+                                String id = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
+                                available.merge(id, stack.getCount(), Integer::sum);
+                            }
+                        }
+                        if (lowerInv instanceof net.minecraft.core.NonNullList) {
+                            @SuppressWarnings("unchecked")
+                            net.minecraft.core.NonNullList<ItemStack> items = (net.minecraft.core.NonNullList<ItemStack>) lowerInv;
+                            for (ItemStack stack : items) {
+                                if (stack.isEmpty()) continue;
+                                String id = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
+                                available.merge(id, stack.getCount(), Integer::sum);
+                            }
+                        }
+                        containerCount++;
+                    } catch (Throwable t) {
+                        // 反射失败，静默跳过
+                    }
                 }
             }
             catch (Throwable t) {
@@ -328,14 +336,12 @@ public class OrderBridge {
             }
         }
         
-        MaidRestaurantBusiness.LOGGER.info("自动接单: 扫描到 {} 个操作台/冰箱，可用食物: {}", containerCount, available);
         
         // 检查是否有足够的成品食物
         for (String key : foodList.getAllKeys()) {
             int required = foodList.getInt(key);
             int have = available.getOrDefault(key, 0);
             if (have < required) {
-                MaidRestaurantBusiness.LOGGER.info("自动接单: 订单需要 {} * {}，但只有 {} 个现成食物", key, required, have);
                 return false;
             }
         }
@@ -382,7 +388,6 @@ public class OrderBridge {
         for (ServerPlayer player : level.getPlayers(p -> p.distanceToSqr((double)pos.getX() + 0.5, (double)pos.getY() + 0.5, (double)pos.getZ() + 0.5) <= 64.0)) {
             player.displayClientMessage((Component)msg, false);
         }
-        MaidRestaurantBusiness.LOGGER.info("\u6253\u5355\u673a {} \u81ea\u52a8\u5316{}", pos, (Object)(activated ? "\u5df2\u542f\u52a8" : "\u5df2\u505c\u6b62"));
     }
 
     private static BlockPos findNearestFreeCounter(ServerLevel level, BlockPos machinePos, List<BlockPos> counters, BusinessManager manager) {
@@ -421,7 +426,6 @@ public class OrderBridge {
             long expirySys;
             boolean delivery = nbt.getBoolean("Delivery");
             if (delivery) {
-                MaidRestaurantBusiness.LOGGER.info("\u8ba2\u5355\u4e3a\u5916\u5356\u8ba2\u5355\uff0c\u4e0d\u751f\u6210\u5802\u98df\u987e\u5ba2");
                 return;
             }
             String orderId = nbt.getString("OrderId");
@@ -437,7 +441,6 @@ public class OrderBridge {
             Class<?> npcManagerClass = Class.forName("cn.breezeth.ordertocook.core.NormalOrderNpcManager");
             Method spawnMethod = npcManagerClass.getMethod("spawn", ServerLevel.class, Player.class, BlockPos.class, String.class, String.class, Long.TYPE, Long.TYPE, CompoundTag.class);
             spawnMethod.invoke(null, level, fakePlayer, machinePos, orderId, customerName, expiryTick, expirySys, nbt);
-            MaidRestaurantBusiness.LOGGER.info("\u5df2\u4e3a\u8ba2\u5355 {} \u751f\u6210\u987e\u5ba2: {}", orderId, customerName);
         }
         catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("\u81ea\u52a8\u63a5\u5355\u751f\u6210\u987e\u5ba2\u5931\u8d25: {}", t.getMessage(), t);
@@ -457,7 +460,6 @@ public class OrderBridge {
                 inventoryField.setAccessible(true);
                 Object inventory = inventoryField.get(be);
                 if (inventory instanceof List) {
-                    MaidRestaurantBusiness.LOGGER.info("OrderBridge: 使用TakeoutBoxBlockEntity的inventory字段, size={}, type={}", ((List<?>)inventory).size(), inventory.getClass().getSimpleName());
                     return new ItemStackHandlerAdapter(be, (List<ItemStack>)inventory);
                 }
             } catch (Throwable t) {

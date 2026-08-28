@@ -100,7 +100,6 @@ public class CookingBridge {
         CookingBridge.updateBusinessCookMaids(level);
         int counterCount = manager.getCounterToMachine().size();
         if (counterCount > 0) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪tick: counterToMachine大小={}, activatedMachines大小={}", counterCount, manager.getActivatedMachines().size());
         }
         for (Map.Entry<BlockPos, BlockPos> entry : manager.getCounterToMachine().entrySet()) {
             BlockPos counterPos = entry.getKey();
@@ -110,7 +109,6 @@ public class CookingBridge {
                 if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) {
                     continue;
                 }
-                MaidRestaurantBusiness.LOGGER.info("烹饪tick: 处理操作台 {} -> 打单机 {}", counterPos, machinePos);
                 CookingBridge.processCounter(level, counterPos, machinePos, manager);
             }
             catch (Throwable t) {
@@ -150,7 +148,6 @@ public class CookingBridge {
             int cancelled = 0;
             // 用女仆餐厅的MaidTracker获取所有女仆（而不是level.getEntitiesOfClass，后者用无限AABB返回0个）
             List<EntityMaid> allMaids = MaidTracker.maids != null ? new ArrayList<>(MaidTracker.maids) : new ArrayList<>();
-            MaidRestaurantBusiness.LOGGER.info("取消烹饪任务: 操作台={}, MaidTracker找到{}个女仆", counterPos, allMaids.size());
             // 1. 处理所有女仆身上的经营烹饪请求
             // 对于正在进行的任务，不直接移除，而是将remain设为1让女仆完成当前这一次烹饪（避免食物卡在锅里）
             // 对于还没开始的任务（remain > 1），将remain设为1，只让女仆完成当前这一次
@@ -162,7 +159,6 @@ public class CookingBridge {
                 }
                 int size = handler.size();
                 if (size == 0) continue;
-                MaidRestaurantBusiness.LOGGER.info("取消烹饪任务: 女仆 {} 有{}个请求", maid.getName().getString(), size);
                 // 从后往前遍历处理经营任务
                 for (int i = size - 1; i >= 0; i--) {
                     CookRequest req = handler.getAt(i);
@@ -176,11 +172,9 @@ public class CookingBridge {
                             req.remain = 1;
                             req.requested = 1;
                             cancelled++;
-                            MaidRestaurantBusiness.LOGGER.info("  -> 女仆{}的请求{}正在烹饪，remain设为1完成当前次: id={}", maid.getName().getString(), i, req.id);
                         } else {
                             // remain == 1，女仆正在做最后一次，不取消，让她完成
                             cancelled++;
-                            MaidRestaurantBusiness.LOGGER.info("  -> 女仆{}的请求{}正在做最后一次(remain=1)，保留不取消: id={}", maid.getName().getString(), i, req.id);
                         }
                     }
                 }
@@ -188,18 +182,15 @@ public class CookingBridge {
             // 2. 取消世界队列中的经营烹饪请求（这些还没有分配给女仆，可以安全取消）
             WorldCookRequestPool pool = WorldCookRequestPool.get(level);
             if (pool != null && pool.requests != null && !pool.requests.isEmpty()) {
-                MaidRestaurantBusiness.LOGGER.info("取消烹饪任务: 世界队列有{}个请求", pool.requests.size());
                 for (int i = pool.requests.size() - 1; i >= 0; i--) {
                     CookRequest req = pool.requests.get(i);
                     if (req != null && req.extraData != null && req.extraData.contains("BusinessCounter") && req.extraData.getLong("BusinessCounter") == counterLong) {
                         pool.requests.remove(i);
                         cancelled++;
-                        MaidRestaurantBusiness.LOGGER.info("  -> 已移除世界队列请求{}: id={}", i, req.id);
                     }
                 }
                 pool.setDirty();
             }
-            MaidRestaurantBusiness.LOGGER.info("取消烹饪任务完成: 共处理 {} 个与操作台 {} 相关的经营烹饪请求（女仆身上的任务保留完成当前次）", cancelled, counterPos);
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("取消烹饪请求失败", t);
         }
@@ -264,8 +255,6 @@ public class CookingBridge {
                         if (!activeCounterLongs.contains(reqCounter)) {
                             handler.removeAt(i);
                             cleaned++;
-                            MaidRestaurantBusiness.LOGGER.info("清理残留任务: 女仆{}的任务 recipeId={} 操作台={} 不在活跃订单列表中",
-                                maid.getName().getString(), req.id, BlockPos.of(reqCounter));
                         }
                     }
                 }
@@ -280,14 +269,11 @@ public class CookingBridge {
                     if (!activeCounterLongs.contains(reqCounter)) {
                         pool.requests.remove(i);
                         cleaned++;
-                        MaidRestaurantBusiness.LOGGER.info("清理残留任务: 世界队列中的任务 recipeId={} 操作台={} 不在活跃订单列表中",
-                            req.id, BlockPos.of(reqCounter));
                     }
                 }
                 pool.setDirty();
             }
             if (cleaned > 0) {
-                MaidRestaurantBusiness.LOGGER.info("定期清理残留任务完成: 共清理{}个残留任务", cleaned);
             }
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("定期清理残留任务时出错", t);
@@ -361,8 +347,6 @@ public class CookingBridge {
                         int recipeOutput = req.extraData.contains("BusinessRecipeOutput") ? req.extraData.getInt("BusinessRecipeOutput") : 1;
                         int taskOutput = req.requested * recipeOutput;
                         totalOutput += taskOutput;
-                        MaidRestaurantBusiness.LOGGER.info("烹饪产出统计: 女仆{} 任务 requested={} recipeOutput={} taskOutput={} (总产出+{})", 
-                            maid.getName().getString(), req.requested, recipeOutput, taskOutput, taskOutput);
                     }
                 }
             }
@@ -378,11 +362,8 @@ public class CookingBridge {
                     int recipeOutput = req.extraData.contains("BusinessRecipeOutput") ? req.extraData.getInt("BusinessRecipeOutput") : 1;
                     int taskOutput = req.requested * recipeOutput;
                     totalOutput += taskOutput;
-                    MaidRestaurantBusiness.LOGGER.info("烹饪产出统计: 世界队列任务 requested={} recipeOutput={} taskOutput={} (总产出+{})", 
-                        req.requested, recipeOutput, taskOutput, taskOutput);
                 }
             }
-            MaidRestaurantBusiness.LOGGER.info("烹饪产出统计: 物品{} 已在做总产出量={}", itemId, totalOutput);
             return totalOutput;
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("烹饪产出统计: getCookingOutputForItem抛出异常", t);
@@ -426,7 +407,6 @@ public class CookingBridge {
                     if (CookingBridge.extractFromContainer(level, maid, task)) {
                         task.state = 2;
                         task.lastChange = now;
-                        MaidRestaurantBusiness.LOGGER.info("备菜：提取 {} x{}", task.itemId, task.needed);
                         break;
                     }
                     MaidRestaurantBusiness.LOGGER.warn("备菜：从容器提取失败，结束任务 女仆={}", maid.getName().getString());
@@ -450,7 +430,6 @@ public class CookingBridge {
                     BlockEntity be = level.getBlockEntity(counterPos);
                     IItemHandler iItemHandler = counterInv = be != null ? OrderBridge.getItemHandler(be) : null;
                     if (counterInv != null && (inserted = MaidUtils.transferFromMaid(maid, task.itemId, task.needed, counterInv)) > 0) {
-                        MaidRestaurantBusiness.LOGGER.info("\u5907\u83dc\uff1a\u653e\u5165\u6253\u5305\u53f0 {} x{}", task.itemId, inserted);
                     }
                     if (task.foods != null && counterInv != null) {
                         CookRequest request;
@@ -463,10 +442,8 @@ public class CookingBridge {
                         }
                         if (remaining.values().stream().allMatch(c -> c <= 0) && (request = (CookRequest)RequestManager.peek((EntityMaid)maid, (int)0)) != null && request.extraData != null && request.extraData.contains("BusinessCounter")) {
                             RequestManager.pop((EntityMaid)maid, (int)0);
-                            MaidRestaurantBusiness.LOGGER.info("备菜：订单已满足，取消烹饪任务");
                         }
                     }
-                    MaidRestaurantBusiness.LOGGER.info("备菜：任务完成 女仆={}", maid.getName().getString());
                     TaskManager.getInstance().completeTask(maid.getUUID());
                     task.cleanup();
                     it.remove();
@@ -478,12 +455,10 @@ public class CookingBridge {
     private static void processCounter(ServerLevel level, BlockPos counterPos, BlockPos machinePos, BusinessManager manager) {
         BlockEntity be = level.getBlockEntity(counterPos);
         if (!(be instanceof TakeoutBoxBlockEntity)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 操作台不是TakeoutBoxBlockEntity, be={}", be != null ? be.getClass().getSimpleName() : "null");
             return;
         }
         IItemHandler inv = OrderBridge.getItemHandler(be);
         if (inv == null) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 无法获取物品处理器");
             return;
         }
         // 扫描所有槽位查找订单物品
@@ -504,24 +479,19 @@ public class CookingBridge {
         if (orderStack.isEmpty()) {
             // 操作台没有订单了，清理活跃订单并取消相关烹饪任务
             if (manager.getActiveOrders().containsKey(counterPos)) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 操作台无订单，清理活跃订单并取消烹饪任务 counter={}", counterPos);
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 manager.getActiveOrders().remove(counterPos);
             }
             return;
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 在槽位{}找到订单, 槽位内容:{}", orderSlot, slotInfo);
         CompoundTag nbt = orderStack.getTag();
         if (nbt == null || !nbt.contains("FoodList")) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 订单没有FoodList NBT, nbt={}", nbt != null ? nbt.getAllKeys() : "null");
             return;
         }
         if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 等级未解锁烹饪和备菜");
             return;
         }
         if (!OrderBridge.isActivated(level, machinePos)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 打单机未激活");
             return;
         }
         CompoundTag foodList = nbt.getCompound("FoodList");
@@ -531,7 +501,6 @@ public class CookingBridge {
         for (String key : foodList.getAllKeys()) {
             foods.put(key, foodList.getInt(key));
         }
-        MaidRestaurantBusiness.LOGGER.info("\u70f9\u996a\uff1a\u8ba2\u5355\u9700\u6c42 foods={}", foods);
         LinkedHashMap<String, Integer> remaining = new LinkedHashMap<String, Integer>(foods);
         for (int slot = 0; slot < inv.getSlots(); ++slot) {
             ResourceLocation itemId;
@@ -557,7 +526,6 @@ public class CookingBridge {
                         }
                     }
                     if (fridgeTotal > 0) {
-                        MaidRestaurantBusiness.LOGGER.info("烹饪：从冰箱检测到 {} 个成品食物，已从需求中扣除", fridgeTotal);
                     }
                 }
             }
@@ -566,19 +534,15 @@ public class CookingBridge {
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.warn("烹饪：检测冰箱成品食物时出错", t);
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪：操作台+冰箱已有食物后 remaining={}", remaining);
         // 注意：不再每次都取消所有任务，否则任务刚发布就被取消，女仆永远无法开始烹饪
         // 残留任务问题已通过之前的清理解决，后续只在订单变更或超时时才取消
         // 如果已经有备菜任务在执行，跳过（避免任务打架）
         if (prepTasks.containsKey(counterPos)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 备菜任务执行中，跳过烹饪");
             return;
         }
         if (CookingBridge.tryStartPrep(level, counterPos, remaining)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 备菜任务已启动，跳过烹饪");
             return;
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 备菜检查完成，未启动备菜任务，继续烹饪检查");
         if (manager.getActiveOrders().containsKey(counterPos)) {
             ActiveOrder active = manager.getActiveOrders().get(counterPos);
             String currentOrderId = nbt.getString("OrderId");
@@ -586,17 +550,14 @@ public class CookingBridge {
             // 超时检查：超过1200 tick（60秒）没完成，认为女仆卡住了，取消重发
             long elapsed = level.getGameTime() - active.createdTick;
             if (elapsed > 1200) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 活跃订单超时({}tick), 取消旧烹饪任务并移除活跃订单", elapsed);
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 // 重置卡住的女仆状态
                 EntityMaid stuckMaid = MaidUtils.findCookMaid(level, counterPos, 24);
                 if (stuckMaid != null) {
                     MaidUtils.resetMaidState(level, stuckMaid);
-                    MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 重置卡住的女仆 {}", stuckMaid.getName().getString());
                 }
                 manager.getActiveOrders().remove(counterPos);
             } else if (!currentOrderId.equals(activeOrderId)) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 订单已变更 (旧={}, 新={}), 取消旧烹饪任务并移除活跃订单", activeOrderId, currentOrderId);
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 manager.getActiveOrders().remove(counterPos);
             }
@@ -604,12 +565,9 @@ public class CookingBridge {
             // 因为女仆可能只在做某一种食物，其他食物仍需要处理
             // 后面的 isAnyMaidCookingForItem 和 getCookingCountForItem 会避免同一种食物重复发布
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 活跃订单检查完成，继续食物需求检查");
         if (remaining.values().stream().allMatch(c -> c <= 0)) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 所有食物都已满足，跳过");
             return;
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 食物需求检查完成，有未满足的食物，开始统计空闲厨师");
         // 多厨师优化：统计真正空闲的厨师数量（没有烹饪任务的厨师）
         // 避免所有任务都被第一个空闲厨师领取
         // 注意：只统计当前任务是TaskCook的女仆（厨师女仆），不统计侍者女仆
@@ -631,7 +589,6 @@ public class CookingBridge {
                     // 检查厨师是否有烹饪任务
                     CookRequestHandler handler = CookRequestHandler.getOrCreate(m);
                     int taskCount = handler != null ? handler.size() : -1;
-                    MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 厨师{} 任务数={} 是否空闲={}", m.getName().getString(), taskCount, taskCount == 0);
                     if (handler == null || handler.size() == 0) {
                         availableCooks++;
                         idleCooks.add(m);
@@ -641,35 +598,28 @@ public class CookingBridge {
         }
         int maxTasksThisTick = Math.max(1, availableCooks);
         int tasksPosted = 0;
-        MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 总厨师{}个，空闲厨师{}个，空闲厨师列表={}，本次最多发布{}个任务", 
-            totalCooks, availableCooks, idleCooks.stream().map(m -> m.getName().getString()).collect(java.util.stream.Collectors.toList()), maxTasksThisTick);
 
         for (Map.Entry entry : remaining.entrySet()) {
             if (tasksPosted >= maxTasksThisTick) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 已达本次任务上限({})，剩余食物下次处理", maxTasksThisTick);
                 break;
             }
             BlockPos cookPos;
             if ((Integer)entry.getValue() <= 0) continue;
             List<RecipeMatch> allMatches = CookingBridge.findAllRecipes(level, (String)entry.getKey(), (Integer)entry.getValue());
             if (allMatches.isEmpty()) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 未找到配方 item={}, 需求={}", entry.getKey(), entry.getValue());
                 continue;
             }
-            MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 找到{}个配方 item={}, 按产出从大到小尝试", allMatches.size(), entry.getKey());
             boolean postedThisItem = false;
             for (RecipeMatch match : allMatches) {
                 // 只做能做的部分：检查食材能做多少次，能做至少1次才发布任务
                 int canCookCount = 0;
                 try {
                     canCookCount = CookingBridge.getMaxCookCount(level, counterPos, match.recipeId, 1);
-                    MaidRestaurantBusiness.LOGGER.info("烹饪食材检查: 配方={} 可做次数={}", match.recipeId, canCookCount);
                 } catch (Throwable t) {
                     MaidRestaurantBusiness.LOGGER.warn("烹饪食材检查: getMaxCookCount抛出异常，默认返回1确保基本功能正常，配方={}", match.recipeId, t);
                     canCookCount = 1;
                 }
                 if (canCookCount <= 0) {
-                    MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 配方产出={} 连1次都做不了(食材不足), 尝试下一个配方, 配方={}", match.resultCount(), match.recipeId);
                     continue;
                 }
                 // 最大效率化：一次任务做尽可能多的次数
@@ -679,10 +629,7 @@ public class CookingBridge {
                 int neededCookTimes = (int)Math.ceil((double)demand / recipeOutput);
                 // 一次任务实际做的次数 = min(食材能做的次数, 需要的烹饪次数)
                 int actualCookTimes = Math.min(canCookCount, neededCookTimes);
-                MaidRestaurantBusiness.LOGGER.info("烹饪: 需求{}个，配方产出{}个，需要烹饪{}次，食材可做{}次，本次任务做{}次(产出{}个)", 
-                    demand, recipeOutput, neededCookTimes, canCookCount, actualCookTimes, actualCookTimes * recipeOutput);
                 if ((cookPos = CookingBridge.findCookingDevice(level, counterPos, match.recipeType)) == null) {
-                    MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 未找到烹饪设备 recipeType={}", match.recipeType);
                     continue;
                 }
                 CookRequest request = new CookRequest();
@@ -708,11 +655,8 @@ public class CookingBridge {
                 // 计算还需要的产出量（demand和recipeOutput在上面已经定义）
                 int remainingOutput = demand - cookingOutputForItem;
                 
-                MaidRestaurantBusiness.LOGGER.info("烹饪：食物{} 需求{}个，配方产出{}个，已在做产出{}个(handler{}+本tick已发布{})，还需产出{}个，食材可做{}次(产出{}个)",
-                    entry.getKey(), demand, recipeOutput, cookingOutputForItem, (cookingOutputForItem - publishedThisTickOutput), publishedThisTickOutput, remainingOutput, canCookCount, canCookCount * recipeOutput);
                 
                 if (remainingOutput <= 0) {
-                    MaidRestaurantBusiness.LOGGER.info("烹饪：食物{} 已满足需求(需求{}个，已在做产出{}个)，跳过", entry.getKey(), demand, cookingOutputForItem);
                     continue;
                 }
                 
@@ -722,12 +666,10 @@ public class CookingBridge {
                 // 本次烹饪次数 = ceil(本次产出量 / 配方产出量)
                 int cookTimesThisTask = (int)Math.ceil((double)taskOutput / recipeOutput);
                 
-                MaidRestaurantBusiness.LOGGER.info("烹饪：食物{} 本次任务产出{}个，烹饪{}次", entry.getKey(), taskOutput, cookTimesThisTask);
 
                 // 空闲厨具检查：使用TaskManager统一管理厨具占用状态
                 // 避免只有一个汤锅却给两个厨师都发布任务导致卡住
                 if (cookPos != null && TaskManager.getInstance().isDeviceOccupied(cookPos)) {
-                    MaidRestaurantBusiness.LOGGER.info("烹饪：食物{} 最近的厨具{}已被TaskManager标记占用，跳过本次发布，等任务完成后自动释放", entry.getKey(), cookPos);
                     continue;
                 }
 
@@ -737,7 +679,6 @@ public class CookingBridge {
 
                 // 重要：不在有订单时取消旧任务，避免烹饪过程中被取消
                 // 旧任务的取消只在操作台没有订单时进行（由BusinessManager调用）
-                MaidRestaurantBusiness.LOGGER.info("烹饪：发布烹饪任务 recipeId={} itemId={} 需求={} 配方产出={} 本次烹饪次数={} 本次产出={}", match.recipeId, entry.getKey(), entry.getValue(), match.resultCount(), cookTimesThisTask, taskOutput);
                 // 手动任务分配：直接把任务添加到指定厨师的handler中，绕过RequestManager的随机分配
                 // 确保不同的任务分配给不同的厨师，实现真正的多厨师并行
                 EntityMaid targetMaid = null;
@@ -761,8 +702,6 @@ public class CookingBridge {
                     targetMaid = idleCooks.remove(0);
                     CookRequestHandler targetHandler = CookRequestHandler.getOrCreate(targetMaid);
                     int targetTaskCount = targetHandler != null ? targetHandler.size() : 0;
-                    MaidRestaurantBusiness.LOGGER.info("烹饪: 手动分配任务给厨师 {} (当前任务数={}, 剩余空闲厨师{}个)", 
-                        targetMaid.getName().getString(), targetTaskCount, idleCooks.size());
                 }
                 
                 if (targetMaid != null) {
@@ -776,8 +715,6 @@ public class CookingBridge {
                     // 直接添加到指定厨师的handler中（参考RequestManager.tryDistributeCookRequest的实现）
                     if (finalHandler != null) {
                         finalHandler.add(request);
-                        MaidRestaurantBusiness.LOGGER.info("烹饪: 已直接添加任务到厨师 {} 的handler，任务详情: recipeId={}, remain={}, requested={}", 
-                            targetMaid.getName().getString(), request.id, request.remain, request.requested);
                         // 显示厨师开始烹饪气泡
                         try {
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefStartCooking(targetMaid);
@@ -788,7 +725,6 @@ public class CookingBridge {
                     }
                 } else {
                     // 没有空闲厨师，跳过此任务（不回退到RequestManager.post，避免分配给已有任务的厨师）
-                    MaidRestaurantBusiness.LOGGER.info("烹饪: 没有空闲厨师，跳过此任务（不回退到自动分配，避免任务堆叠）");
                     continue;
                 }
                 manager.getActiveOrders().put(counterPos, new ActiveOrder(machinePos, counterPos, match.recipeId, nbt, foods, prestige, delivery, level.getGameTime()));
@@ -798,16 +734,13 @@ public class CookingBridge {
                 if (taskId != null && targetMaid != null) {
                     // 手动分配任务给指定厨师
                     TaskManager.getInstance().assignTask(targetMaid.getUUID(), TaskManager.TYPE_COOKING, level);
-                    MaidRestaurantBusiness.LOGGER.info("烹饪: TaskManager创建任务 {} 分配给厨师 {}", taskId, targetMaid.getName().getString());
                 } else if (taskId != null) {
-                    MaidRestaurantBusiness.LOGGER.info("烹饪: TaskManager创建任务 {} (等待自动分配)", taskId, match.recipeId);
                 }
 
                 // 使用TaskManager统一管理厨具占用状态（任务完成/取消时自动释放）
                 if (cookPos != null && taskId != null) {
                     UUID occupantUUID = targetMaid != null ? targetMaid.getUUID() : null;
                     boolean occupied = TaskManager.getInstance().occupyDevice(cookPos, taskId, occupantUUID);
-                    MaidRestaurantBusiness.LOGGER.info("烹饪: TaskManager标记厨具 {} 为被占用，任务={} 占用者={}, 结果={}", cookPos, taskId, occupantUUID, occupied);
                     if (!occupied) {
                         // 占用失败，说明厨具已经被其他任务占用了，需要取消刚发布的任务
                         MaidRestaurantBusiness.LOGGER.warn("烹饪: 厨具 {} 占用失败，取消刚发布的任务（任务={} 厨师={}）", cookPos, taskId, targetMaid != null ? targetMaid.getName().getString() : "null");
@@ -820,7 +753,6 @@ public class CookingBridge {
                                     if (req != null && req.extraData != null && req.extraData.contains("BusinessOrderId") && 
                                         req.extraData.getString("BusinessOrderId").equals(nbt.getString("OrderId"))) {
                                         handler.removeAt(i);
-                                        MaidRestaurantBusiness.LOGGER.info("烹饪: 已从厨师 {} 的handler中移除占用失败的任务", targetMaid.getName().getString());
                                         break;
                                     }
                                 }
@@ -835,14 +767,12 @@ public class CookingBridge {
                 // 更新本tick已发布任务缓存（防止同一个tick内重复发布同一个食物的任务）
                 // 缓存的是产出量，不是烹饪次数
                 publishedThisTick.put(tickKey, publishedThisTickOutput + taskOutput);
-                MaidRestaurantBusiness.LOGGER.info("烹饪: 更新本tick已发布缓存 {} = {} 产出(原{}+本次{})", tickKey, publishedThisTickOutput + taskOutput, publishedThisTickOutput, taskOutput);
 
                 postedThisItem = true;
                 tasksPosted++;
                 break;
             }
             if (!postedThisItem) {
-                MaidRestaurantBusiness.LOGGER.info("烹饪processCounter: 物品{} 所有配方都做不了(食材不足或无设备)，跳过", entry.getKey());
             }
         }
     }
@@ -879,13 +809,11 @@ public class CookingBridge {
                     CookRequest req = (CookRequest) RequestManager.peek(maid, 0);
                     if (req != null && req.extraData != null && req.extraData.contains("BusinessCounter") && req.extraData.getLong("BusinessCounter") == counterPos.asLong()) {
                         RequestManager.pop(maid, 0);
-                        MaidRestaurantBusiness.LOGGER.info("备菜：取消女仆{}烹饪任务(remain={})，优先备菜", maid.getName().getString(), req.remain);
                     } else {
                         break;
                     }
                 }
                 prepTasks.put(counterPos, new PrepTask(null, idStr, toTake, maid, remaining));
-                MaidRestaurantBusiness.LOGGER.info("备菜：发起任务(女仆{}背包) 物品={} 数量={}", maid.getName().getString(), idStr, toTake);
                 return true;
             }
         }
@@ -975,7 +903,6 @@ public class CookingBridge {
                             }
                         }
                         if (fridgeTotal > 0) {
-                            MaidRestaurantBusiness.LOGGER.info("烹饪食材检测: 从冰箱等食材来源检测到 {} 个物品", fridgeTotal);
                         }
                     }
                 }
@@ -1035,7 +962,6 @@ public class CookingBridge {
                     }
                 }
             }
-            MaidRestaurantBusiness.LOGGER.info("烹饪食材检测: 找到{}个可用厨师女仆", allCooks.size());
 
             for (EntityMaid maid : allCooks) {
                 maidInv = MaidUtils.getInventory(maid);
@@ -1069,11 +995,9 @@ public class CookingBridge {
                     maidCanMake = Math.min(maidCanMake, carrierHave / carrierPerCook);
                 }
 
-                MaidRestaurantBusiness.LOGGER.info("烹饪食材检测: 女仆{} 能做{}次", maid.getName().getString(), maidCanMake);
                 maxCanMakeByAnyMaid = Math.max(maxCanMakeByAnyMaid, maidCanMake);
             }
 
-            MaidRestaurantBusiness.LOGGER.info("烹饪食材检测: 所有女仆中最大能做次数={}", maxCanMakeByAnyMaid);
             return maxCanMakeByAnyMaid;
         }
         catch (Throwable t) {
@@ -1150,7 +1074,6 @@ public class CookingBridge {
         // 优先返回没有被占用的厨具，如果没有则返回最近的厨具
         BlockPos result = nearestFree != null ? nearestFree : nearest;
         if (result != null) {
-            MaidRestaurantBusiness.LOGGER.info("烹饪: 选择厨具 {} (是否空闲={}, 距离={})", result, nearestFree != null, result.distSqr(pos));
         }
         return result;
     }
@@ -1176,7 +1099,6 @@ public class CookingBridge {
             }
             if (match) count++;
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪: 总厨具统计 类型={} 总数={}", taskClass, count);
         return count;
     }
 
@@ -1208,7 +1130,6 @@ public class CookingBridge {
                 }
             }
         }
-        MaidRestaurantBusiness.LOGGER.info("烹饪: 可用厨具统计 总数={}, 空闲={}", totalCount, count);
         return count;
     }
 
@@ -1235,8 +1156,6 @@ public class CookingBridge {
         void cleanup() {
             EntityMaid maid = (EntityMaid)this.maidRef.get();
             if (maid != null) {
-                MaidRestaurantBusiness.LOGGER.info("备菜: 任务清理开始 女仆={}, 当前状态={}, 当前isOccupied={}", 
-                    maid.getName().getString(), this.state, MaidUtils.isOccupied(maid));
                 try {
                     // 调用TaskSafetyUtils彻底重置女仆状态
                     TaskSafetyUtils.resetMaidState(maid);
@@ -1244,7 +1163,6 @@ public class CookingBridge {
                     MaidRestaurantBusiness.LOGGER.warn("备菜任务清理时TaskSafetyUtils.resetMaidState失败", t);
                     MaidUtils.setOccupied(maid, false);
                 }
-                MaidRestaurantBusiness.LOGGER.info("备菜: 任务清理完成 女仆={}, 清理后isOccupied={}", maid.getName().getString(), MaidUtils.isOccupied(maid));
             }
         }
     }

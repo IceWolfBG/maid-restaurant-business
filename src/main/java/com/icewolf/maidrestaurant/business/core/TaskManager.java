@@ -297,7 +297,6 @@ public class TaskManager {
             if (task.taskType.equals(TYPE_COOKING) && task.targetPos != null) {
                 releaseDevice(task.targetPos);
             }
-            MaidRestaurantBusiness.LOGGER.info("TaskManager: 任务 {} 失败 原因={}", taskId, reason);
         }
     }
 
@@ -372,7 +371,6 @@ public class TaskManager {
             // 已被占用，检查是否是同一个任务/女仆
             if (taskId != null && taskId.equals(existing.taskId)) {
                 // 同一个任务，允许重新占用
-                MaidRestaurantBusiness.LOGGER.info("[TaskManager厨具] 厨具 {} 已被同一任务 {} 占用，允许", devicePos, taskId);
                 return true;
             }
             MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 已被任务 {} 女仆 {} 占用，拒绝任务 {} 女仆 {} 的占用请求",
@@ -380,7 +378,6 @@ public class TaskManager {
             return false;
         }
         occupiedDevices.put(devicePos, new DeviceOccupancyInfo(devicePos, taskId, maidUUID, currentTick));
-        MaidRestaurantBusiness.LOGGER.info("[TaskManager厨具] 厨具 {} 被任务 {} 女仆 {} 占用（当前占用数={}）", devicePos, taskId, maidUUID, occupiedDevices.size());
         return true;
     }
 
@@ -392,8 +389,6 @@ public class TaskManager {
         if (devicePos == null) return;
         DeviceOccupancyInfo removed = occupiedDevices.remove(devicePos);
         if (removed != null) {
-            MaidRestaurantBusiness.LOGGER.info("[TaskManager厨具] 厨具 {} 已释放（原任务={} 原女仆={}，剩余占用数={}）",
-                devicePos, removed.taskId, removed.maidUUID, occupiedDevices.size());
         }
     }
 
@@ -437,7 +432,6 @@ public class TaskManager {
             occupiedDevices.remove(pos);
         }
         if (!toRelease.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("[TaskManager厨具] 清理了 {} 个超时占用，剩余占用数={}", toRelease.size(), occupiedDevices.size());
         }
     }
 
@@ -530,8 +524,6 @@ public class TaskManager {
             int pending = getPendingTaskCount();
             int active = getActiveTaskCount();
             int total = tasks.size();
-            MaidRestaurantBusiness.LOGGER.info("TaskManager统计: 总任务={}, 待处理={}, 进行中={}, 已分配女仆={}, 占用厨具={}",
-                total, pending, active, tasksByMaid.size(), occupiedDevices.size());
         }
 
         // 清理超时的厨具占用（自愈机制）
@@ -596,7 +588,6 @@ public class TaskManager {
                     task.assignTime = 0;
                     task.lastHeartbeat = 0;
                     toReassign.add(task);
-                    MaidRestaurantBusiness.LOGGER.info("TaskManager: 任务 {} 重试（第{}次）", task.taskId, task.retryCount);
                 } else {
                     // 重试次数用完，标记失败并重新分配（回到PENDING，让其他女仆尝试）
                     task.status = TaskStatus.PENDING;
@@ -612,7 +603,6 @@ public class TaskManager {
                     task.assignedMaid = null;
                     task.assignTime = 0;
                     task.lastHeartbeat = 0;
-                    MaidRestaurantBusiness.LOGGER.info("TaskManager: 任务 {} 重试次数用完，重新分配", task.taskId);
                 }
             }
         }

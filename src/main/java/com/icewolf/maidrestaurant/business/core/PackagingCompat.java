@@ -38,14 +38,11 @@ public class PackagingCompat {
             }
             executeMethod = apiClass.getMethod("execute", Level.class, BlockPos.class, actionClass, Player.class, boolean.class);
             hasAutomationApi = true;
-            LOGGER.info("PackagingCompat: 检测到 CountertopAutomationApi，使用 Forge 版本打包方式");
         } catch (ClassNotFoundException | NoSuchMethodException e) {
             hasAutomationApi = false;
-            LOGGER.info("PackagingCompat: 未检测到 CountertopAutomationApi，使用 Fabric 版本打包方式（直接调用 TakeoutBoxBlockEntity）");
             try {
                 tryPackOrderMethod = TakeoutBoxBlockEntity.class.getMethod("tryPackOrder", Player.class);
                 tryPlateOrderMethod = TakeoutBoxBlockEntity.class.getMethod("tryPlateOrder", Player.class);
-                LOGGER.info("PackagingCompat: 成功获取 tryPackOrder/tryPlateOrder 方法");
             } catch (NoSuchMethodException ex) {
                 LOGGER.error("PackagingCompat: 无法获取 tryPackOrder/tryPlateOrder 方法", ex);
             }

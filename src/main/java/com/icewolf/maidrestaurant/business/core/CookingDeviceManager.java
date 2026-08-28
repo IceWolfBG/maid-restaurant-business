@@ -61,7 +61,6 @@ public class CookingDeviceManager {
     public void initSavedData(ServerLevel level) {
         if (savedData == null) {
             savedData = CookingDeviceSavedData.get(level);
-            MaidRestaurantBusiness.LOGGER.info("[厨具管理] 初始化持久化保存: {}个厨具已加载", savedData.getDevices().size());
             // 从SavedData同步占用状态到内存
             syncFromSavedData();
         }
@@ -85,7 +84,6 @@ public class CookingDeviceManager {
             info.occupant = occupancy.occupant;
             info.occupyStartTime = occupancy.occupyStartTime;
         }
-        MaidRestaurantBusiness.LOGGER.info("[厨具管理] 从持久化数据同步占用状态完成");
     }
 
     /**
@@ -124,7 +122,6 @@ public class CookingDeviceManager {
                 currentDevices.add(key);
                 if (!devices.containsKey(key)) {
                     devices.put(key, new DeviceInfo(check.immutable(), type));
-                    MaidRestaurantBusiness.LOGGER.info("[厨具管理] 发现新厨具: 类型={}, 位置={}", type, check.immutable());
                 }
             }
         }
@@ -134,7 +131,6 @@ public class CookingDeviceManager {
         for (Long key : new HashSet<>(devices.keySet())) {
             if (!currentDevices.contains(key)) {
                 DeviceInfo info = devices.get(key);
-                MaidRestaurantBusiness.LOGGER.info("[厨具管理] 移除超出范围的厨具: 类型={}, 位置={}", info.type, info.pos);
                 devices.remove(key);
                 removedCount++;
             }
@@ -172,12 +168,6 @@ public class CookingDeviceManager {
                     else if (info.type.equals("Steamer")) availSteamer++;
                 }
             }
-            MaidRestaurantBusiness.LOGGER.info("[厨具管理] 状态统计: 总数={}(汤锅{}炒锅{}蒸锅{}), 占用={}(汤锅{}炒锅{}蒸锅{}), 可用={}(汤锅{}炒锅{}蒸锅{}), 本轮扫描={}(汤锅{}炒锅{}蒸锅{}), 移除={}, 超时释放={}",
-                    total, scannedStockpot, scannedPot, scannedSteamer,
-                    occupied, occStockpot, occPot, occSteamer,
-                    available, availStockpot, availPot, availSteamer,
-                    scannedStockpot + scannedPot + scannedSteamer, scannedStockpot, scannedPot, scannedSteamer,
-                    removedCount, timeoutReleased);
         }
     }
 
@@ -258,8 +248,6 @@ public class CookingDeviceManager {
         if (savedData != null) {
             savedData.setOccupied(pos, info.type, maidUUID, currentTick);
         }
-        MaidRestaurantBusiness.LOGGER.info("[厨具管理] markOccupied 成功: 厨具 {} 类型={} 被 {} 占用{} (占用前状态: occupied={})",
-                pos, info.type, maidUUID, wasOccupied ? "(重新标记)" : "(新占用)", wasOccupied);
         return true;
     }
 
@@ -278,13 +266,10 @@ public class CookingDeviceManager {
             if (savedData != null) {
                 savedData.setFree(pos);
             }
-            MaidRestaurantBusiness.LOGGER.info("[厨具管理] markFree 成功: 厨具 {} 类型={} 已释放，原占用者={} (释放前状态: occupied={})",
-                    pos, info.type, oldOccupant, wasOccupied);
         } else {
             MaidRestaurantBusiness.LOGGER.warn("[厨具管理] markFree: 厨具 {} 不在管理范围内(devices中找不到)，无法释放！当前管理的厨具数={}", pos, devices.size());
             // 打印当前管理的所有厨具
             for (DeviceInfo d : devices.values()) {
-                MaidRestaurantBusiness.LOGGER.info("[厨具管理]   已管理厨具: 位置={} 类型={} 占用={}", d.pos, d.type, d.occupied);
             }
         }
     }

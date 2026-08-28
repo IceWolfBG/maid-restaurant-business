@@ -58,7 +58,6 @@ implements IMaidBauble {
     }
 
     public void onPutOn(EntityMaid maid, ItemStack baubleItem) {
-        MaidRestaurantBusiness.LOGGER.info("健康证已装备到女仆: {}", HealthCertificateBauble.getEntityName((Entity)maid));
         // 装备时立即尝试绑定
         try {
             if (HealthCertificateItem.hasMachine(baubleItem)) {
@@ -73,7 +72,6 @@ implements IMaidBauble {
     }
 
     public void onTakeOff(EntityMaid maid, ItemStack baubleItem) {
-        MaidRestaurantBusiness.LOGGER.info("健康证已从女仆卸下: {}", HealthCertificateBauble.getEntityName((Entity)maid));
         // 卸下时解除该来源的绑定
         MaidUtils.unbindMaid(maid.getUUID(), BINDING_SOURCE);
     }

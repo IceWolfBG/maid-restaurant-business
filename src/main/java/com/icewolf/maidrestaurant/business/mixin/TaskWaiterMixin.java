@@ -31,7 +31,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value={TaskWaiter.class})
 public class TaskWaiterMixin {
     static {
-        MaidRestaurantBusiness.LOGGER.info("TaskWaiterMixin: class loaded (MaidDeliverOrderTask已禁用，统一使用DeliveryBridge)");
     }
 
     @Inject(method={"createBrainTasks(Lcom/github/tartaricacid/touhoulittlemaid/entity/passive/EntityMaid;)Ljava/util/List;"}, at={@At(value="RETURN")}, cancellable=true, remap=false)

@@ -271,7 +271,6 @@ public class MaidUtils {
                         Object memoryModule = field.get(null);
                         if (memoryModule instanceof MemoryModuleType) {
                             maid.getBrain().eraseMemory((MemoryModuleType<?>) memoryModule);
-                            MaidRestaurantBusiness.LOGGER.info("resetMaidState: erased memory {}", name);
                         }
                     } catch (Throwable t) {
                         MaidRestaurantBusiness.LOGGER.warn("resetMaidState: erase memory {} failed", name, t);
@@ -304,7 +303,6 @@ public class MaidUtils {
                         } catch (Throwable t) {}
                     }
                     if (released > 0) {
-                        MaidRestaurantBusiness.LOGGER.info("resetMaidState: 释放女仆对{}个块的使用", released);
                     }
                 }
             } catch (Throwable t) {
@@ -326,7 +324,6 @@ public class MaidUtils {
                                 removeAt.invoke(handler, i);
                             } catch (Throwable t) {}
                         }
-                        MaidRestaurantBusiness.LOGGER.info("resetMaidState: 清除女仆{}个残留烹饪请求", size);
                     }
                 }
             } catch (Throwable t) {
@@ -340,7 +337,6 @@ public class MaidUtils {
                 // 清除所有大脑记忆（用反射调用removeAllMemories）
                 java.lang.reflect.Method removeAllMemories = maid.getBrain().getClass().getMethod("removeAllMemories");
                 removeAllMemories.invoke(maid.getBrain());
-                MaidRestaurantBusiness.LOGGER.info("resetMaidState: 已清除所有大脑记忆");
             } catch (Throwable t) {
                 // 如果removeAllMemories不存在，逐个清除关键记忆
                 try {
@@ -364,7 +360,6 @@ public class MaidUtils {
                 UUID maidUUID = maid.getUUID();
                 setNextCheckTick.invoke(null, maidUUID + "ApproachCookBlock", 0);
                 setNextCheckTick.invoke(null, maidUUID + "GetFromStorage", 0);
-                MaidRestaurantBusiness.LOGGER.info("resetMaidState: 已重置任务检查速率");
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.warn("resetMaidState: reset CheckRateManager failed", t);
             }
@@ -372,10 +367,8 @@ public class MaidUtils {
             try {
                 if (MaidUtils.isOccupied(maid)) {
                     MaidUtils.setOccupied(maid, false);
-                    MaidRestaurantBusiness.LOGGER.info("resetMaidState: 已解除女仆 {} 的isOccupied标记", maid.getName().getString());
                 }
             } catch (Throwable t) {}
-            MaidRestaurantBusiness.LOGGER.info("resetMaidState: 女仆 {} 状态已彻底重置", maid.getName().getString());
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("resetMaidState: failed", t);
         }
@@ -509,7 +502,6 @@ public class MaidUtils {
                 workingWorkers++;
             }
         }
-        MaidRestaurantBusiness.LOGGER.info("员工检查: 打单机 {} 绑定总数={}, 附近工作中={}, 上限={}", machinePos, boundCount, workingWorkers, maxWorkers);
         return workingWorkers < maxWorkers;
     }
     
@@ -529,7 +521,6 @@ public class MaidUtils {
         }
         maidBindings.put(maidUUID, machinePos);
         maidBindingSources.put(maidUUID, source);
-        MaidRestaurantBusiness.LOGGER.info("女仆绑定: UUID={} 绑定到打单机 {} 来源={}", maidUUID, machinePos, source);
     }
     
     /**
@@ -541,7 +532,6 @@ public class MaidUtils {
         if (existingSource != null && existingSource.equals(source)) {
             maidBindings.remove(maidUUID);
             maidBindingSources.remove(maidUUID);
-            MaidRestaurantBusiness.LOGGER.info("女仆解绑: UUID={} 来源={}", maidUUID, source);
         }
     }
     
@@ -598,7 +588,6 @@ public class MaidUtils {
             maidBindingSources.remove(uuid);
         }
         if (!toRemove.isEmpty()) {
-            MaidRestaurantBusiness.LOGGER.info("清理了 {} 个失效的女仆绑定", toRemove.size());
         }
     }
     
@@ -616,7 +605,6 @@ public class MaidUtils {
                 )));
             }
             
-            MaidRestaurantBusiness.LOGGER.info("绑定维护: 找到 {} 个女仆", allMaids.size());
             
             for (EntityMaid maid : allMaids) {
                 if (maid == null || !maid.isAlive()) continue;
@@ -681,8 +669,6 @@ public class MaidUtils {
                     MaidRestaurantBusiness.LOGGER.error("检查女仆 {} 饰品栏时异常: {}", maidName, t.toString());
                 }
                 
-                MaidRestaurantBusiness.LOGGER.info("绑定维护: 女仆 {} ({}), 饰品栏槽位={}, 健康证数量={}, 找到打单机={}", 
-                    maidName, maidUUID, totalSlots, healthCertCount, foundMachine);
                 
                 if (foundMachine != null) {
                     // 女仆饰品栏中有健康证，建立绑定
@@ -779,8 +765,6 @@ public class MaidUtils {
                 } else {
                     // 女仆确实有任务在执行，输出调试信息
                     if (maid.tickCount % 200 == 0) {
-                        MaidRestaurantBusiness.LOGGER.info("女仆忙碌状态调试: 女仆 {} 任务类型={} 有TaskTracker={} 导航中={}", 
-                            maid.getName().getString(), activeTaskType, hasTaskTracker, isNavigating);
                     }
                 }
             }
@@ -912,10 +896,7 @@ public class MaidUtils {
         }
         
         if (nearest == null) {
-            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundWaiterMaid: 打单机={}, 绑定总数={}, UUID找到={}, 范围内={}, 侍者职业={}, 空闲={}, 结果=null", 
-                machinePos, boundCount, foundByUuid, inRange, isWaiter, isFree);
         } else {
-            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundWaiterMaid: 找到女仆={}, 距离={}", nearest.getName().getString(), Math.sqrt(minDist));
         }
         
         return nearest;
@@ -995,10 +976,7 @@ public class MaidUtils {
         }
         
         if (nearest == null) {
-            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundCookMaid: 打单机={}, 绑定总数={}, UUID找到={}, 范围内={}, 厨师职业={}, 空闲={}, 结果=null", 
-                machinePos, boundCount, foundByUuid, inRange, isCook, isFree);
         } else {
-            MaidRestaurantBusiness.LOGGER.info("[绑定调试] findBoundCookMaid: 找到女仆={}, 距离={}", nearest.getName().getString(), Math.sqrt(minDist));
         }
         
         return nearest;

@@ -22,7 +22,6 @@ public class OtcCompat {
         try {
             modItemsClass = Class.forName("cn.breezeth.ordertocook.registry.ModItems");
             initialized = true;
-            LOGGER.info("OtcCompat: 找到 ModItems 类，兼容模式已启用");
         } catch (ClassNotFoundException e) {
             LOGGER.error("OtcCompat: 未找到 ModItems 类，ordertocook 可能未安装");
         }

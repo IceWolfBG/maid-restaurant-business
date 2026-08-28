@@ -28,8 +28,6 @@ public class OrderMachineBlockEntityMixin {
             BlockPos pos = be.getBlockPos();
             
             if (level != null && !level.isClientSide) {
-                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.info(
-                    "[订单刷新] 检测到打单机订单刷新 pos={}", pos);
                 // 通知OrderBridge订单已刷新，记录刷新时间
                 OrderBridge.onOrderMachineRefreshed(level, pos);
             }

@@ -75,8 +75,6 @@ public class DeliveryBridge {
             for (EntityMaid maid : allMaids) {
                 if (isWaiterMaid(maid)) waiterCount++;
             }
-            MaidRestaurantBusiness.LOGGER.info("送餐调试: 总女仆数={}, 侍者女仆数={}, 已激活打单机数={}, counterToMachine数={}", 
-                allMaids.size(), waiterCount, manager.getActivatedMachines().size(), manager.getCounterToMachine().size());
         }
 
         // 1. 处理正在送餐的女仆
@@ -115,7 +113,6 @@ public class DeliveryBridge {
     }
 
     private static void assignDeliveryTask(ServerLevel level, EntityMaid maid, BusinessManager manager) {
-        MaidRestaurantBusiness.LOGGER.info("[气泡调试] assignDeliveryTask 被调用 maid={}", maid.getName().getString());
         // 任务互斥：如果女仆正在执行其他任务（打包/洗碗），不分配送餐任务
         if (MaidUtils.isOccupied(maid)) {
             // 幽灵忙碌检测：如果女仆被标记为忙碌但没有实际任务标记，立即清理
@@ -128,16 +125,13 @@ public class DeliveryBridge {
                 MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 被标记为忙碌但没有实际任务，立即清理忙碌标记", maid.getName().getString());
                 MaidUtils.setOccupied(maid, false);
             } else {
-                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 被占用，跳过分配", maid.getName().getString());
                 return;
             }
         }
         BlockPos counterPos = findCounterWithPlate(level, maid, manager);
         if (counterPos == null) {
-            MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 周围16格内没有带餐盘的操作台", maid.getName().getString());
             return;
         }
-        MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 找到带餐盘的操作台 {}", maid.getName().getString(), counterPos);
 
         boolean hasActivatedMachine = false;
         for (BlockPos mp : manager.getActivatedMachines()) {
@@ -147,20 +141,16 @@ public class DeliveryBridge {
             }
         }
         if (!hasActivatedMachine) {
-            MaidRestaurantBusiness.LOGGER.info("送餐: 操作台 {} 附近没有已激活打单机", counterPos);
             return;
         }
 
         BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
-        MaidRestaurantBusiness.LOGGER.info("送餐: 操作台 {} 对应打单机 {}", counterPos, machinePos);
         if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) {
-            MaidRestaurantBusiness.LOGGER.info("送餐: 打单机 {} 等级未解锁送餐", machinePos);
             return;
         }
         
         // 排班表配置检查：如果附近有排班表且关闭了自动配送，则不分配任务
         if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) {
-            MaidRestaurantBusiness.LOGGER.info("送餐: 打单机 {} 排班表关闭了自动配送", machinePos);
             return;
         }
         
@@ -168,7 +158,6 @@ public class DeliveryBridge {
         int boundCount = machinePos != null ? MaidUtils.getWorkerCountForMachine(machinePos) : 0;
         if (boundCount > 0) {
             if (!MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) {
-                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 没有绑定到打单机 {} (已绑定{}人)，跳过", maid.getName().getString(), machinePos, boundCount);
                 return;
             }
         }
@@ -176,7 +165,6 @@ public class DeliveryBridge {
         // 打单机员工人数限制检查
         if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) {
             int maxWorkers = ProgressionManager.getMaxWorkers(level, machinePos);
-            MaidRestaurantBusiness.LOGGER.info("送餐: 打单机 {} 已达员工上限({}/{}), 跳过分配", machinePos, boundCount, maxWorkers);
             return;
         }
 
@@ -190,9 +178,7 @@ public class DeliveryBridge {
         MaidUtils.startTask(maid, machinePos, "delivery", manager.getTickCounter());
         // 显示侍者开始送餐气泡
         try {
-            MaidRestaurantBusiness.LOGGER.info("[气泡调试] 准备调用 waiterStartDelivery maid={}", maid.getName().getString());
             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterStartDelivery(maid);
-            MaidRestaurantBusiness.LOGGER.info("[气泡调试] waiterStartDelivery 调用完成 maid={}", maid.getName().getString());
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.error("[气泡调试] waiterStartDelivery 调用失败 maid={} error={}", maid.getName().getString(), e.toString(), e);
         }
@@ -202,12 +188,10 @@ public class DeliveryBridge {
         if (taskId != null) {
             // 直接分配（因为已经找到了目标）
             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DELIVERY, level);
-            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager创建任务 {} 分配给女仆 {}", taskId, maid.getName().getString());
         }
 
         // 使用车万女仆标准寻路方式
         boolean navResult = maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
-        MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 开始前往操作台 {}, 寻路结果={}", maid.getName().getString(), counterPos, navResult);
     }
 
     private static void processDeliveringMaid(ServerLevel level, EntityMaid maid, BusinessManager manager) {
@@ -220,13 +204,6 @@ public class DeliveryBridge {
 
         // 详细调试日志：每20tick输出一次女仆状态
         if (maid.tickCount % 20 == 0) {
-            MaidRestaurantBusiness.LOGGER.info("送餐状态: 女仆={}, 阶段={}, 操作台={}, 距离={}, isOccupied={}, 导航中={}", 
-                maid.getName().getString(), 
-                stage == STAGE_GO_TO_COUNTER ? "前往操作台" : "前往顾客",
-                counterPos,
-                String.format("%.2f", Math.sqrt(maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5))),
-                MaidUtils.isOccupied(maid),
-                maid.getNavigation().isInProgress());
         }
 
         // 目标消失检测：操作台是否还存在
@@ -239,7 +216,6 @@ public class DeliveryBridge {
         if (stage == STAGE_GO_TO_COUNTER) {
             double dist = maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5);
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
-                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 到达操作台 {}, 开始拿取餐盘", maid.getName().getString(), counterPos);
                 ItemStack plate = pickUpPlate(level, counterPos, maid);
                 if (!plate.isEmpty()) {
                     String orderId = "";
@@ -260,7 +236,6 @@ public class DeliveryBridge {
                     data.putInt(TAG_STAGE, STAGE_GO_TO_CUSTOMER);
                     BlockPos targetPos = findSafeDeliveryPos(level, customer.blockPosition());
                     maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 拿起餐盘, 前往顾客 {}", maid.getName().getString(), CustomerCompat.getCustomerId(customer));
                 } else {
                     maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
                 }
@@ -286,12 +261,8 @@ public class DeliveryBridge {
             double dist = maid.distanceToSqr(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5);
             // 详细调试日志：每20tick输出一次
             if (maid.tickCount % 20 == 0) {
-                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 前往顾客 {}, 顾客位置={}, 目标位置={}, 距离={}", 
-                    maid.getName().getString(), customerId, customerPos, targetPos,
-                    String.format("%.2f", Math.sqrt(dist)));
             }
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST * 2.25) {
-                MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 到达顾客 {} 附近，开始交付", maid.getName().getString(), customerId);
                 deliverToCustomer(level, maid, customer, counterPos, manager);
             } else {
                 maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
@@ -335,7 +306,6 @@ public class DeliveryBridge {
                 LivingEntity correctCustomer = findCustomerByOrderId(level, counterPos, plateOrderId);
                 if (correctCustomer != null) {
                     customer = correctCustomer;
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 找到匹配顾客 orderId={}", plateOrderId);
                 } else {
                     MaidRestaurantBusiness.LOGGER.warn("送餐: 没有匹配顾客 orderId={}", plateOrderId);
                     finishDelivery(maid, false);
@@ -351,15 +321,12 @@ public class DeliveryBridge {
             deliverPlayer = FakePlayerFactory.get((ServerLevel) level, (GameProfile) new GameProfile(UUID.randomUUID(), "MaidWaiter"));
             deliverPlayer.moveTo(maid.getX(), maid.getY(), maid.getZ(), maid.getYRot(), maid.getXRot());
         }
-        MaidRestaurantBusiness.LOGGER.info("送餐: 使用{}身份交付, player={}", isRealPlayer ? "真实玩家" : "FakePlayer", deliverPlayer.getName().getString());
 
         InteractionResult result = TakeoutBagItem.trySubmitDineInFromEntityUse((ServerLevel) level, (Player) deliverPlayer, (ItemStack) plateStack.copy(), (Entity) customer);
-        MaidRestaurantBusiness.LOGGER.info("送餐: API交付结果 result={}", result);
         if (result.consumesAction()) {
             inv.extractItem(plateSlot, 1, false);
             manager.getActiveOrders().remove(counterPos);
             manager.getCounterToMachine().remove(counterPos);
-            MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 送餐成功（API方式）", maid.getName().getString());
             // 好感度收益加成
             applyFavorabilityBonus(level, maid, plateStack, deliverPlayer);
             // 显示送餐完成气泡
@@ -373,7 +340,6 @@ public class DeliveryBridge {
             try {
                 CompoundTag nbt = plateStack.getTag();
                 if (nbt != null) {
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 餐盘NBT keys={}, OrderId={}", nbt.getAllKeys(), nbt.contains("OrderId") ? nbt.getString("OrderId") : "无");
                     // 使用更灵活的方式查找completeDelivery方法（兼容Forge和Fabric的不同参数类型）
                     Method completeDelivery = findCompleteDeliveryMethod();
                     if (completeDelivery != null) {
@@ -382,7 +348,6 @@ public class DeliveryBridge {
                         inv.extractItem(plateSlot, 1, false);
                         manager.getActiveOrders().remove(counterPos);
                         manager.getCounterToMachine().remove(counterPos);
-                        MaidRestaurantBusiness.LOGGER.info("送餐: 女仆 {} 送餐成功（反射方式）", maid.getName().getString());
                         // 好感度收益加成
                         applyFavorabilityBonus(level, maid, plateStack, deliverPlayer);
                         // 显示送餐完成气泡
@@ -439,11 +404,9 @@ public class DeliveryBridge {
             if (level.getServer() != null) {
                 ServerPlayer realPlayer = level.getServer().getPlayerList().getPlayer(ownerUuid);
                 if (realPlayer != null) {
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 获取到在线真实玩家主人 {}, UUID={}", realPlayer.getName().getString(), ownerUuid);
                     return realPlayer;
                 }
                 // 真实玩家不在线，创建使用主人UUID的FakePlayer
-                MaidRestaurantBusiness.LOGGER.info("送餐: 主人不在线，使用主人UUID创建FakePlayer, ownerUUID={}", ownerUuid);
                 GameProfile profile = new GameProfile(ownerUuid, "MaidOwner");
                 FakePlayer fakePlayer = FakePlayerFactory.get(level, profile);
                 fakePlayer.moveTo(maid.getX(), maid.getY(), maid.getZ(), maid.getYRot(), maid.getXRot());
@@ -456,16 +419,12 @@ public class DeliveryBridge {
     }
 
     private static void finishDelivery(EntityMaid maid, boolean success) {
-        MaidRestaurantBusiness.LOGGER.info("送餐: 任务结束开始 女仆={}, success={}, 当前isOccupied={}", 
-            maid.getName().getString(), success, MaidUtils.isOccupied(maid));
         
         // TaskManager：完成或失败任务
         if (success) {
             TaskManager.getInstance().completeTask(maid.getUUID());
-            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager任务已完成 女仆={}", maid.getName().getString());
         } else {
             TaskManager.getInstance().failTask(maid.getUUID(), "delivery failed");
-            MaidRestaurantBusiness.LOGGER.info("送餐: TaskManager任务已失败 女仆={}", maid.getName().getString());
         }
 
         CompoundTag data = maid.getPersistentData();
@@ -482,7 +441,6 @@ public class DeliveryBridge {
                     break;
                 }
                 if (removedPlates > 0) {
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 失败时清除女仆 {} 背包中的餐盘 {} 个", maid.getName().getString(), removedPlates);
                 }
             }
         }
@@ -491,10 +449,6 @@ public class DeliveryBridge {
         TaskSafetyUtils.resetMaidState(maid);
         
         // 验证状态是否已清除
-        MaidRestaurantBusiness.LOGGER.info("送餐: 任务结束完成 女仆={}, success={}, 重置后isOccupied={}, 有任务标记={}", 
-            maid.getName().getString(), success, MaidUtils.isOccupied(maid),
-            data.contains("BusinessDeliverCounter") || data.contains("BusinessPackCounter") || 
-            data.contains("BusinessWashCounter") || data.contains("BusinessCookCounter"));
     }
 
     /**
@@ -535,7 +489,6 @@ public class DeliveryBridge {
 
             // 给玩家金币（通过经验值或其他方式）
             // 注意：这里简化处理，实际应该调用otc的CoinUtils
-            MaidRestaurantBusiness.LOGGER.info("送餐: 手动发放收益 baseCoin={}, tipCoin={}, total={}", baseCoin, tipCoin, finalCoin);
 
             // 发送消息给玩家
             if (tipCoin > 0) {
@@ -563,19 +516,14 @@ public class DeliveryBridge {
             if (bonusPlayer == null && deliverPlayer instanceof ServerPlayer) {
                 bonusPlayer = deliverPlayer;
             }
-            MaidRestaurantBusiness.LOGGER.info("好感度加成: check, bonusPerLevel={}, bonusPlayer={}, deliverPlayer type={}", 
-                bonusPerLevel, bonusPlayer != null ? bonusPlayer.getName().getString() : "null", 
-                deliverPlayer != null ? deliverPlayer.getClass().getSimpleName() : "null");
             if (bonusPerLevel > 0 && bonusPlayer != null) {
                 // 获取女仆好感度等级（0-3）
                 int favorability = maid.getFavorability();
                 int favorLevel = favorability < 64 ? 0 : (favorability < 192 ? 1 : (favorability < 384 ? 2 : 3));
-                MaidRestaurantBusiness.LOGGER.info("好感度加成: favorability={}, level={}", favorability, favorLevel);
                 if (favorLevel > 0) {
                     // 从餐盘NBT中获取订单基础报酬
                     CompoundTag plateTag = plateStack.getTag();
                     int baseCoin = plateTag != null ? plateTag.getInt("Prestige") : 0;
-                    MaidRestaurantBusiness.LOGGER.info("好感度加成: baseCoin={}, plateTag keys={}", baseCoin, plateTag != null ? plateTag.getAllKeys() : "null");
                     if (baseCoin > 0) {
                         // 按好感度等级概率触发小费
                         // 1级: 15%, 2级: 20%, 3级及以上: 30%
@@ -588,9 +536,7 @@ public class DeliveryBridge {
                             triggerChance = 0.15;
                         }
                         double roll = level.getRandom().nextDouble();
-                        MaidRestaurantBusiness.LOGGER.info("好感度加成: triggerChance={}, roll={}", triggerChance, roll);
                         if (roll > triggerChance) {
-                            MaidRestaurantBusiness.LOGGER.info("好感度加成: not triggered (roll {} > chance {})", roll, triggerChance);
                             return;
                         }
                         // 向上取整，确保至少给1金币
@@ -598,10 +544,8 @@ public class DeliveryBridge {
                         // 最高小费不超过基础收益的300%
                         int maxBonus = baseCoin * 3;
                         if (bonusCoin > maxBonus) {
-                            MaidRestaurantBusiness.LOGGER.info("好感度加成: bonusCoin {} exceeds max 300% ({}), capped", bonusCoin, maxBonus);
                             bonusCoin = maxBonus;
                         }
-                        MaidRestaurantBusiness.LOGGER.info("好感度加成: bonusCoin={} (ceil {} * {} * {}, max={})", bonusCoin, baseCoin, favorLevel, bonusPerLevel, maxBonus);
                         if (bonusCoin > 0) {
                             // 给玩家额外金币
                             Class<?> coinUtils = Class.forName("cn.breezeth.ordertocook.util.CoinUtils");
@@ -617,7 +561,6 @@ public class DeliveryBridge {
                             };
                             String message = cuteMessages[level.getRandom().nextInt(cuteMessages.length)];
                             bonusPlayer.displayClientMessage(net.minecraft.network.chat.Component.literal(message).withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE), false);
-                            MaidRestaurantBusiness.LOGGER.info("好感度加成: SUCCESS! level={}, bonusCoin={}, baseCoin={}, player={}", favorLevel, bonusCoin, baseCoin, bonusPlayer.getName().getString());
                         }
                     }
                 }
@@ -702,7 +645,6 @@ public class DeliveryBridge {
                     plateBe.setPlateStack(ItemStack.EMPTY);
                     level.removeBlock(abovePos, false);
                     ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, false);
-                    MaidRestaurantBusiness.LOGGER.info("送餐: 女仆拿起餐盘 at {}", abovePos);
                     return plateStack;
                 }
             }

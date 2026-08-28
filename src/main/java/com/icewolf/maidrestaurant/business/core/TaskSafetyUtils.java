@@ -176,7 +176,6 @@ public class TaskSafetyUtils {
      */
     public static void abandonTask(EntityMaid maid, String reason) {
         if (maid != null) {
-            MaidRestaurantBusiness.LOGGER.info("任务安全: 放弃女仆 {} 的任务，原因: {}", maid.getName().getString(), reason);
             resetMaidState(maid);
         }
     }

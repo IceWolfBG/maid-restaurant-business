@@ -24,6 +24,5 @@ public class MaidRestaurantBusinessExtension
 implements ILittleMaid {
     public void bindMaidBauble(BaubleManager manager) {
         manager.bind((Item)ModItems.HEALTH_CERTIFICATE.get(), (IMaidBauble)new HealthCertificateBauble());
-        MaidRestaurantBusiness.LOGGER.info("\u5973\u4ec6\u9910\u5385\uff1a\u7ecf\u8425 - \u5065\u5eb7\u8bc1\u9970\u54c1\u5df2\u6ce8\u518c\u5230\u8f66\u4e07\u5973\u4ec6");
     }
 }

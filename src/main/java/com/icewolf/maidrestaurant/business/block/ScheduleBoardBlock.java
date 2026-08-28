@@ -1,6 +1,7 @@
 package com.icewolf.maidrestaurant.business.block;
 
 import com.icewolf.maidrestaurant.business.block.entity.ScheduleBoardBlockEntity;
+import com.icewolf.maidrestaurant.business.registry.ModItems;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -9,6 +10,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -128,5 +130,15 @@ public class ScheduleBoardBlock extends BaseEntityBlock {
             net.minecraftforge.network.NetworkHooks.openScreen(serverPlayer, board.getMenuProvider(), buf -> buf.writeBlockPos(pos));
         }
         return InteractionResult.SUCCESS;
+    }
+    
+    @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {
+        if (!state.is(newState.getBlock())) {
+            if (!level.isClientSide) {
+                popResource(level, pos, new ItemStack(ModItems.SCHEDULE_BOARD.get()));
+            }
+        }
+        super.onRemove(state, level, pos, newState, moved);
     }
 }
