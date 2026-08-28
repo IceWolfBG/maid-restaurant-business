@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Specification-Title: maid_restaurant_business
+Specification-Vendor: IceWolf
+Specification-Version: 1
+Implementation-Title: maid-restaurant-business
+Implementation-Version: 1.20.1-0.1.0
+Implementation-Vendor: IceWolf
+Implementation-Timestamp: 2026-08-22T23:06:20+0800
+MixinConfigs: maid_restaurant_business.mixins.json
+

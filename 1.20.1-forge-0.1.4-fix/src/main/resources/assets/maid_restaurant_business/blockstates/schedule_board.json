@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "maid_restaurant_business:block/schedule_board" },
+    "facing=south": { "model": "maid_restaurant_business:block/schedule_board", "y": 180 },
+    "facing=west": { "model": "maid_restaurant_business:block/schedule_board", "y": 270 },
+    "facing=east": { "model": "maid_restaurant_business:block/schedule_board", "y": 90 }
+  }
+}
