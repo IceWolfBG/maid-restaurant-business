@@ -1,5 +1,6 @@
 package com.icewolf.maidrestaurant.business.registry;
 
+import com.icewolf.maidrestaurant.business.menu.JiuhuStationMenu;
 import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraftforge.common.extensions.IForgeMenuType;
@@ -12,6 +13,7 @@ import net.minecraftforge.registries.RegistryObject;
 public class ModMenuTypes {
     public static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create((IForgeRegistry)ForgeRegistries.MENU_TYPES, (String)"maid_restaurant_business");
     public static final RegistryObject<MenuType<ScheduleBoardMenu>> SCHEDULE_BOARD = MENU_TYPES.register("schedule_board", () -> IForgeMenuType.create(ScheduleBoardMenu::new));
+    public static final RegistryObject<MenuType<JiuhuStationMenu>> JIUHU_STATION = MENU_TYPES.register("jiuhu_station", () -> IForgeMenuType.create(JiuhuStationMenu::new));
 
     public static void register(IEventBus eventBus) {
         MENU_TYPES.register(eventBus);

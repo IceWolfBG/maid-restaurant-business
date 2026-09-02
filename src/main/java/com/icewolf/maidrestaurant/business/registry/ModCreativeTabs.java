@@ -23,6 +23,7 @@ public class ModCreativeTabs {
                     output.accept(ModItems.HEALTH_CERTIFICATE.get());
                     output.accept(ModItems.PUBLIC_NOTICE_BOARD.get());
                     output.accept(ModItems.SCHEDULE_BOARD.get());
+                    output.accept(ModItems.JIUHU_STATION.get());
                 })
                 .build()
         );

@@ -47,8 +47,11 @@ public class DeliveryBridge {
     private static final String TAG_CUSTOMER_ID = "BusinessDeliverCustomerId";
     private static final String TAG_STAGE = "BusinessDeliverStage";
     private static final String TAG_PLATE_PICKUP_RETRY = "BusinessDeliverPlateRetry";
+    private static final String TAG_IS_TAKEOUT = "BusinessDeliverIsTakeout";
+    private static final String TAG_STATION_POS = "BusinessDeliverStationPos";
     private static final int STAGE_GO_TO_COUNTER = 0;
     private static final int STAGE_GO_TO_CUSTOMER = 1;
+    private static final int STAGE_GO_TO_STATION = 2;
     private static final float MOVEMENT_SPEED = 0.4f;
     private static final double CLOSE_ENOUGH_DIST = 2.0;
     private static final int MAX_PLATE_PICKUP_RETRY = 3;
@@ -130,7 +133,24 @@ public class DeliveryBridge {
                 return;
             }
         }
-        BlockPos counterPos = findCounterWithPlate(level, maid, manager);
+        // 优先分配外卖任务：如果附近有酒狐速递站，先查找有外卖袋的操作台
+        BlockPos counterPos = null;
+        BlockPos takeoutCounter = findCounterWithTakeoutBag(level, maid, manager);
+        if (takeoutCounter != null) {
+            // 检查附近是否有酒狐速递站
+            com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity nearbyStation = 
+                com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, takeoutCounter, 24);
+            if (nearbyStation != null) {
+                counterPos = takeoutCounter;
+            } else {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 操作台 {} 有外卖袋但附近没有速递站", takeoutCounter);
+            }
+        }
+        
+        // 如果没有外卖任务，查找有餐盘的操作台
+        if (counterPos == null) {
+            counterPos = findCounterWithPlate(level, maid, manager);
+        }
         if (counterPos == null) {
             return;
         }
@@ -218,10 +238,12 @@ public class DeliveryBridge {
         if (stage == STAGE_GO_TO_COUNTER) {
             double dist = maid.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5);
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+                // 先尝试拿取餐盘（堂食）
                 ItemStack plate = pickUpPlate(level, counterPos, maid);
                 if (!plate.isEmpty()) {
                     // 拿到餐盘，重置重试计数器
                     data.remove(TAG_PLATE_PICKUP_RETRY);
+                    data.putBoolean(TAG_IS_TAKEOUT, false);
                     String orderId = "";
                     CompoundTag plateTag = plate.getTag();
                     if (plateTag != null && plateTag.contains("OrderId")) {
@@ -241,20 +263,37 @@ public class DeliveryBridge {
                     BlockPos targetPos = findSafeDeliveryPos(level, customer.blockPosition());
                     maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
                 } else {
-                    // 没拿到餐盘（可能被玩家提前拿走），增加重试计数
-                    int retry = data.getInt(TAG_PLATE_PICKUP_RETRY) + 1;
-                    data.putInt(TAG_PLATE_PICKUP_RETRY, retry);
-                    if (retry >= MAX_PLATE_PICKUP_RETRY) {
-                        MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 连续 {} 次未拿到餐盘（可能被玩家提前拿走），放弃任务",
-                            maid.getName().getString(), retry);
-                        finishDelivery(maid, false);
-                        return;
+                    // 没有餐盘，尝试拿取外卖袋
+                    ItemStack takeoutBag = pickUpTakeoutBag(level, counterPos, maid);
+                    if (!takeoutBag.isEmpty()) {
+                        // 拿到外卖袋，查找附近的酒狐速递站
+                        data.putBoolean(TAG_IS_TAKEOUT, true);
+                        com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station = 
+                            com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, counterPos, 24);
+                        if (station != null) {
+                            data.putLong(TAG_STATION_POS, station.getBlockPos().asLong());
+                            data.putInt(TAG_STAGE, STAGE_GO_TO_STATION);
+                            BlockPos stationPos = station.getBlockPos();
+                            maid.getNavigation().moveTo(stationPos.getX() + 0.5, stationPos.getY(), stationPos.getZ() + 0.5, MOVEMENT_SPEED);
+                        } else {
+                            MaidRestaurantBusiness.LOGGER.warn("外卖配送: 附近没有酒狐速递站，放弃外卖配送");
+                            finishDelivery(maid, false);
+                            return;
+                        }
+                    } else {
+                        // 既没有餐盘也没有外卖袋，增加重试计数
+                        int retry = data.getInt(TAG_PLATE_PICKUP_RETRY) + 1;
+                        data.putInt(TAG_PLATE_PICKUP_RETRY, retry);
+                        if (retry >= MAX_PLATE_PICKUP_RETRY) {
+                            MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 连续 {} 次未拿到餐盘/外卖袋，放弃任务",
+                                maid.getName().getString(), retry);
+                            finishDelivery(maid, false);
+                            return;
+                        }
+                        maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
                     }
-                    // 重试中，继续等待（稍微移动一下避免卡住）
-                    maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
                 }
             } else {
-                // 还没到达操作台，重置重试计数器
                 if (data.contains(TAG_PLATE_PICKUP_RETRY)) {
                     data.remove(TAG_PLATE_PICKUP_RETRY);
                 }
@@ -284,6 +323,43 @@ public class DeliveryBridge {
                 deliverToCustomer(level, maid, customer, counterPos, manager);
             } else {
                 maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
+            }
+        } else if (stage == STAGE_GO_TO_STATION) {
+            // 外卖配送：前往酒狐速递站
+            if (!data.contains(TAG_STATION_POS)) {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 没有速递站位置，结束任务");
+                finishDelivery(maid, false);
+                return;
+            }
+            BlockPos stationPos = BlockPos.of(data.getLong(TAG_STATION_POS));
+            // 速递站消失检测
+            BlockEntity stationBe = level.getBlockEntity(stationPos);
+            if (!(stationBe instanceof com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station)) {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 酒狐速递站 {} 已消失，结束任务", stationPos);
+                finishDelivery(maid, false);
+                return;
+            }
+            // 检查速递站是否还有空格
+            if (!station.hasEmptySlot()) {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 酒狐速递站 {} 已满，结束任务", stationPos);
+                finishDelivery(maid, false);
+                return;
+            }
+            double dist = maid.distanceToSqr(stationPos.getX() + 0.5, stationPos.getY(), stationPos.getZ() + 0.5);
+            if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+                // 到达速递站，放入外卖袋
+                BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
+                boolean success = deliverToStation(level, maid, station, machinePos);
+                if (success) {
+                    manager.getActiveOrders().remove(counterPos);
+                    manager.getCounterToMachine().remove(counterPos);
+                    finishDelivery(maid, true);
+                } else {
+                    MaidRestaurantBusiness.LOGGER.warn("外卖配送: 放入速递站失败，结束任务");
+                    finishDelivery(maid, false);
+                }
+            } else {
+                maid.getNavigation().moveTo(stationPos.getX() + 0.5, stationPos.getY(), stationPos.getZ() + 0.5, MOVEMENT_SPEED);
             }
         }
     }
@@ -699,6 +775,247 @@ public class DeliveryBridge {
             String blockName = ForgeRegistries.BLOCKS.getKey(state.getBlock()).toString();
             return blockName.equals("ordertocook:chair") || blockName.contains("chair");
         } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ========== 外卖配送（酒狐速递站） ==========
+
+    /**
+     * 查找操作台上的外卖袋
+     */
+    private static BlockPos findCounterWithTakeoutBag(ServerLevel level, EntityMaid maid, BusinessManager manager) {
+        BlockPos maidPos = maid.blockPosition();
+        BlockPos nearest = null;
+        double nearestDist = Double.MAX_VALUE;
+
+        int chunkX = maidPos.getX() >> 4;
+        int chunkZ = maidPos.getZ() >> 4;
+        for (int cx = chunkX - 2; cx <= chunkX + 2; ++cx) {
+            for (int cz = chunkZ - 2; cz <= chunkZ + 2; ++cz) {
+                LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+                if (chunk == null) continue;
+                for (BlockPos pos : chunk.getBlockEntitiesPos()) {
+                    BlockEntity be = chunk.getBlockEntity(pos);
+                    // 只查找TakeoutBoxBlockEntity（外卖袋放在它上面，和餐盘一样）
+                    if (!(be instanceof TakeoutBoxBlockEntity)) continue;
+                    BlockPos counterPos = pos.immutable();
+                    double dist = counterPos.distSqr((Vec3i) maidPos);
+                    if (dist > 576.0) continue; // 24格范围内
+                    // 检查操作台是否有外卖袋（包括物品栏和掉落物）
+                    if (hasTakeoutBagInCounter(level, counterPos)) {
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = counterPos;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 如果没有找到，检查女仆周围的外卖袋掉落物
+        if (nearest == null) {
+            for (net.minecraft.world.entity.item.ItemEntity itemEntity : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(maidPos).inflate(16.0))) {
+                if (isTakeoutBag(itemEntity.getItem())) {
+                    BlockPos itemPos = itemEntity.blockPosition();
+                    double dist = itemPos.distSqr((Vec3i) maidPos);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = itemPos;
+                    }
+                }
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * 检查操作台是否有外卖袋
+     */
+    private static boolean hasTakeoutBagInCounter(ServerLevel level, BlockPos counterPos) {
+        try {
+            // 参考餐盘检测方式：检查操作台周围的外卖袋BlockEntity
+            for (int dy = 0; dy <= 2; ++dy) {
+                for (int dx = -2; dx <= 2; ++dx) {
+                    for (int dz = -2; dz <= 2; ++dz) {
+                        BlockPos abovePos = counterPos.offset(dx, dy, dz);
+                        BlockEntity be = level.getBlockEntity(abovePos);
+                        if (be == null) continue;
+                        String className = be.getClass().getSimpleName();
+                        // 查找外卖袋BlockEntity（类名包含Takeout或Bag）
+                        if (className.contains("Takeout") || className.contains("Bag")) {
+                            // 尝试获取外卖袋物品
+                            ItemStack bagStack = getTakeoutBagStack(be);
+                            if (!bagStack.isEmpty() && isTakeoutBag(bagStack)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            // 检查操作台周围的掉落物
+            for (net.minecraft.world.entity.item.ItemEntity itemEntity : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(counterPos).inflate(3.0))) {
+                if (isTakeoutBag(itemEntity.getItem())) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("外卖检测错误: {}", e.toString());
+        }
+        return false;
+    }
+    
+    /**
+     * 从外卖袋BlockEntity中获取物品栈（参考FoodPlateBlockEntity.getPlateStack）
+     */
+    private static ItemStack getTakeoutBagStack(BlockEntity be) {
+        try {
+            // 尝试通过方法名获取
+            for (java.lang.reflect.Method m : be.getClass().getMethods()) {
+                if (m.getName().equals("getBagStack") || m.getName().equals("getTakeoutStack") || 
+                    m.getName().equals("getItemStack") || m.getName().equals("getPlateStack")) {
+                    Object result = m.invoke(be);
+                    if (result instanceof ItemStack) {
+                        return (ItemStack) result;
+                    }
+                }
+            }
+            // 如果实现了Container接口，检查第一个格子
+            if (be instanceof net.minecraft.world.Container container) {
+                for (int i = 0; i < Math.min(container.getContainerSize(), 5); i++) {
+                    ItemStack stack = container.getItem(i);
+                    if (!stack.isEmpty() && isTakeoutBag(stack)) {
+                        return stack;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 静默失败
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * 检查物品是否是外卖袋
+     */
+    private static boolean isTakeoutBag(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        try {
+            return stack.getItem() instanceof TakeoutBagItem;
+        } catch (Throwable t) {
+            String itemName = ForgeRegistries.ITEMS.getKey(stack.getItem()).toString();
+            return itemName.contains("takeout") || itemName.contains("bag");
+        }
+    }
+
+    /**
+     * 从操作台拿取外卖袋
+     */
+    private static ItemStack pickUpTakeoutBag(ServerLevel level, BlockPos counterPos, EntityMaid maid) {
+        CombinedInvWrapper inv = maid.getAvailableInv(false);
+        if (inv == null) return ItemStack.EMPTY;
+        try {
+            // 参考pickUpPlate：遍历操作台周围的外卖袋BlockEntity
+            for (int dy = 0; dy <= 2; ++dy) {
+                for (int dx = -2; dx <= 2; ++dx) {
+                    for (int dz = -2; dz <= 2; ++dz) {
+                        BlockPos abovePos = counterPos.offset(dx, dy, dz);
+                        BlockEntity be = level.getBlockEntity(abovePos);
+                        if (be == null) continue;
+                        String className = be.getClass().getSimpleName();
+                        if (!className.contains("Takeout") && !className.contains("Bag")) continue;
+                        
+                        // 获取外卖袋物品
+                        ItemStack bagStack = getTakeoutBagStack(be);
+                        if (bagStack.isEmpty() || !isTakeoutBag(bagStack)) continue;
+                        
+                        ItemStack copy = bagStack.copy();
+                        ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, true);
+                        if (!remainder.isEmpty()) {
+                            MaidRestaurantBusiness.LOGGER.warn("外卖配送: 女仆背包已满, 无法拿起外卖袋");
+                            return ItemStack.EMPTY;
+                        }
+                        
+                        // 清空外卖袋BlockEntity并移除（参考餐盘的处理方式）
+                        clearTakeoutBag(be, abovePos, level);
+                        ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, false);
+                        return copy;
+                    }
+                }
+            }
+            // 检查周围的掉落物
+            for (net.minecraft.world.entity.item.ItemEntity itemEntity : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(counterPos).inflate(3.0))) {
+                ItemStack stack = itemEntity.getItem();
+                if (isTakeoutBag(stack)) {
+                    ItemStack copy = stack.copy();
+                    ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, true);
+                    if (remainder.isEmpty()) {
+                        itemEntity.discard();
+                        ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, false);
+                        return copy;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("外卖拿取错误: {}", e.toString());
+        }
+        return ItemStack.EMPTY;
+    }
+    
+    /**
+     * 清空外卖袋BlockEntity（参考plateBe.setPlateStack + removeBlock）
+     */
+    private static void clearTakeoutBag(BlockEntity be, BlockPos pos, ServerLevel level) {
+        try {
+            // 尝试通过方法名设置为空
+            for (java.lang.reflect.Method m : be.getClass().getMethods()) {
+                if (m.getName().equals("setBagStack") || m.getName().equals("setTakeoutStack") || 
+                    m.getName().equals("setItemStack") || m.getName().equals("setPlateStack")) {
+                    m.invoke(be, ItemStack.EMPTY);
+                    break;
+                }
+            }
+            // 移除方块（参考餐盘的处理方式）
+            level.removeBlock(pos, false);
+        } catch (Exception e) {
+            // 静默失败
+        }
+    }
+
+    /**
+     * 把外卖袋放入酒狐速递站
+     */
+    private static boolean deliverToStation(ServerLevel level, EntityMaid maid, com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station, BlockPos machinePos) {
+        try {
+            CombinedInvWrapper inv = maid.getAvailableInv(false);
+            if (inv == null) return false;
+            // 查找女仆背包中的外卖袋
+            int bagSlot = -1;
+            ItemStack bagStack = ItemStack.EMPTY;
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack s = inv.getStackInSlot(i);
+                if (!s.isEmpty() && isTakeoutBag(s)) {
+                    bagSlot = i;
+                    bagStack = s;
+                    break;
+                }
+            }
+            if (bagStack.isEmpty()) {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 女仆背包中没有外卖袋");
+                return false;
+            }
+            // 放入速递站（传入女仆主人的UUID用于收益）
+            java.util.UUID ownerUuid = maid.getOwnerUUID();
+            boolean success = station.addDeliveryBag(bagStack.copy(), machinePos, ownerUuid);
+            if (success) {
+                inv.extractItem(bagSlot, 1, false);
+                return true;
+            } else {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 酒狐速递站已满，无法放入外卖袋");
+                return false;
+            }
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("外卖配送: 放入速递站失败", e);
             return false;
         }
     }

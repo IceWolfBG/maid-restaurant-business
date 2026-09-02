@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="maid_restaurant_business"
-version="0.1.4"
+version="0.1.5"
 displayName="Maid Restaurant: Now Open"
 authors="IceWolf"
 logoFile="maid_restaurant_business.png"

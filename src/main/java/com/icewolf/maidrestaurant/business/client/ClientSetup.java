@@ -1,5 +1,6 @@
 package com.icewolf.maidrestaurant.business.client;
 
+import com.icewolf.maidrestaurant.business.client.screen.JiuhuStationScreen;
 import com.icewolf.maidrestaurant.business.client.screen.ScheduleBoardScreen;
 import com.icewolf.maidrestaurant.business.registry.ModMenuTypes;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -13,5 +14,6 @@ public class ClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         MenuScreens.register(ModMenuTypes.SCHEDULE_BOARD.get(), ScheduleBoardScreen::new);
+        MenuScreens.register(ModMenuTypes.JIUHU_STATION.get(), JiuhuStationScreen::new);
     }
 }
