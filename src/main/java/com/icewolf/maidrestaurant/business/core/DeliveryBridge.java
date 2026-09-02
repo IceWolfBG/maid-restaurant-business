@@ -46,10 +46,12 @@ public class DeliveryBridge {
     private static final String TAG_COUNTER_POS = "BusinessDeliverCounter";
     private static final String TAG_CUSTOMER_ID = "BusinessDeliverCustomerId";
     private static final String TAG_STAGE = "BusinessDeliverStage";
+    private static final String TAG_PLATE_PICKUP_RETRY = "BusinessDeliverPlateRetry";
     private static final int STAGE_GO_TO_COUNTER = 0;
     private static final int STAGE_GO_TO_CUSTOMER = 1;
     private static final float MOVEMENT_SPEED = 0.4f;
     private static final double CLOSE_ENOUGH_DIST = 2.0;
+    private static final int MAX_PLATE_PICKUP_RETRY = 3;
 
     public static void tickDelivery(ServerLevel level, BusinessManager manager) {
         if (!BusinessConfig.waiterDeliver) {
@@ -218,6 +220,8 @@ public class DeliveryBridge {
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
                 ItemStack plate = pickUpPlate(level, counterPos, maid);
                 if (!plate.isEmpty()) {
+                    // 拿到餐盘，重置重试计数器
+                    data.remove(TAG_PLATE_PICKUP_RETRY);
                     String orderId = "";
                     CompoundTag plateTag = plate.getTag();
                     if (plateTag != null && plateTag.contains("OrderId")) {
@@ -237,9 +241,23 @@ public class DeliveryBridge {
                     BlockPos targetPos = findSafeDeliveryPos(level, customer.blockPosition());
                     maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
                 } else {
+                    // 没拿到餐盘（可能被玩家提前拿走），增加重试计数
+                    int retry = data.getInt(TAG_PLATE_PICKUP_RETRY) + 1;
+                    data.putInt(TAG_PLATE_PICKUP_RETRY, retry);
+                    if (retry >= MAX_PLATE_PICKUP_RETRY) {
+                        MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 连续 {} 次未拿到餐盘（可能被玩家提前拿走），放弃任务",
+                            maid.getName().getString(), retry);
+                        finishDelivery(maid, false);
+                        return;
+                    }
+                    // 重试中，继续等待（稍微移动一下避免卡住）
                     maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
                 }
             } else {
+                // 还没到达操作台，重置重试计数器
+                if (data.contains(TAG_PLATE_PICKUP_RETRY)) {
+                    data.remove(TAG_PLATE_PICKUP_RETRY);
+                }
                 maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
             }
         } else if (stage == STAGE_GO_TO_CUSTOMER) {

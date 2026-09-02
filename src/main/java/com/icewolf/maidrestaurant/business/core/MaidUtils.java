@@ -356,7 +356,7 @@ public class MaidUtils {
             // 9. 重置女仆餐厅的任务检查速率（参考MaidCookingTask.stop），确保下一个任务能被正确检测
             try {
                 Class<?> checkRateManager = Class.forName("com.mastermarisa.maid_restaurant.utils.CheckRateManager");
-                java.lang.reflect.Method setNextCheckTick = checkRateManager.getMethod("setNextCheckTick", String.class, long.class);
+                java.lang.reflect.Method setNextCheckTick = checkRateManager.getMethod("setNextCheckTick", String.class, int.class);
                 UUID maidUUID = maid.getUUID();
                 setNextCheckTick.invoke(null, maidUUID + "ApproachCookBlock", 0);
                 setNextCheckTick.invoke(null, maidUUID + "GetFromStorage", 0);

@@ -3,11 +3,13 @@ package com.icewolf.maidrestaurant.business.core;
 import cn.breezeth.ordertocook.block.entity.FoodPlateBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.config.BusinessConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
 
 import java.util.*;
 
@@ -655,7 +657,7 @@ public class TaskManager {
             // 更新缓存
             cachedMaids = level.getEntitiesOfClass(
                 com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class,
-                new net.minecraft.world.phys.AABB(-1000, -256, -1000, 1000, 256, 1000)
+                new AABB(-1000, -256, -1000, 1000, 256, 1000)
             );
             lastMaidCacheTick = currentTick;
         }

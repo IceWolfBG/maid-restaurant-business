@@ -147,9 +147,15 @@ public class PackagingBridge {
                 case 1: {
                     // TaskManager：标记开始交互
                     TaskManager.getInstance().startInteraction(maid.getUUID());
-                    PackagingBridge.executePack(level, counterPos, manager);
-                    // TaskManager：完成任务
-                    TaskManager.getInstance().completeTask(maid.getUUID());
+                    boolean packSuccess = PackagingBridge.executePack(level, counterPos, manager);
+                    if (packSuccess) {
+                        // TaskManager：完成任务
+                        TaskManager.getInstance().completeTask(maid.getUUID());
+                    } else {
+                        // 打包失败（可能玩家提前拿走了餐盘或订单不满足），标记任务失败
+                        MaidRestaurantBusiness.LOGGER.warn("打包: 女仆 {} 在操作台 {} 打包失败，可能玩家提前操作或订单不满足", maid.getName().getString(), counterPos);
+                        TaskManager.getInstance().failTask(maid.getUUID(), "packaging execute failed");
+                    }
                     task.cleanup();
                     it.remove();
                 }
@@ -219,33 +225,40 @@ public class PackagingBridge {
         }
     }
 
-    private static void executePack(ServerLevel level, BlockPos counterPos, BusinessManager manager) {
+    private static boolean executePack(ServerLevel level, BlockPos counterPos, BusinessManager manager) {
         BlockEntity be = level.getBlockEntity(counterPos);
         if (!(be instanceof TakeoutBoxBlockEntity)) {
-            return;
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 不是 TakeoutBoxBlockEntity", counterPos);
+            return false;
         }
         IItemHandler inv = OrderBridge.getItemHandler(be);
         if (inv == null) {
-            return;
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 无法获取物品处理器", counterPos);
+            return false;
         }
         ItemStack orderStack = inv.getStackInSlot(0);
         if (orderStack.isEmpty() || !orderStack.is((Item)OtcCompat.ORDER())) {
-            return;
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 没有有效订单（可能玩家已提前处理）", counterPos);
+            return false;
         }
         CompoundTag nbt = orderStack.getTag();
         if (nbt == null) {
-            return;
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 订单没有NBT数据", counterPos);
+            return false;
         }
         // 确保订单NBT中有machineId，用于餐厅统计（解决"不知名餐厅"问题）
         ensureMachineIdInOrder(level, counterPos, nbt, manager);
         boolean isDelivery = nbt.getBoolean("Delivery");
         if (!level.getBlockState(counterPos.above()).isAir()) {
-            return;
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 上方不是空气（可能已有餐盘或被玩家放置方块）", counterPos);
+            return false;
         }
         // 使用兼容层执行打包/装盘（同时支持 Forge 和 Fabric 版本）
         boolean actual = PackagingCompat.execute(level, counterPos, isDelivery, null, false);
-        if (actual) {
+        if (!actual) {
+            MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 实际打包执行失败（可能食材不足或玩家提前操作）", counterPos);
         }
+        return actual;
     }
 
     /**

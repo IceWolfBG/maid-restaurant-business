@@ -104,8 +104,6 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
             ActivationCache.activate(serverLevel, machinePos);
             // 即时触发激活通知，不需要等待10秒检测
             notifyActivationIfChanged(serverLevel, machinePos, true);
-        } else {
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("[激活调试] bindMachine中条件不满足 autoEnabled={}, level类型={}", this.autoEnabled, this.level == null ? "null" : this.level.getClass().getName());
         }
     }
 
@@ -173,7 +171,6 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         try {
             var manager = com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.getManager();
             if (manager == null) {
-                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("[激活调试] manager为null，无法触发通知 machinePos={}, activated={}", machinePos, activated);
                 return;
             }
             boolean wasActive = manager.getActivatedMachines().contains(machinePos);
@@ -185,7 +182,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
                 manager.getActivatedMachines().remove(machinePos);
             }
         } catch (Exception e) {
-            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("[激活调试] notifyActivationIfChanged异常 machinePos={}, activated={}", machinePos, activated, e);
+            // 静默处理，避免刷屏
         }
     }
     

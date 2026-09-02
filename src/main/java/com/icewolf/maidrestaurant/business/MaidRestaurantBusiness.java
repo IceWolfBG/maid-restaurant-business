@@ -20,6 +20,7 @@
 package com.icewolf.maidrestaurant.business;
 
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
 import com.icewolf.maidrestaurant.business.network.ModMessages;
@@ -61,6 +62,8 @@ public class MaidRestaurantBusiness {
         ModSounds.register(modEventBus);
         ModMessages.register();
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)BusinessConfig.SPEC, "maid_restaurant_business-common.toml");
+        // 注册任务安全与超时保护配置（单独的配置文件）
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)TaskSafetyConfig.SPEC, "maid_restaurant_business-safety.toml");
         MinecraftForge.EVENT_BUS.register(this);
     }
 

@@ -3,11 +3,13 @@ package com.icewolf.maidrestaurant.business.core;
 import cn.breezeth.ordertocook.block.entity.FoodPlateBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.config.BusinessConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
 
 import java.util.*;
 
@@ -649,14 +651,48 @@ public class TaskManager {
     /**
      * 获取缓存的女仆列表（中心化检索，避免各个Bridge重复获取所有女仆）
      * 每10tick更新一次缓存
+     * 
+     * 优化：以激活的打单机为中心，使用BusinessConfig.searchRange范围扫描，
+     * 而不是全世界范围扫描，大幅减少实体遍历开销
      */
     public List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> getCachedMaids(ServerLevel level) {
         if (currentTick - lastMaidCacheTick >= MAID_CACHE_INTERVAL || cachedMaids.isEmpty()) {
-            // 更新缓存
-            cachedMaids = level.getEntitiesOfClass(
-                com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class,
-                new net.minecraft.world.phys.AABB(-1000, -256, -1000, 1000, 256, 1000)
-            );
+            int range = BusinessConfig.searchRange;
+            Set<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> maidSet = new HashSet<>();
+            
+            // 如果有激活的打单机，以打单机为中心扫描
+            if (businessManager != null && !businessManager.getActivatedMachines().isEmpty()) {
+                int machineCount = businessManager.getActivatedMachines().size();
+                for (BlockPos machinePos : businessManager.getActivatedMachines()) {
+                    AABB aabb = new AABB(
+                        machinePos.getX() - range, machinePos.getY() - range, machinePos.getZ() - range,
+                        machinePos.getX() + range, machinePos.getY() + range, machinePos.getZ() + range
+                    );
+                    maidSet.addAll(level.getEntitiesOfClass(
+                        com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class, aabb));
+                }
+                // 调试日志：每200tick输出一次，确认优化生效
+                if (currentTick % 200L == 0L) {
+                    MaidRestaurantBusiness.LOGGER.info("[TaskManager优化] 女仆缓存更新（打单机中心扫描）：打单机数={}, 扫描范围={}, 找到女仆数={}", 
+                        machineCount, range, maidSet.size());
+                }
+            } else {
+                // 没有激活的打单机，使用较大范围（以世界出生点为中心）作为后备
+                BlockPos spawnPos = level.getSharedSpawnPos();
+                AABB aabb = new AABB(
+                    spawnPos.getX() - range * 2, spawnPos.getY() - range, spawnPos.getZ() - range * 2,
+                    spawnPos.getX() + range * 2, spawnPos.getY() + range, spawnPos.getZ() + range * 2
+                );
+                maidSet.addAll(level.getEntitiesOfClass(
+                    com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class, aabb));
+                // 调试日志
+                if (currentTick % 200L == 0L) {
+                    MaidRestaurantBusiness.LOGGER.info("[TaskManager优化] 女仆缓存更新（无激活打单机，出生点后备扫描）：范围={}, 找到女仆数={}", 
+                        range * 2, maidSet.size());
+                }
+            }
+            
+            cachedMaids = new ArrayList<>(maidSet);
             lastMaidCacheTick = currentTick;
         }
         return cachedMaids;
