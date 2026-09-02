@@ -45,11 +45,6 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.registries.ForgeRegistries;
 
 public class MaidUtils {
-    private static Method GET_X;
-    private static Method GET_Y;
-    private static Method GET_Z;
-    private static Method NAV_GET;
-    private static Method NAV_MOVE_TO;
     private static Method GET_AVAILABLE_INV;
     private static Method GET_TASK;
     private static boolean init;
@@ -86,26 +81,6 @@ public class MaidUtils {
             return;
         }
         try {
-            GET_X = Entity.class.getDeclaredMethod("getX", new Class[0]);
-            GET_X.setAccessible(true);
-            GET_Y = Entity.class.getDeclaredMethod("getY", new Class[0]);
-            GET_Y.setAccessible(true);
-            GET_Z = Entity.class.getDeclaredMethod("getZ", new Class[0]);
-            GET_Z.setAccessible(true);
-        }
-        catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.warn("MaidUtils: position methods failed: {}", t.toString());
-        }
-        try {
-            NAV_GET = Mob.class.getDeclaredMethod("getNavigation", new Class[0]);
-            NAV_GET.setAccessible(true);
-            NAV_MOVE_TO = PathNavigation.class.getDeclaredMethod("moveTo", Double.TYPE, Double.TYPE, Double.TYPE, Double.TYPE);
-            NAV_MOVE_TO.setAccessible(true);
-        }
-        catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.warn("MaidUtils: navigation failed: {}", t.toString());
-        }
-        try {
             for (Method m : EntityMaid.class.getMethods()) {
                 if (!m.getName().equals("getAvailableInv")) continue;
                 GET_AVAILABLE_INV = m;
@@ -124,33 +99,15 @@ public class MaidUtils {
     }
 
     public static double getX(Entity e) {
-        MaidUtils.init();
-        try {
-            return (Double)GET_X.invoke(e, new Object[0]);
-        }
-        catch (Throwable t) {
-            return e.getX();
-        }
+        return e.getX();
     }
 
     public static double getY(Entity e) {
-        MaidUtils.init();
-        try {
-            return (Double)GET_Y.invoke(e, new Object[0]);
-        }
-        catch (Throwable t) {
-            return e.getY();
-        }
+        return e.getY();
     }
 
     public static double getZ(Entity e) {
-        MaidUtils.init();
-        try {
-            return (Double)GET_Z.invoke(e, new Object[0]);
-        }
-        catch (Throwable t) {
-            return e.getZ();
-        }
+        return e.getZ();
     }
 
     public static String getTaskUid(EntityMaid maid) {
