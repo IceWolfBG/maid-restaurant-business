@@ -554,13 +554,8 @@ public class MaidUtils {
      */
     public static void updateBindingsFromBaubles(ServerLevel level) {
         try {
-            List<EntityMaid> allMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                allMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, new net.minecraft.world.phys.AABB(
-                    Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-                    Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
-                )));
-            }
+            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
+            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
             
             
             for (EntityMaid maid : allMaids) {
@@ -654,13 +649,8 @@ public class MaidUtils {
         int resetCount = 0;
         try {
             // 遍历所有女仆
-            List<EntityMaid> allMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                allMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, new net.minecraft.world.phys.AABB(
-                    Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-                    Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
-                )));
-            }
+            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
+            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
             
             for (EntityMaid maid : allMaids) {
                 if (maid == null || !maid.isAlive()) continue;

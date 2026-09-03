@@ -724,9 +724,10 @@ public class DishwashingBridge {
             
             // 查找附近的侍者女仆（scanRange格范围内）
             List<EntityMaid> nearbyMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                nearbyMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, 
-                    new AABB(machinePos).inflate(scanRange)));
+            // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索），避免遍历所有维度
+            List<EntityMaid> cachedMaids = TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos);
+            for (EntityMaid maid : cachedMaids) {
+                nearbyMaids.add(maid);
             }
             
             for (EntityMaid maid : nearbyMaids) {

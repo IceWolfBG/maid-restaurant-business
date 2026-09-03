@@ -654,14 +654,57 @@ public class TaskManager {
      */
     public List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> getCachedMaids(ServerLevel level) {
         if (currentTick - lastMaidCacheTick >= MAID_CACHE_INTERVAL || cachedMaids.isEmpty()) {
-            // 更新缓存
-            cachedMaids = level.getEntitiesOfClass(
-                com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class,
-                new AABB(-1000, -256, -1000, 1000, 256, 1000)
-            );
+            // 以激活的打单机为中心搜索女仆，避免以(0,0,0)为中心导致远距离打单机的女仆被遗漏
+            Set<BlockPos> activatedMachines = ActivationCache.getActivatedMachines(level);
+            Set<UUID> maidUUIDs = new HashSet<>();
+            List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> result = new ArrayList<>();
+            int range = BusinessConfig.dishScanRange;
+            int yRange = 32;
+            
+            if (activatedMachines.isEmpty()) {
+                BlockPos spawn = level.getSharedSpawnPos();
+                result = level.getEntitiesOfClass(
+                    com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class,
+                    new AABB(spawn.getX() - 2000, spawn.getY() - 256, spawn.getZ() - 2000,
+                        spawn.getX() + 2000, spawn.getY() + 256, spawn.getZ() + 2000)
+                );
+            } else {
+                for (BlockPos machinePos : activatedMachines) {
+                    if (machinePos == null) continue;
+                    AABB aabb = new AABB(
+                        machinePos.getX() - range, machinePos.getY() - yRange, machinePos.getZ() - range,
+                        machinePos.getX() + range, machinePos.getY() + yRange, machinePos.getZ() + range
+                    );
+                    List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> maids = 
+                        level.getEntitiesOfClass(com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class, aabb);
+                    for (com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid : maids) {
+                        if (maid != null && maid.isAlive() && maidUUIDs.add(maid.getUUID())) {
+                            result.add(maid);
+                        }
+                    }
+                }
+            }
+            cachedMaids = result;
             lastMaidCacheTick = currentTick;
         }
         return cachedMaids;
+    }
+    
+    /**
+     * 获取指定打单机周围的缓存女仆列表（避免女仆跑到别的打单机去工作）
+     */
+    public List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> getCachedMaidsForMachine(ServerLevel level, BlockPos machinePos) {
+        List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> allMaids = getCachedMaids(level);
+        List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> result = new ArrayList<>();
+        int range = BusinessConfig.dishScanRange;
+        int rangeSqr = range * range;
+        for (com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid : allMaids) {
+            if (maid == null || !maid.isAlive()) continue;
+            if (maid.blockPosition().distSqr(machinePos) <= rangeSqr) {
+                result.add(maid);
+            }
+        }
+        return result;
     }
 
     /**

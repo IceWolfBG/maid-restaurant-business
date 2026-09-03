@@ -85,6 +85,14 @@ public class ActivationCache {
     /**
      * 获取某个维度已激活的打单机数量（用于调试）
      */
+    /**
+     * 获取某个维度已激活的打单机位置集合
+     */
+    public static Set<BlockPos> getActivatedMachines(ServerLevel level) {
+        Set<BlockPos> set = activatedMachines.get(level);
+        return set != null ? set : java.util.Collections.emptySet();
+    }
+    
     public static int getActivatedCount(ServerLevel level) {
         Set<BlockPos> set = activatedMachines.get(level);
         return set != null ? set.size() : 0;

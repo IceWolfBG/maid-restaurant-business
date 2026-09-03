@@ -574,8 +574,8 @@ public class CookingBridge {
         int availableCooks = 0;
         int totalCooks = 0;
         List<EntityMaid> idleCooks = new ArrayList<>();
-        if (MaidTracker.maids != null) {
-            for (EntityMaid m : MaidTracker.maids) {
+        // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索）
+            for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos)) {
                 if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                     // 只统计厨师女仆（当前任务是TaskCook）
                     // 通过类名判断，避免编译时依赖问题
@@ -595,7 +595,6 @@ public class CookingBridge {
                     }
                 }
             }
-        }
         int maxTasksThisTick = Math.max(1, availableCooks);
         int tasksPosted = 0;
 
@@ -781,13 +780,12 @@ public class CookingBridge {
         // 多厨师优化：遍历所有厨师，找到第一个背包里有成品食物的厨师
         // 而不是只检查最近的一个厨师，避免其他厨师背包有食物但不备菜的问题
         List<EntityMaid> allCooks = new ArrayList<>();
-        if (MaidTracker.maids != null) {
-            for (EntityMaid m : MaidTracker.maids) {
+        // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索）
+            for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, counterPos)) {
                 if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                     allCooks.add(m);
                 }
             }
-        }
         // 按距离排序，优先用最近的厨师
         allCooks.sort((a, b) -> Double.compare(a.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5),
                 b.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5)));
@@ -955,13 +953,12 @@ public class CookingBridge {
             // 2. 遍历所有厨师女仆，检查是否有女仆能做至少1次
             int maxCanMakeByAnyMaid = 0;
             List<EntityMaid> allCooks = new ArrayList<>();
-            if (MaidTracker.maids != null) {
-                for (EntityMaid m : MaidTracker.maids) {
+            // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索）
+            for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, counterPos)) {
                     if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
                         allCooks.add(m);
                     }
                 }
-            }
 
             for (EntityMaid maid : allCooks) {
                 maidInv = MaidUtils.getInventory(maid);
