@@ -11,15 +11,15 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
  * 排班表更新网络包
- * TODO: 需要用NeoForge 1.21的CustomPayload系统完整重构
- * 当前为简化版本，仅保留数据结构，实际网络传输功能待实现
  */
 public class ScheduleBoardUpdatePacket implements CustomPacketPayload {
     public static final Type<ScheduleBoardUpdatePacket> TYPE = new Type<>(ResourceLocation.tryParse("maid_restaurant_business:schedule_board_update"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ScheduleBoardUpdatePacket> STREAM_CODEC = StreamCodec.of(
         (buf, msg) -> {
-            buf.writeBlockPos(msg.pos);
+            // 防御性检查：pos为null时使用原点，避免NullPointerException导致玩家断开连接
+            BlockPos posToWrite = msg.pos != null ? msg.pos : BlockPos.ZERO;
+            buf.writeBlockPos(posToWrite);
             buf.writeInt(msg.type);
             buf.writeBoolean(msg.boolValue);
             buf.writeInt(msg.intValue);
@@ -70,7 +70,7 @@ public class ScheduleBoardUpdatePacket implements CustomPacketPayload {
     public int getIntValue() { return intValue; }
 
     public void handle(ServerPlayer player) {
-        if (player == null) return;
+        if (player == null || this.pos == null) return;
         BlockEntity be = player.level().getBlockEntity(this.pos);
         if (!(be instanceof ScheduleBoardBlockEntity)) return;
         ScheduleBoardBlockEntity board = (ScheduleBoardBlockEntity)be;

@@ -6,10 +6,10 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 女仆对话气泡工具类
@@ -18,9 +18,9 @@ import java.util.UUID;
 public class MaidChatBubbleHelper {
     private static final Random RANDOM = new Random();
     
-    // 记录每个女仆的气泡状态
-    private static final Map<UUID, Long> lastBubbleTime = new HashMap<>();
-    private static final Map<UUID, String> lastBubbleType = new HashMap<>();
+    // 记录每个女仆的气泡状态（使用ConcurrentHashMap确保多人模式线程安全）
+    private static final Map<UUID, Long> lastBubbleTime = new ConcurrentHashMap<>();
+    private static final Map<UUID, String> lastBubbleType = new ConcurrentHashMap<>();
     
     // ==================== 厨师女仆气泡 ====================
     

@@ -183,38 +183,38 @@ public class PackagingBridge {
         // 排班表配置检查：如果附近有排班表且关闭了自动打包，则不执行
         BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
         if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_PACKAGING)) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 排班表关闭了自动打包, counter={}, machine={}", counterPos, machinePos);
+
             return;
         }
         BlockEntity be = level.getBlockEntity(counterPos);
         if (!(be instanceof TakeoutBoxBlockEntity)) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 操作台不是TakeoutBoxBlockEntity, counter={}, be={}", counterPos, be == null ? "null" : be.getClass().getName());
+
             return;
         }
         IItemHandler inv = OrderBridge.getItemHandler(be);
         if (inv == null) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 无法获取物品处理器, counter={}", counterPos);
+
             return;
         }
         ItemStack orderStack = inv.getStackInSlot(0);
         if (orderStack.isEmpty() || !orderStack.is((Item)OtcCompat.ORDER())) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 订单不存在或不是订单物品, counter={}, isEmpty={}, isOrder={}", counterPos, orderStack.isEmpty(), orderStack.is((Item)OtcCompat.ORDER()));
+
             return;
         }
         CompoundTag nbt = com.icewolf.maidrestaurant.business.util.ItemStackUtils.getTag(orderStack);
         if (nbt == null) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 订单NBT为空, counter={}", counterPos);
+
             return;
         }
         boolean isDelivery = nbt.getBoolean("Delivery");
         // 使用兼容层执行打包/装盘（同时支持 Forge 和 Fabric 版本）
         boolean success = PackagingCompat.execute(level, counterPos, isDelivery, null, true);
         if (!success) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] PackagingCompat模拟检查失败, counter={}, isDelivery={}", counterPos, isDelivery);
+
             return;
         }
         if (!level.getBlockState(counterPos.above()).isAir()) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 操作台上方不是空气, counter={}", counterPos);
+
             return;
         }
         // 打单机员工人数限制检查
@@ -222,25 +222,25 @@ public class PackagingBridge {
             machinePos = manager.getCounterToMachine().get(counterPos);
         }
         if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 员工人数限制, counter={}, machine={}", counterPos, machinePos);
+
             return;
         }
         // 智能查找女仆：有绑定女仆时只找绑定的，否则回退到自动分配
         EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, counterPos, 24, machinePos);
         if (maid == null) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 找不到侍者女仆, counter={}, machine={}", counterPos, machinePos);
+
             return;
         }
         // 任务冲突检查：如果女仆已有任务在执行，不分配打包任务
         if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 女仆已有任务, counter={}, maid={}", counterPos, maid.getName().getString());
+
             return;
         }
         if (MaidUtils.isOccupied(maid)) {
-            MaidRestaurantBusiness.LOGGER.info("[打包调试] 女仆忙碌, counter={}, maid={}", counterPos, maid.getName().getString());
+
             return;
         }
-        MaidRestaurantBusiness.LOGGER.info("[打包调试] 分配打包任务, counter={}, maid={}", counterPos, maid.getName().getString());
+
         packTasks.put(counterPos, new PackTask(maid, machinePos, manager.getTickCounter()));
 
         // TaskManager集成：创建打包任务并分配给女仆

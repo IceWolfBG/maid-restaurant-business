@@ -13,15 +13,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 public class ScheduleBoardMenu extends AbstractContainerMenu {
-    // 用于在客户端创建Menu时传递方块位置
+    // 客户端静态变量：在客户端右键点击排班表时设置，Menu构造函数读取后清空
+    // 注意：必须在客户端设置，不能在服务端设置（服务器上客户端是独立进程，读不到服务端的静态变量）
     private static BlockPos pendingBlockPos = null;
-    
+
     public static void setPendingBlockPos(BlockPos pos) {
         pendingBlockPos = pos;
-    }
-
-    public static BlockPos getPendingBlockPos() {
-        return pendingBlockPos;
     }
 
     private final ScheduleBoardBlockEntity blockEntity;
@@ -42,40 +39,22 @@ public class ScheduleBoardMenu extends AbstractContainerMenu {
 
     // 静态工厂方法，用于MenuType（2个参数版本）
     public static ScheduleBoardMenu create(int id, Inventory inventory) {
-        System.out.println("[ScheduleBoardMenu] 静态工厂方法被调用，id=" + id + ", pendingBlockPos=" + pendingBlockPos);
         return new ScheduleBoardMenu(id, inventory);
     }
 
-    // 2个参数的构造函数（从静态变量中读取方块位置）
+    // 2个参数的构造函数（从客户端静态变量中读取方块位置，读取后清空）
     private ScheduleBoardMenu(int id, Inventory inventory) {
         super(ModMenuTypes.SCHEDULE_BOARD.get(), id);
         this.blockPos = pendingBlockPos;
-        System.out.println("[ScheduleBoardMenu] 2参数构造函数被调用，blockPos=" + this.blockPos);
+        // 读取后立即清空，避免后续打开GUI时复用旧值
+        pendingBlockPos = null;
         if (this.blockPos != null) {
             BlockEntity be = inventory.player.level().getBlockEntity(this.blockPos);
             if (be instanceof ScheduleBoardBlockEntity) {
                 this.blockEntity = (ScheduleBoardBlockEntity)be;
-                System.out.println("[ScheduleBoardMenu] 成功获取blockEntity");
             } else {
                 this.blockEntity = null;
-                System.out.println("[ScheduleBoardMenu] blockEntity不是ScheduleBoardBlockEntity类型");
             }
-        } else {
-            this.blockEntity = null;
-            System.out.println("[ScheduleBoardMenu] blockPos为null，无法获取blockEntity");
-        }
-        this.player = inventory.player;
-        this.access = ContainerLevelAccess.NULL;
-        this.isClient = true;
-    }
-
-    // 客户端构造函数
-    private ScheduleBoardMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buf) {
-        super(ModMenuTypes.SCHEDULE_BOARD.get(), id);
-        this.blockPos = buf.readBlockPos();
-        BlockEntity be = inventory.player.level().getBlockEntity(this.blockPos);
-        if (be instanceof ScheduleBoardBlockEntity) {
-            this.blockEntity = (ScheduleBoardBlockEntity)be;
         } else {
             this.blockEntity = null;
         }

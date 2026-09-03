@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "touhou_little_maid:wireless_io"
+    },
+    {
+      "item": "minecraft:chest"
+    }
+  ],
+  "result": {
+    "item": "maid_restaurant_business:jiuhu_station",
+    "count": 1
+  }
+}

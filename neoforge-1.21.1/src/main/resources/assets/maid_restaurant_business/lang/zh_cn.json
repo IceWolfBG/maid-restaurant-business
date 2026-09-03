@@ -3,6 +3,7 @@
   "item.maid_restaurant_business.health_certificate.tip": "用于绑定女仆与打单机，实现自动化经营",
   "block.maid_restaurant_business.public_notice_board": "§6公示栏",
   "block.maid_restaurant_business.schedule_board": "§6排班表",
+  "block.maid_restaurant_business.jiuhu_station": "§6酒狐速递站",
   "itemGroup.maid_restaurant_business": "女仆餐厅：Now Open",
   "tooltips.maid_restaurant_business.health_certificate.bound_machine": "已绑定打单机",
   "tooltips.maid_restaurant_business.health_certificate.no_machine": "未绑定打单机，右键打单机绑定",

@@ -1,5 +1,6 @@
 package com.icewolf.maidrestaurant.business.config;
 
+import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -46,28 +47,41 @@ public class BusinessConfig {
     }
 
     @SubscribeEvent
-    static void onLoad(ModConfigEvent event) {
+    static void onLoad(ModConfigEvent.Loading event) {
         if (event.getConfig().getSpec() == SPEC) {
-            autoAccept = (Boolean)AUTO_ACCEPT.get();
-            acceptDelivery = (Boolean)ACCEPT_DELIVERY.get();
-            autoPack = (Boolean)AUTO_PACK.get();
-            waiterDeliver = (Boolean)WAITER_DELIVER.get();
-            autoWash = (Boolean)AUTO_WASH.get();
-            priorityMode = (PriorityMode)(PRIORITY_MODE.get());
-            maxPendingOrders = (Integer)MAX_PENDING_ORDERS.get();
-            searchRange = (Integer)SEARCH_RANGE.get();
-            acceptDelay = (Integer)ACCEPT_DELAY.get();
-            levelBasedProgression = (Boolean)LEVEL_BASED_PROGRESSION.get();
-            minPlatesToWash = (Integer)MIN_PLATES_TO_WASH.get();
-            dishScanRange = (Integer)DISH_SCAN_RANGE.get();
-            favorabilityBonus = (Double)FAVORABILITY_BONUS.get();
-            bubbleCooldown = (Integer)BUBBLE_COOLDOWN.get();
+            loadConfigValues();
+            MaidRestaurantBusiness.LOGGER.info("[配置] 配置文件已加载: autoAccept={}, levelBasedProgression={}, autoPack={}", autoAccept, levelBasedProgression, autoPack);
         }
+    }
+
+    @SubscribeEvent
+    static void onReload(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == SPEC) {
+            loadConfigValues();
+            MaidRestaurantBusiness.LOGGER.info("[配置] 配置文件已重新加载: autoAccept={}, levelBasedProgression={}, autoPack={}", autoAccept, levelBasedProgression, autoPack);
+        }
+    }
+
+    private static void loadConfigValues() {
+        autoAccept = (Boolean)AUTO_ACCEPT.get();
+        acceptDelivery = (Boolean)ACCEPT_DELIVERY.get();
+        autoPack = (Boolean)AUTO_PACK.get();
+        waiterDeliver = (Boolean)WAITER_DELIVER.get();
+        autoWash = (Boolean)AUTO_WASH.get();
+        priorityMode = (PriorityMode)(PRIORITY_MODE.get());
+        maxPendingOrders = (Integer)MAX_PENDING_ORDERS.get();
+        searchRange = (Integer)SEARCH_RANGE.get();
+        acceptDelay = (Integer)ACCEPT_DELAY.get();
+        levelBasedProgression = (Boolean)LEVEL_BASED_PROGRESSION.get();
+        minPlatesToWash = (Integer)MIN_PLATES_TO_WASH.get();
+        dishScanRange = (Integer)DISH_SCAN_RANGE.get();
+        favorabilityBonus = (Double)FAVORABILITY_BONUS.get();
+        bubbleCooldown = (Integer)BUBBLE_COOLDOWN.get();
     }
 
     static {
         BUILDER.push("maid_restaurant_business");
-        AUTO_ACCEPT = BUILDER.comment("自动接单开关（打单机旁有订单菜单展示框时生效）").define("autoAccept", false);
+        AUTO_ACCEPT = BUILDER.comment("自动接单开关（需打单机已激活且达到对应等级）").define("autoAccept", true);
         ACCEPT_DELIVERY = BUILDER.comment("是否接外卖订单").define("acceptDelivery", false);
         AUTO_PACK = BUILDER.comment("自动装盘/打包开关").define("autoPack", true);
         WAITER_DELIVER = BUILDER.comment("侍者女仆自动送餐给顾客").define("waiterDeliver", true);
@@ -83,7 +97,7 @@ public class BusinessConfig {
         BUBBLE_COOLDOWN = BUILDER.comment("女仆对话气泡冷却时间（tick，20tick=1秒，默认200=10秒，0=无冷却）").defineInRange("bubbleCooldown", 200, 0, 1200);
         BUILDER.pop();
         SPEC = BUILDER.build();
-        autoAccept = false;
+        autoAccept = true;
         acceptDelivery = false;
         autoPack = true;
         waiterDeliver = true;

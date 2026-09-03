@@ -1,6 +1,8 @@
 package com.icewolf.maidrestaurant.business.client;
 
+import com.icewolf.maidrestaurant.business.client.screen.JiuhuStationScreen;
 import com.icewolf.maidrestaurant.business.client.screen.ScheduleBoardScreen;
+import com.icewolf.maidrestaurant.business.menu.JiuhuStationMenu;
 import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
 import com.icewolf.maidrestaurant.business.registry.ModMenuTypes;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -18,17 +20,20 @@ public class ClientSetup {
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static void onClientSetup(FMLClientSetupEvent event) {
         try {
-            System.out.println("[ClientSetup] 开始注册ScheduleBoardScreen");
             Method registerMethod = MenuScreens.class.getDeclaredMethod("register", MenuType.class, MenuScreens.ScreenConstructor.class);
             registerMethod.setAccessible(true);
-            MenuScreens.ScreenConstructor constructor = (menu, inv, title) -> {
-                System.out.println("[ClientSetup] ScreenConstructor被调用，menu=" + menu);
-                return new ScheduleBoardScreen((ScheduleBoardMenu) menu, inv, title);
-            };
-            registerMethod.invoke(null, ModMenuTypes.SCHEDULE_BOARD.get(), constructor);
-            System.out.println("[ClientSetup] ScheduleBoardScreen注册成功");
+
+            // 注册排班表Screen
+            MenuScreens.ScreenConstructor scheduleConstructor = (menu, inv, title) ->
+                new ScheduleBoardScreen((ScheduleBoardMenu) menu, inv, title);
+            registerMethod.invoke(null, ModMenuTypes.SCHEDULE_BOARD.get(), scheduleConstructor);
+
+            // 注册酒狐速递站Screen
+            MenuScreens.ScreenConstructor jiuhuConstructor = (menu, inv, title) ->
+                new JiuhuStationScreen((JiuhuStationMenu) menu, inv, title);
+            registerMethod.invoke(null, ModMenuTypes.JIUHU_STATION.get(), jiuhuConstructor);
+
         } catch (Exception e) {
-            System.out.println("[ClientSetup] ScheduleBoardScreen注册失败: " + e.getMessage());
             e.printStackTrace();
         }
     }

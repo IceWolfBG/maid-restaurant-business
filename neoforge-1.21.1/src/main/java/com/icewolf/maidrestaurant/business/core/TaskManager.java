@@ -42,26 +42,13 @@ public class TaskManager {
         FAILED        // 失败
     }
 
-    // PENDING任务超时时间（tick，20tick=1秒）
-    // 如果一个任务处于PENDING状态超过这个时间，说明没有女仆能领取，自动移除
-    private static final long PENDING_TIMEOUT = 600L; // 30秒
+    // PENDING任务超时时间 - 已改为从TaskSafetyConfig配置读取
 
-    // 任务超时时间（tick，20tick=1秒）
-    private static final Map<String, Long> TIMEOUT_TICKS = new HashMap<>();
-    static {
-        TIMEOUT_TICKS.put(TYPE_PACKAGING, 600L);    // 30秒
-        TIMEOUT_TICKS.put(TYPE_DELIVERY, 1200L);     // 60秒
-        TIMEOUT_TICKS.put(TYPE_COOKING, 1800L);      // 90秒（每道菜独立计时）
-        TIMEOUT_TICKS.put(TYPE_PREP, 1200L);          // 60秒
-        TIMEOUT_TICKS.put(TYPE_DISHWASHING, 1200L);   // 60秒
-        TIMEOUT_TICKS.put(TYPE_COLLECT_PLATE, 300L);    // 15秒（收盘子很快）
-    }
+    // 任务超时时间 - 已改为从TaskSafetyConfig配置读取
 
-    // 最大重试次数
-    private static final int MAX_RETRIES = 1;
+    // 最大重试次数 - 已改为从TaskSafetyConfig配置读取
 
-    // 检测频率（每10tick=0.5秒检测一次）
-    private static final long CHECK_INTERVAL = 10L;
+    // 检测频率 - 已改为从TaskSafetyConfig配置读取
 
     // 任务信息
     public static class TaskInfo {
@@ -124,9 +111,7 @@ public class TaskManager {
     // 正在被使用的厨具（位置 -> 占用信息）
     private final Map<BlockPos, DeviceOccupancyInfo> occupiedDevices = new HashMap<>();
 
-    // 厨具占用超时时间（tick，20tick=1秒）
-    // 如果一个厨具被占用超过这个时间且没有对应任务在执行，强制释放
-    private static final long DEVICE_OCCUPY_TIMEOUT = 200L; // 10秒
+    // 厨具占用超时时间 - 已改为从TaskSafetyConfig配置读取
 
     // 厨具占用信息
     public static class DeviceOccupancyInfo {
@@ -335,8 +320,8 @@ public class TaskManager {
         if (taskId != null) {
             TaskInfo task = tasks.get(taskId);
             if (task != null && task.lastHeartbeat > 0 && currentTick > 0) {
-                long timeout = TIMEOUT_TICKS.getOrDefault(task.taskType, 1200L);
-                long stuckThreshold = (long)(timeout * 1.5); // 超过超时时间1.5倍视为卡住
+                long timeout = com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.getTaskTimeout(task.taskType);
+                long stuckThreshold = (long)(timeout * com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.stuckDetectionMultiplier);
                 if (currentTick - task.lastHeartbeat > stuckThreshold) {
                     MaidRestaurantBusiness.LOGGER.warn("TaskManager: 女仆 {} 的任务 {} 卡住超过 {} tick（阈值{}），强制释放",
                         maidUUID, taskId, currentTick - task.lastHeartbeat, stuckThreshold);
@@ -420,7 +405,7 @@ public class TaskManager {
             // 检查关联的任务是否还存在
             boolean taskExists = info.taskId != null && tasks.containsKey(info.taskId);
             // 检查是否超时
-            boolean timeout = currentTick - info.occupyTime > DEVICE_OCCUPY_TIMEOUT;
+            boolean timeout = currentTick - info.occupyTime > com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.deviceOccupyTimeout;
 
             if (!taskExists || timeout) {
                 toRelease.add(entry.getKey());
@@ -507,7 +492,7 @@ public class TaskManager {
      */
     public void tick(long currentTick, ServerLevel level) {
         this.currentTick = currentTick;
-        if (currentTick - lastCheckTick < CHECK_INTERVAL) return;
+        if (currentTick - lastCheckTick < com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.checkInterval) return;
         lastCheckTick = currentTick;
 
         // 自动接单：集成到TaskManager中，每10tick检查一次，少一次监测
@@ -540,7 +525,7 @@ public class TaskManager {
 
             // PENDING任务超时检测：如果超过30秒没有女仆领取，自动移除
             if (task.status == TaskStatus.PENDING) {
-                if (currentTick - task.createTime > PENDING_TIMEOUT) {
+                if (currentTick - task.createTime > com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.pendingTaskTimeout) {
                     MaidRestaurantBusiness.LOGGER.warn("TaskManager: PENDING任务 {} 类型={} 超时（{}tick无女仆领取），自动移除",
                         task.taskId, task.taskType, currentTick - task.createTime);
                     toRemove.add(task.taskId);
@@ -550,8 +535,8 @@ public class TaskManager {
 
             // 激进卡住检测：基于任务创建时间，即使心跳一直在更新，只要超过超时时间的3倍就强制释放
             // 这是为了处理心跳正常但任务实际卡住的情况（比如女仆一直在移动但永远到不了目标）
-            long timeout = TIMEOUT_TICKS.getOrDefault(task.taskType, 1200L);
-            long hardStuckThreshold = timeout * 3;
+            long timeout = com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.getTaskTimeout(task.taskType);
+            long hardStuckThreshold = (long)(timeout * com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.stuckDetectionMultiplier);
             if (task.createTime > 0 && currentTick - task.createTime > hardStuckThreshold) {
                 MaidRestaurantBusiness.LOGGER.warn("TaskManager: 任务 {} 类型={} 激进卡住检测触发（创建后{}tick超过阈值{}），强制释放，分配女仆={}",
                     task.taskId, task.taskType, currentTick - task.createTime, hardStuckThreshold, task.assignedMaid);
@@ -577,7 +562,7 @@ public class TaskManager {
                 MaidRestaurantBusiness.LOGGER.warn("TaskManager: 任务 {} 类型={} 超时（{}tick无心跳），重试次数={}",
                     task.taskId, task.taskType, currentTick - task.lastHeartbeat, task.retryCount);
 
-                if (task.retryCount < MAX_RETRIES) {
+                if (task.retryCount < com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.maxRetries) {
                     // 重试：让原女仆重新执行
                     task.retryCount++;
                     task.status = TaskStatus.PENDING;

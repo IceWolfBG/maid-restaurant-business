@@ -1,5 +1,6 @@
 {
   "type": "minecraft:crafting_shaped",
+  "category": "misc",
   "pattern": [
     "PPP",
     "PMP",
@@ -14,7 +15,8 @@
     }
   },
   "result": {
-    "item": "maid_restaurant_business:schedule_board",
+    "id": "maid_restaurant_business:schedule_board",
     "count": 1
-  }
+  },
+  "show_notification": true
 }

@@ -1,7 +1,7 @@
 package com.icewolf.maidrestaurant.business.block;
 
-import com.icewolf.maidrestaurant.business.block.entity.ScheduleBoardBlockEntity;
-import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
+import com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity;
+import com.icewolf.maidrestaurant.business.menu.JiuhuStationMenu;
 import com.icewolf.maidrestaurant.business.registry.ModItems;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
@@ -33,18 +33,18 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-public class ScheduleBoardBlock extends BaseEntityBlock {
-    public static final com.mojang.serialization.MapCodec<ScheduleBoardBlock> CODEC = com.mojang.serialization.MapCodec.unit(ScheduleBoardBlock::new);
+public class JiuhuStationBlock extends BaseEntityBlock {
+    public static final com.mojang.serialization.MapCodec<JiuhuStationBlock> CODEC = com.mojang.serialization.MapCodec.unit(JiuhuStationBlock::new);
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
-    
-    // 外框10x7x1，内框9x6x0.5凸出，碰撞箱用外框大小
-    private static final VoxelShape NORTH = Block.box(3.0, 4.5, 15.0, 13.0, 11.5, 16.0);
-    private static final VoxelShape SOUTH = Block.box(3.0, 4.5, 0.0, 13.0, 11.5, 1.0);
-    private static final VoxelShape WEST = Block.box(15.0, 4.5, 3.0, 16.0, 11.5, 13.0);
-    private static final VoxelShape EAST = Block.box(0.0, 4.5, 3.0, 1.0, 11.5, 13.0);
 
-    public ScheduleBoardBlock() {
-        super(BlockBehaviour.Properties.of().strength(0.5f).sound(SoundType.WOOD).noOcclusion());
+    // 碰撞箱：主体z=8-16(深8)，屋檐/托架z=6-7.9，总深度10
+    private static final VoxelShape NORTH = Block.box(0.0, 0.0, 6.0, 16.0, 16.0, 16.0);
+    private static final VoxelShape SOUTH = Block.box(0.0, 0.0, 0.0, 16.0, 16.0, 10.0);
+    private static final VoxelShape WEST = Block.box(6.0, 0.0, 0.0, 16.0, 16.0, 16.0);
+    private static final VoxelShape EAST = Block.box(0.0, 0.0, 0.0, 10.0, 16.0, 16.0);
+
+    public JiuhuStationBlock() {
+        super(BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.WOOD).noOcclusion());
         this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
     }
 
@@ -84,13 +84,13 @@ public class ScheduleBoardBlock extends BaseEntityBlock {
 
     @Nullable
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new ScheduleBoardBlockEntity(pos, state);
+        return new JiuhuStationBlockEntity(pos, state);
     }
-    
+
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        return level.isClientSide ? null : (lvl, pos, st, blockEntity) -> ScheduleBoardBlockEntity.tick(lvl, pos, st, blockEntity);
+        return level.isClientSide ? null : (lvl, pos, st, blockEntity) -> JiuhuStationBlockEntity.tick(lvl, pos, st, blockEntity);
     }
 
     public RenderShape getRenderShape(BlockState state) {
@@ -98,58 +98,45 @@ public class ScheduleBoardBlock extends BaseEntityBlock {
     }
 
     @Override
+    public com.mojang.serialization.MapCodec<? extends BaseEntityBlock> codec() {
+        return CODEC;
+    }
+
+    @Override
     public InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
         if (level.isClientSide) {
-            // 【关键】在客户端设置静态变量，因为服务端和客户端是不同进程
-            // 服务端设置的静态变量客户端读不到，必须在客户端右键点击时设置
-            ScheduleBoardMenu.setPendingBlockPos(pos);
+            // 在客户端设置静态变量，服务端和客户端是不同进程
+            JiuhuStationMenu.setPendingBlockPos(pos);
             return InteractionResult.SUCCESS;
         }
         BlockEntity be = level.getBlockEntity(pos);
-        if (!(be instanceof ScheduleBoardBlockEntity)) {
+        if (!(be instanceof JiuhuStationBlockEntity)) {
             return InteractionResult.PASS;
         }
-        ScheduleBoardBlockEntity board = (ScheduleBoardBlockEntity)be;
-        // 尝试自动绑定最近的打单机
-        if (!board.hasBoundMachine()) {
-            if (board.tryBindNearestMachine(level)) {
-                player.sendSystemMessage(Component.literal("§a排班表已自动绑定最近的打单机"));
-            } else {
-                // 检查是否因为打单机已被其他排班表绑定
-                boolean hasMachineButBound = false;
-                for (BlockPos checkPos : BlockPos.betweenClosed(pos.offset(-16, -8, -16), pos.offset(16, 8, 16))) {
-                    BlockEntity checkBe = level.getBlockEntity(checkPos);
-                    if (checkBe != null && checkBe.getClass().getName().contains("OrderMachineBlockEntity")) {
-                        hasMachineButBound = true;
-                        break;
-                    }
-                }
-                if (hasMachineButBound) {
-                    player.sendSystemMessage(Component.literal("§c附近的打单机已被其他排班表绑定，一个打单机只能绑定一个排班表"));
-                } else {
-                    player.sendSystemMessage(Component.literal("§e未找到打单机，请确保打单机在16格范围内"));
-                }
-            }
-        }
-        // 打开GUI（客户端已经在上面设置了静态变量）
+        JiuhuStationBlockEntity station = (JiuhuStationBlockEntity)be;
         if (player instanceof ServerPlayer serverPlayer) {
-            serverPlayer.openMenu(board.getMenuProvider());
+            serverPlayer.openMenu(station.getMenuProvider());
         }
         return InteractionResult.SUCCESS;
     }
-    
+
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {
         if (!state.is(newState.getBlock())) {
             if (!level.isClientSide) {
-                popResource(level, pos, new ItemStack(ModItems.SCHEDULE_BOARD.get()));
+                BlockEntity be = level.getBlockEntity(pos);
+                if (be instanceof JiuhuStationBlockEntity station) {
+                    // 掉落所有外卖袋
+                    for (int i = 0; i < station.getContainerSize(); i++) {
+                        ItemStack stack = station.getItem(i);
+                        if (!stack.isEmpty()) {
+                            popResource(level, pos, stack);
+                        }
+                    }
+                }
+                popResource(level, pos, new ItemStack(ModItems.JIUHU_STATION.get()));
             }
         }
         super.onRemove(state, level, pos, newState, moved);
-    }
-
-    @Override
-    public com.mojang.serialization.MapCodec<? extends BaseEntityBlock> codec() {
-        return CODEC;
     }
 }

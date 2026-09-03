@@ -1,0 +1,8 @@
+﻿{
+  "variants": {
+    "facing=north": { "model": "maid_restaurant_business:block/jiuhu_station" },
+    "facing=south": { "model": "maid_restaurant_business:block/jiuhu_station", "y": 180 },
+    "facing=west": { "model": "maid_restaurant_business:block/jiuhu_station", "y": 270 },
+    "facing=east": { "model": "maid_restaurant_business:block/jiuhu_station", "y": 90 }
+  }
+}
