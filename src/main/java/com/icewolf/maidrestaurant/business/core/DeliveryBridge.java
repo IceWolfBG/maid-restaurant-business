@@ -28,6 +28,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
 import net.minecraft.world.entity.ai.behavior.PositionTracker;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -213,7 +214,7 @@ public class DeliveryBridge {
         }
 
         // 使用车万女仆标准寻路方式
-        boolean navResult = maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
+        maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(counterPos, (float)MOVEMENT_SPEED, 1));
     }
 
     private static void processDeliveringMaid(ServerLevel level, EntityMaid maid, BusinessManager manager) {
@@ -261,7 +262,7 @@ public class DeliveryBridge {
                     data.putString(TAG_CUSTOMER_ID, CustomerCompat.getCustomerId(customer));
                     data.putInt(TAG_STAGE, STAGE_GO_TO_CUSTOMER);
                     BlockPos targetPos = findSafeDeliveryPos(level, customer.blockPosition());
-                    maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
+                    maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(targetPos, (float)MOVEMENT_SPEED, 1));
                 } else {
                     // 没有餐盘，尝试拿取外卖袋
                     ItemStack takeoutBag = pickUpTakeoutBag(level, counterPos, maid);
@@ -274,7 +275,7 @@ public class DeliveryBridge {
                             data.putLong(TAG_STATION_POS, station.getBlockPos().asLong());
                             data.putInt(TAG_STAGE, STAGE_GO_TO_STATION);
                             BlockPos stationPos = station.getBlockPos();
-                            maid.getNavigation().moveTo(stationPos.getX() + 0.5, stationPos.getY(), stationPos.getZ() + 0.5, MOVEMENT_SPEED);
+                            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(stationPos, (float)MOVEMENT_SPEED, 1));
                         } else {
                             MaidRestaurantBusiness.LOGGER.warn("外卖配送: 附近没有酒狐速递站，放弃外卖配送");
                             finishDelivery(maid, false);
@@ -290,14 +291,14 @@ public class DeliveryBridge {
                             finishDelivery(maid, false);
                             return;
                         }
-                        maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
+                        maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(counterPos, (float)MOVEMENT_SPEED, 1));
                     }
                 }
             } else {
                 if (data.contains(TAG_PLATE_PICKUP_RETRY)) {
                     data.remove(TAG_PLATE_PICKUP_RETRY);
                 }
-                maid.getNavigation().moveTo(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5, MOVEMENT_SPEED);
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(counterPos, (float)MOVEMENT_SPEED, 1));
             }
         } else if (stage == STAGE_GO_TO_CUSTOMER) {
             String customerId = data.getString(TAG_CUSTOMER_ID);
@@ -322,7 +323,7 @@ public class DeliveryBridge {
             if (dist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST * 2.25) {
                 deliverToCustomer(level, maid, customer, counterPos, manager);
             } else {
-                maid.getNavigation().moveTo(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, MOVEMENT_SPEED);
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(targetPos, (float)MOVEMENT_SPEED, 1));
             }
         } else if (stage == STAGE_GO_TO_STATION) {
             // 外卖配送：前往酒狐速递站
@@ -359,7 +360,7 @@ public class DeliveryBridge {
                     finishDelivery(maid, false);
                 }
             } else {
-                maid.getNavigation().moveTo(stationPos.getX() + 0.5, stationPos.getY(), stationPos.getZ() + 0.5, MOVEMENT_SPEED);
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(stationPos, (float)MOVEMENT_SPEED, 1));
             }
         }
     }

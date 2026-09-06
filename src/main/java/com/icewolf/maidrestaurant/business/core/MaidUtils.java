@@ -37,6 +37,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
@@ -158,17 +159,25 @@ public class MaidUtils {
 
     public static boolean moveTo(EntityMaid maid, BlockPos target, double speed) {
         try {
-            return maid.getNavigation().moveTo((double)target.getX() + 0.5, target.getY(), (double)target.getZ() + 0.5, speed);
+            // 使用 Brain Memory 系统寻路，与女仆餐厅保持一致
+            // 到达距离为 1 格，确保女仆能精确到达目标位置
+            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(target, (float)speed, 1));
+            return true;
         }
         catch (Throwable t) {
-            return false;
+            // Brain Memory 失败时回退到原版寻路
+            try {
+                return maid.getNavigation().moveTo((double)target.getX() + 0.5, target.getY(), (double)target.getZ() + 0.5, speed);
+            } catch (Throwable t2) {
+                return false;
+            }
         }
     }
 
     public static boolean moveToSide(EntityMaid maid, BlockPos target, double speed) {
+        double sx = 0;
+        double sz = 0;
         try {
-            double sz;
-            double sx;
             double mx = maid.getX();
             double mz = maid.getZ();
             double tx = (double)target.getX() + 0.5;
@@ -182,11 +191,19 @@ public class MaidUtils {
                 sx = tx;
                 sz = dz > 0.0 ? (double)target.getZ() + 1.5 : (double)target.getZ() - 0.5;
             }
-            return maid.getNavigation().moveTo(sx, target.getY(), sz, speed);
+            // 使用 Brain Memory 系统寻路，到达距离为 1 格
+            BlockPos sidePos = new BlockPos((int)Math.floor(sx), target.getY(), (int)Math.floor(sz));
+            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(sidePos, (float)speed, 1));
+            return true;
         }
         catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("MaidUtils: moveToSide failed to {}", target, t);
-            return false;
+            // 回退到原版寻路
+            try {
+                return maid.getNavigation().moveTo(sx, target.getY(), sz, speed);
+            } catch (Throwable t2) {
+                return false;
+            }
         }
     }
 
