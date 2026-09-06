@@ -88,6 +88,8 @@ public class CookingBridge {
     // value: 已发布的总烹饪次数
     private static final Map<String, Integer> publishedThisTick = new HashMap<>();
     private static long lastPublishedTick = -1;
+    // 记录最近一次食材不足时缺少的食材名称（最多2种）
+    private static List<String> lastMissingIngredients = new ArrayList<>();
 
     public static void tickCooking(ServerLevel level, BusinessManager manager) {
         // 清空本tick已发布任务缓存（每个tick只清空一次）
@@ -575,26 +577,26 @@ public class CookingBridge {
         int totalCooks = 0;
         List<EntityMaid> idleCooks = new ArrayList<>();
         // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索）
-            for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos)) {
-                if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
-                    // 只统计厨师女仆（当前任务是TaskCook）
-                    // 通过类名判断，避免编译时依赖问题
-                    String taskClassName = m.getTask() != null ? m.getTask().getClass().getSimpleName() : "";
-                    boolean isCook = "TaskCook".equals(taskClassName);
-                    if (!isCook) {
-                        MaidRestaurantBusiness.LOGGER.debug("烹饪processCounter: 女仆{} 不是厨师(任务={})，跳过", m.getName().getString(), taskClassName);
-                        continue;
-                    }
-                    totalCooks++;
-                    // 检查厨师是否有烹饪任务
-                    CookRequestHandler handler = CookRequestHandler.getOrCreate(m);
-                    int taskCount = handler != null ? handler.size() : -1;
-                    if (handler == null || handler.size() == 0) {
-                        availableCooks++;
-                        idleCooks.add(m);
-                    }
+        for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos)) {
+            if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
+                // 只统计厨师女仆（当前任务是TaskCook）
+                // 通过类名判断，避免编译时依赖问题
+                String taskClassName = m.getTask() != null ? m.getTask().getClass().getSimpleName() : "";
+                boolean isCook = "TaskCook".equals(taskClassName);
+                if (!isCook) {
+                    continue;
+                }
+                totalCooks++;
+                // 检查厨师是否有烹饪任务
+                CookRequestHandler handler = CookRequestHandler.getOrCreate(m);
+                int taskCount = handler != null ? handler.size() : -1;
+                if (handler == null || handler.size() == 0) {
+                    availableCooks++;
+                    idleCooks.add(m);
+                } else {
                 }
             }
+        }
         int maxTasksThisTick = Math.max(1, availableCooks);
         int tasksPosted = 0;
 
@@ -619,6 +621,26 @@ public class CookingBridge {
                     canCookCount = 1;
                 }
                 if (canCookCount <= 0) {
+                    // 食材不足时显示气泡（给第一个空闲厨师）
+                    if (!idleCooks.isEmpty()) {
+                        try {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
+                            String missingMsg = "";
+                            if (!lastMissingIngredients.isEmpty()) {
+                                missingMsg = String.join("、", lastMissingIngredients);
+                            } else {
+                                missingMsg = "食材不够了";
+                            }
+                            // 多种样式随机选择，增加差异化
+                            String[] noIngredientsMessages = new String[]{
+                                "缺少" + missingMsg + "...(；′⌒`)",
+                                "需要" + missingMsg + "呢...",
+                                "这个..." + missingMsg + "不太够呀",
+                                missingMsg + "好像没有了呢...(´；ω；`)"
+                            };
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
+                        } catch (Exception e) {}
+                    }
                     continue;
                 }
                 // 最大效率化：一次任务做尽可能多的次数
@@ -716,6 +738,7 @@ public class CookingBridge {
                         finalHandler.add(request);
                         // 显示厨师开始烹饪气泡
                         try {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(targetMaid);
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefStartCooking(targetMaid);
                         } catch (Exception e) {}
                     } else {
@@ -770,8 +793,6 @@ public class CookingBridge {
                 postedThisItem = true;
                 tasksPosted++;
                 break;
-            }
-            if (!postedThisItem) {
             }
         }
     }
@@ -849,6 +870,8 @@ public class CookingBridge {
         try {
             IItemHandler maidInv;
             Recipe recipe = level.getRecipeManager().byKey(recipeId).orElse(null);
+            // 修复：每次调用都清空缺少食材记录，避免上一次的残留
+            lastMissingIngredients.clear();
             if (recipe == null) {
                 return 0;
             }
@@ -910,15 +933,7 @@ public class CookingBridge {
                 MaidRestaurantBusiness.LOGGER.warn("烹饪食材检测: 检测冰箱食材时出错", t);
             }
             // 第二阶段：按女仆个体计算，检查所有厨师女仆，只要有一个能做就返回至少1次
-            // 0. 先统计每个物品的总需求（遍历所有Ingredient，累加匹配物品的需求）
-            HashMap<String, Integer> itemTotalNeeded = new HashMap<String, Integer>();
-            for (Ingredient ing : ingredients) {
-                for (ItemStack match : ing.getItems()) {
-                    ResourceLocation matchId = ForgeRegistries.ITEMS.getKey(match.getItem());
-                    if (matchId == null) continue;
-                    itemTotalNeeded.merge(matchId.toString(), 1, Integer::sum);
-                }
-            }
+            // 注意：每个Ingredient只需要满足其中一个匹配物品即可，不需要所有匹配物品都有
 
             // 检查配方是否需要容器（carrier），如碗、盘子等
             boolean needsCarrier = false;
@@ -974,14 +989,19 @@ public class CookingBridge {
                 }
 
                 // 计算该女仆能做多少次（食材检查）
-                int maidCanMake = maxCount;
-                for (Map.Entry<String, Integer> entry : itemTotalNeeded.entrySet()) {
-                    String itemId = entry.getKey();
-                    int totalNeeded = entry.getValue();
-                    int have = maidAvailable.getOrDefault(itemId, 0).intValue();
-                    int canMake = have / totalNeeded;
-                    maidCanMake = Math.min(maidCanMake, canMake);
-                }
+// 正确逻辑：对于每个Ingredient，计算所有匹配物品的数量之和，然后取最小值
+int maidCanMake = maxCount;
+for (Ingredient ing : ingredients) {
+    int totalHaveForThisIngredient = 0;
+    for (ItemStack match : ing.getItems()) {
+        ResourceLocation matchId = ForgeRegistries.ITEMS.getKey(match.getItem());
+        if (matchId == null) continue;
+        totalHaveForThisIngredient += maidAvailable.getOrDefault(matchId.toString(), 0).intValue();
+    }
+    // 每个Ingredient每次烹饪需要1个，所以能做的次数 = 总数量 / 1
+    int canMakeForThisIngredient = totalHaveForThisIngredient;
+    maidCanMake = Math.min(maidCanMake, canMakeForThisIngredient);
+}
 
                 // 检查容器需求
                 if (needsCarrier && maidCanMake > 0) {
@@ -995,6 +1015,79 @@ public class CookingBridge {
                 maxCanMakeByAnyMaid = Math.max(maxCanMakeByAnyMaid, maidCanMake);
             }
 
+            // 记录缺少的普通食材（当所有女仆都做不了时）
+            // 修复：检查所有女仆的可用食材（共享容器 + 女仆背包），而不是只检查共享容器
+            if (maxCanMakeByAnyMaid == 0) {
+                lastMissingIngredients.clear();
+                // 先计算所有女仆的最大可用食材总量
+                HashMap<String, Integer> totalAvailable = new HashMap<String, Integer>(sharedAvailable);
+                for (EntityMaid maid : allCooks) {
+                    IItemHandler maidInvForCheck = MaidUtils.getInventory(maid);
+                    if (maidInvForCheck == null) continue;
+                    for (int slot = 0; slot < maidInvForCheck.getSlots(); ++slot) {
+                        ResourceLocation itemIdForCheck;
+                        ItemStack stackForCheck = maidInvForCheck.getStackInSlot(slot);
+                        if (stackForCheck.isEmpty() || (itemIdForCheck = ForgeRegistries.ITEMS.getKey(stackForCheck.getItem())) == null) continue;
+                        totalAvailable.merge(itemIdForCheck.toString(), stackForCheck.getCount(), Integer::sum);
+                    }
+                }
+                // 然后检查每个Ingredient是否缺少
+                for (Ingredient ing : ingredients) {
+                    if (lastMissingIngredients.size() >= 3) break;
+                    int totalHave = 0;
+                    for (ItemStack match : ing.getItems()) {
+                        ResourceLocation matchId = ForgeRegistries.ITEMS.getKey(match.getItem());
+                        if (matchId == null) continue;
+                        totalHave += totalAvailable.getOrDefault(matchId.toString(), 0).intValue();
+                    }
+                    if (totalHave == 0 && ing.getItems().length > 0) {
+                        String itemName = ing.getItems()[0].getHoverName().getString();
+                        // 去重：避免重复记录相同的食材
+                        if (!lastMissingIngredients.contains(itemName)) {
+                            lastMissingIngredients.add(itemName);
+                        }
+                    }
+                }
+            }
+            // 额外检查：煎锅需要油脂（无论普通食材是否足够都检查，这样能一次性发现所有缺少的食材）
+            try {
+                String taskClass = CookTasks.getTask(recipe.getType()).getClass().getSimpleName();
+                boolean isPot = taskClass.contains("Pot") && !taskClass.contains("Stockpot");
+                
+                if (isPot) {
+                    // 煎锅需要油脂（kaleidoscope_cookery:oil标签）
+                    boolean hasOil = false;
+                    for (Map.Entry<String, Integer> entry : sharedAvailable.entrySet()) {
+                        if (entry.getValue() != null && entry.getValue() > 0) {
+                            try {
+                                ResourceLocation itemRl = ResourceLocation.tryParse(entry.getKey());
+                                if (itemRl != null) {
+                                    net.minecraft.world.item.Item item = ForgeRegistries.ITEMS.getValue(itemRl);
+                                    if (item != null) {
+                                        net.minecraft.tags.TagKey<net.minecraft.world.item.Item> oilTag = net.minecraft.tags.TagKey.create(
+                                            net.minecraft.core.registries.Registries.ITEM,
+                                            new ResourceLocation("kaleidoscope_cookery", "oil")
+                                        );
+                                        if (item.getDefaultInstance().is(oilTag)) {
+                                            hasOil = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch (Exception e) {}
+                        }
+                    }
+                    if (!hasOil) {
+                        maxCanMakeByAnyMaid = 0;
+                        if (lastMissingIngredients.size() < 3 && !lastMissingIngredients.contains("油脂")) {
+                            lastMissingIngredients.add("油脂");
+                        }
+                    }
+                }
+                // 汤锅汤底检查暂时停掉
+            } catch (Exception e) {
+                // 烹饪类型检查失败，不影响原有逻辑
+            }
             return maxCanMakeByAnyMaid;
         }
         catch (Throwable t) {
@@ -1070,13 +1163,10 @@ public class CookingBridge {
         }
         // 优先返回没有被占用的厨具，如果没有则返回最近的厨具
         BlockPos result = nearestFree != null ? nearestFree : nearest;
-        if (result != null) {
-        }
         return result;
     }
 
     /**
-     * 统计指定类型的总厨具数量（用于多厨师并行控制的maxParallel计算）
      * 注意：maxParallel应该基于总厨具数量，因为每个任务会占用一个厨具
      */
     private static int countTotalCookingDevices(ServerLevel level, BlockPos pos, RecipeType<?> type) {
@@ -1100,7 +1190,6 @@ public class CookingBridge {
     }
 
     /**
-     * 统计指定类型的可用厨具数量（用于发布任务时选择可用厨具）
      * 多厨师并行优化：只统计没有被占用的厨具
      */
     private static int countAvailableCookingDevices(ServerLevel level, BlockPos pos, RecipeType<?> type) {

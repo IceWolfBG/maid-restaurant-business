@@ -1,7 +1,10 @@
 {
-    "replace":  false,
-    "values":  [
-                   "ordertocook:countertop",
-                   "ordertocook:plate_shelf"
-               ]
+  "replace": false,
+  "values": [
+    "ordertocook:countertop",
+    "ordertocook:washingtable",
+    "ordertocook:chair",
+    "ordertocook:plate_shelf",
+    "ordertocook:shelf"
+  ]
 }
