@@ -76,6 +76,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.withType(Jar).configureEach {
+    archiveFileName = "[女仆餐厅：营业中]${mod_id}-${minecraft_version}-${mod_version}.jar"
     manifest {
         attributes([
             "Specification-Title"     : mod_id,

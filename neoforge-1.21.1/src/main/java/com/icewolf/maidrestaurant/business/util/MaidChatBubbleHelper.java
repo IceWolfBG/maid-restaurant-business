@@ -275,6 +275,17 @@ public class MaidChatBubbleHelper {
     }
     
     /**
+     * 显示自定义气泡（公共方法，用于外部调用）
+     * @param maid 女仆实体
+     * @param type 气泡类型（用于去重）
+     * @param messages 可选消息列表
+     * @param duration 持续时间（tick）
+     */
+    public static void showCustomBubble(EntityMaid maid, String type, String[] messages, int duration) {
+        showBubble(maid, type, messages, duration);
+    }
+    
+    /**
      * 状态改变时调用，清除同类气泡去重标记
      * 这样女仆切换任务时可以重新显示气泡
      */
