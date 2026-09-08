@@ -427,11 +427,34 @@ public class MaidUtils {
             );
             
             if (moveDist < minMoveDistance) {
-                // 女仆卡住了，重置
-                MaidRestaurantBusiness.LOGGER.warn("女仆卡住自愈: 女仆 {} 任务类型={} 超时{}tick 仅移动{}方块，正在重置",
-                    maid.getName().getString(), info.taskType, currentTick - info.startTime, moveDist);
-                MaidUtils.resetMaidState(level, maid);
-                resetCount++;
+                // 重要：在重置前，先检查女仆是否正在烹饪
+                // 如果女仆正在烹饪（有CookRequest或坐在椅子上），不要重置她，延长检测时间
+                boolean isMaidCooking = false;
+                try {
+                    com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
+                        (com.mastermarisa.maid_restaurant.request.CookRequest)
+                        com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
+                    if (cookReq != null) {
+                        isMaidCooking = true;
+                    }
+                } catch (Throwable t) {}
+                if (maid.isPassenger()) {
+                    isMaidCooking = true;
+                }
+                
+                if (isMaidCooking) {
+                    // 女仆正在烹饪，延长检测时间（更新起始位置和时间）
+                    info.startX = currentX;
+                    info.startY = currentY;
+                    info.startZ = currentZ;
+                    info.startTime = currentTick;
+                } else {
+                    // 女仆确实卡住了，重置
+                    MaidRestaurantBusiness.LOGGER.warn("女仆卡住自愈: 女仆 {} 任务类型={} 超时{}tick 仅移动{}方块，正在重置",
+                        maid.getName().getString(), info.taskType, currentTick - info.startTime, moveDist);
+                    MaidUtils.resetMaidState(level, maid);
+                    resetCount++;
+                }
             } else {
                 // 女仆在移动，更新起始位置（延长检测）
                 info.startX = currentX;
@@ -674,9 +697,29 @@ public class MaidUtils {
                 // 检测1：如果女仆被标记为不忙碌但AI状态卡住，重置她
                 if (!isOccupied(maid)) {
                     if (isMaidBusy(maid)) {
-                        MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住，正在重置", maid.getName().getString());
-                        resetMaidState(level, maid);
-                        resetCount++;
+                        // 重要：检查女仆是否有CookRequest（女仆餐厅的烹饪任务）
+                        // 因为MaidCookingTask可能被暂时停止（targetType=1的间隙），但烹饪任务还在
+                        // 如果女仆有CookRequest，说明她正在烹饪，不应该被重置
+                        boolean hasCookRequest = false;
+                        try {
+                            com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
+                                (com.mastermarisa.maid_restaurant.request.CookRequest)
+                                com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
+                            if (cookReq != null) {
+                                hasCookRequest = true;
+                            }
+                        } catch (Throwable t) {}
+                        
+                        // 检查女仆是否是乘客（坐在椅子上烹饪）
+                        if (!hasCookRequest && maid.isPassenger()) {
+                            hasCookRequest = true;
+                        }
+                        
+                        if (!hasCookRequest) {
+                            MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住，正在重置", maid.getName().getString());
+                            resetMaidState(level, maid);
+                            resetCount++;
+                        }
                     }
                     continue;
                 }
@@ -703,6 +746,28 @@ public class MaidUtils {
                         activeTaskType = "collect";
                     }
                 } catch (Throwable t) {}
+                
+                // 重要：检查女仆是否有CookRequest（女仆餐厅的烹饪任务）
+                // 因为我们的模组发布烹饪任务时可能没有设置BusinessCookCounter标记
+                // 如果女仆有CookRequest，说明她正在烹饪，不应该被重置
+                if (!hasActiveTask) {
+                    try {
+                        com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
+                            (com.mastermarisa.maid_restaurant.request.CookRequest)
+                            com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
+                        if (cookReq != null) {
+                            hasActiveTask = true;
+                            activeTaskType = "cook_request";
+                        }
+                    } catch (Throwable t) {}
+                }
+                
+                // 检查女仆是否是乘客（坐在椅子上烹饪）
+                // 如果女仆是乘客，说明她正在烹饪，不应该被重置
+                if (!hasActiveTask && maid.isPassenger()) {
+                    hasActiveTask = true;
+                    activeTaskType = "passenger";
+                }
                 // 检查taskTracker中是否有记录
                 boolean hasTaskTracker = taskTracker.containsKey(maid.getUUID());
                 

@@ -100,6 +100,13 @@ public class CookingBridge {
         }
         CookingBridge.tickPrepTasks(level);
         CookingBridge.updateBusinessCookMaids(level);
+
+        // 性能优化：没有空闲厨师时直接返回，避免无用的食材检查和可做部分计算
+        // 备菜任务超时检测和厨师列表更新是必要的维护工作，已在上面执行
+        if (!hasIdleChef(level)) {
+            return;
+        }
+
         int counterCount = manager.getCounterToMachine().size();
         if (counterCount > 0) {
         }
@@ -116,6 +123,48 @@ public class CookingBridge {
             catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("Error processing counter at {}", counterPos, t);
             }
+        }
+    }
+
+
+    /**
+     * 检查是否有空闲的厨师女仆
+     * 性能优化：没有空闲厨师时，tickCooking直接返回，避免无用的食材检查和可做部分计算
+     * @return true表示有空闲厨师，false表示所有厨师都在忙
+     */
+    private static long lastIdleChefLogTick = 0;
+    
+    private static boolean hasIdleChef(ServerLevel level) {
+        try {
+            // 使用TaskManager的中心化检索缓存，避免重复获取所有女仆
+            List<EntityMaid> maids = TaskManager.getInstance().getCachedMaids(level);
+            if (maids == null || maids.isEmpty()) {
+                return false;
+            }
+            int totalCooks = 0;
+            int idleCooks = 0;
+            // 检查是否有空闲的厨师女仆
+            for (EntityMaid maid : maids) {
+                if (maid == null || !maid.isAlive()) continue;
+                // 必须是厨师职业
+                if (!MaidUtils.isCookMaid(maid)) continue;
+                totalCooks++;
+                // 没有正在执行的任务
+                if (!TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
+                    idleCooks++;
+                }
+            }
+            // 每200tick输出一次统计
+            long currentTick = level.getGameTime();
+            if (currentTick - lastIdleChefLogTick >= 200L) {
+                lastIdleChefLogTick = currentTick;
+                MaidRestaurantBusiness.LOGGER.info("[烹饪调试] 空闲厨师检测: 总厨师={} 空闲厨师={} 忙碌厨师={}", totalCooks, idleCooks, totalCooks - idleCooks);
+            }
+            return idleCooks > 0;
+        } catch (Throwable t) {
+            // 出错时默认返回true，避免影响正常功能
+            MaidRestaurantBusiness.LOGGER.debug("hasIdleChef check error", t);
+            return true;
         }
     }
 
@@ -552,13 +601,36 @@ public class CookingBridge {
             // 超时检查：超过1200 tick（60秒）没完成，认为女仆卡住了，取消重发
             long elapsed = level.getGameTime() - active.createdTick;
             if (elapsed > 1200) {
-                CookingBridge.cancelCookRequestsForCounter(level, counterPos);
-                // 重置卡住的女仆状态
-                EntityMaid stuckMaid = MaidUtils.findCookMaid(level, counterPos, 24);
-                if (stuckMaid != null) {
-                    MaidUtils.resetMaidState(level, stuckMaid);
+                // 重要：在取消任务前，先检查是否有女仆正在烹饪
+                // 如果有女仆正在烹饪（有CookRequest或坐在椅子上），不要重置她，延长超时时间
+                boolean hasMaidCooking = false;
+                for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos)) {
+                    if (m != null && m.isAlive() && m.distanceToSqr(counterPos.getX() + 0.5, counterPos.getY(), counterPos.getZ() + 0.5) <= 576.0) {
+                        // 检查女仆是否有CookRequest
+                        try {
+                            com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
+                                (com.mastermarisa.maid_restaurant.request.CookRequest)
+                                com.mastermarisa.maid_restaurant.utils.RequestManager.peek(m, 0);
+                            if (cookReq != null) {
+                                hasMaidCooking = true;
+                                break;
+                            }
+                        } catch (Throwable t) {}
+                        // 检查女仆是否坐在椅子上（正在烹饪）
+                        if (m.isPassenger()) {
+                            hasMaidCooking = true;
+                            break;
+                        }
+                    }
                 }
-                manager.getActiveOrders().remove(counterPos);
+                if (hasMaidCooking) {
+                    // 有女仆正在烹饪，延长超时时间（重置createdTick），避免中断正常烹饪
+                    active.createdTick = level.getGameTime();
+                } else {
+                    // 确实没有女仆在烹饪，才取消重发
+                    CookingBridge.cancelCookRequestsForCounter(level, counterPos);
+                    manager.getActiveOrders().remove(counterPos);
+                }
             } else if (!currentOrderId.equals(activeOrderId)) {
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 manager.getActiveOrders().remove(counterPos);
@@ -751,12 +823,18 @@ public class CookingBridge {
                 }
                 manager.getActiveOrders().put(counterPos, new ActiveOrder(machinePos, counterPos, match.recipeId, nbt, foods, prestige, delivery, level.getGameTime()));
 
+                MaidRestaurantBusiness.LOGGER.info("[烹饪调试] 发布烹饪任务: 食物={} 数量={} 配方产出={} 操作台={} 厨具={} 目标厨师={}", 
+                    match.recipeId, cookTimesThisTask, taskOutput, counterPos, cookPos, targetMaid != null ? targetMaid.getName().getString() : "null");
+
                 // TaskManager集成：创建烹饪任务
                 String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_COOKING, cookPos, machinePos);
                 if (taskId != null && targetMaid != null) {
                     // 手动分配任务给指定厨师
                     TaskManager.getInstance().assignTask(targetMaid.getUUID(), TaskManager.TYPE_COOKING, level);
+                    MaidRestaurantBusiness.LOGGER.info("[烹饪调试] 任务已分配给厨师: 任务={} 厨师={}({}) 厨具={}", 
+                        taskId, targetMaid.getName().getString(), targetMaid.getUUID(), cookPos);
                 } else if (taskId != null) {
+                    MaidRestaurantBusiness.LOGGER.warn("[烹饪调试] 任务创建但未分配厨师: 任务={} 厨具={}", taskId, cookPos);
                 }
 
                 // 使用TaskManager统一管理厨具占用状态（任务完成/取消时自动释放）
@@ -765,7 +843,10 @@ public class CookingBridge {
                     boolean occupied = TaskManager.getInstance().occupyDevice(cookPos, taskId, occupantUUID);
                     if (!occupied) {
                         // 占用失败，说明厨具已经被其他任务占用了，需要取消刚发布的任务
-                        MaidRestaurantBusiness.LOGGER.warn("烹饪: 厨具 {} 占用失败，取消刚发布的任务（任务={} 厨师={}）", cookPos, taskId, targetMaid != null ? targetMaid.getName().getString() : "null");
+                        boolean isDeviceOccupied = TaskManager.getInstance().isDeviceOccupied(cookPos);
+                        int occupiedCount = TaskManager.getInstance().getOccupiedDeviceCount();
+                        MaidRestaurantBusiness.LOGGER.warn("[烹饪调试] 厨具占用失败! 厨具={} 任务={} 厨师={} 厨具是否被占用={} 当前被占用厨具总数={}", 
+                            cookPos, taskId, targetMaid != null ? targetMaid.getName().getString() : "null", isDeviceOccupied, occupiedCount);
                         if (targetMaid != null) {
                             CookRequestHandler handler = CookRequestHandler.getOrCreate(targetMaid);
                             if (handler != null) {
