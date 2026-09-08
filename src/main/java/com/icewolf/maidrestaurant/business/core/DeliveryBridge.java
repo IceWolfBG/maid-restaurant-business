@@ -1010,6 +1010,10 @@ public class DeliveryBridge {
             boolean success = station.addDeliveryBag(bagStack.copy(), machinePos, ownerUuid);
             if (success) {
                 inv.extractItem(bagSlot, 1, false);
+                // 手臂摇摆动画：女仆把外卖袋放入速递站
+                try {
+                    maid.swing(net.minecraft.world.InteractionHand.OFF_HAND);
+                } catch (Throwable t) {}
                 return true;
             } else {
                 MaidRestaurantBusiness.LOGGER.warn("外卖配送: 酒狐速递站已满，无法放入外卖袋");
