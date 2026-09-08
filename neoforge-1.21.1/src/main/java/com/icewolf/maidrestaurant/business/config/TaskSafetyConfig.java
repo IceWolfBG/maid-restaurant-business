@@ -23,6 +23,9 @@ public class TaskSafetyConfig {
     public static final ModConfigSpec.IntValue TASK_TIMEOUT_DISHWASHING;
     public static final ModConfigSpec.IntValue TASK_TIMEOUT_COLLECT_PLATE;
 
+    // ========== ASSIGNED任务超时 ==========
+    public static final ModConfigSpec.IntValue ASSIGNED_TASK_TIMEOUT;
+
     // ========== PENDING任务超时 ==========
     public static final ModConfigSpec.IntValue PENDING_TASK_TIMEOUT;
 
@@ -43,6 +46,7 @@ public class TaskSafetyConfig {
     public static int taskTimeoutPrep;
     public static int taskTimeoutDishwashing;
     public static int taskTimeoutCollectPlate;
+    public static int assignedTaskTimeout;
     public static int pendingTaskTimeout;
     public static int deviceOccupyTimeout;
     public static int maxRetries;
@@ -82,6 +86,10 @@ public class TaskSafetyConfig {
         BUILDER.push("pending_and_device");
         BUILDER.comment("PENDING任务与厨具占用超时设置");
 
+        ASSIGNED_TASK_TIMEOUT = BUILDER
+                .comment("ASSIGNED任务女仆未开始交互超时时间（默认600tick = 30秒，超时后自动失败重新分配；烹饪任务如果女仆有CookRequest会自动延长）")
+                .defineInRange("assignedTaskTimeout", 600, 100, 12000);
+
         PENDING_TASK_TIMEOUT = BUILDER
                 .comment("PENDING任务无女仆领取超时时间（默认600tick = 30秒，超时后自动移除任务）")
                 .defineInRange("pendingTaskTimeout", 600, 100, 12000);
@@ -118,6 +126,7 @@ public class TaskSafetyConfig {
         taskTimeoutPrep = 1200;
         taskTimeoutDishwashing = 1200;
         taskTimeoutCollectPlate = 300;
+        assignedTaskTimeout = 600;
         pendingTaskTimeout = 600;
         deviceOccupyTimeout = 200;
         maxRetries = 1;
@@ -156,6 +165,7 @@ public class TaskSafetyConfig {
         taskTimeoutPrep = TASK_TIMEOUT_PREP.get();
         taskTimeoutDishwashing = TASK_TIMEOUT_DISHWASHING.get();
         taskTimeoutCollectPlate = TASK_TIMEOUT_COLLECT_PLATE.get();
+        assignedTaskTimeout = ASSIGNED_TASK_TIMEOUT.get();
         pendingTaskTimeout = PENDING_TASK_TIMEOUT.get();
         deviceOccupyTimeout = DEVICE_OCCUPY_TIMEOUT.get();
         maxRetries = MAX_RETRIES.get();

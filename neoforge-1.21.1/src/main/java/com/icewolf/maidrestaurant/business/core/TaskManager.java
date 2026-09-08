@@ -395,8 +395,66 @@ public class TaskManager {
     }
 
     /**
+     * 获取ASSIGNED任务超时时间（从配置文件读取）
+     */
+    private static long getAssignedTimeout() {
+        try {
+            return com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.assignedTaskTimeout;
+        } catch (Throwable t) {
+            return 600L;
+        }
+    }
+
+    /**
+     * 清理ASSIGNED状态超时的任务（女仆未开始交互，自动失败重新分配）
+     * 如果是烹饪任务且女仆有CookRequest，说明女仆正在烹饪流程中（可能在拿食材），自动延长超时时间
+     */
+    private void cleanupAssignedTimeoutTasks(ServerLevel level) {
+        List<String> toFail = new ArrayList<>();
+        for (TaskInfo task : tasks.values()) {
+            if (task.status == TaskStatus.ASSIGNED && task.assignedMaid != null) {
+                long assignedDuration = currentTick - task.assignTime;
+                if (assignedDuration > getAssignedTimeout()) {
+                    // 如果是烹饪任务，检查女仆是否有CookRequest
+                    if (task.taskType.equals(TYPE_COOKING) && level != null) {
+                        try {
+                            net.minecraft.world.entity.Entity entity = level.getEntity(task.assignedMaid);
+                            if (entity instanceof com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid) {
+                                com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid = (com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid) entity;
+                                com.mastermarisa.maid_restaurant.request.CookRequest request = (com.mastermarisa.maid_restaurant.request.CookRequest)
+                                    com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
+                                if (request != null) {
+                                    // 女仆有CookRequest，正在烹饪流程中，延长超时时间
+                                    task.assignTime = currentTick;
+                                    task.lastHeartbeat = currentTick;
+                                    MaidRestaurantBusiness.LOGGER.info("[TaskManager] 烹饪任务ASSIGNED超时但女仆有CookRequest，延长超时时间: id={} 女仆={} 已分配={}tick",
+                                        task.taskId, task.assignedMaid, assignedDuration);
+                                    continue;
+                                }
+                            }
+                        } catch (Throwable t) {
+                            MaidRestaurantBusiness.LOGGER.error("[TaskManager] 检查烹饪任务女仆CookRequest异常", t);
+                        }
+                    }
+                    toFail.add(task.taskId);
+                    MaidRestaurantBusiness.LOGGER.warn("[TaskManager] ASSIGNED任务超时: id={} 类型={} 女仆={} 分配时长={}tick（阈值{}），自动失败重新分配",
+                        task.taskId, task.taskType, task.assignedMaid, assignedDuration, getAssignedTimeout());
+                }
+            }
+        }
+        for (String taskId : toFail) {
+            TaskInfo task = tasks.get(taskId);
+            if (task != null && task.assignedMaid != null) {
+                failTask(task.assignedMaid, "ASSIGNED状态超时，女仆未开始交互");
+            }
+        }
+    }
+
+    /**
      * 验证并清理超时的厨具占用（自愈机制）
      * 在tick方法中调用
+     * 注意：如果任务是ASSIGNED状态，说明女仆还在准备食材（拿食材、接水等），不应该释放厨具
+     * 只有当任务是ASSIGNED且超过ASSIGNED超时时间的2倍时，才认为是真的卡住了
      */
     private void cleanupTimeoutDevices() {
         List<BlockPos> toRelease = new ArrayList<>();
@@ -404,13 +462,29 @@ public class TaskManager {
             DeviceOccupancyInfo info = entry.getValue();
             // 检查关联的任务是否还存在
             boolean taskExists = info.taskId != null && tasks.containsKey(info.taskId);
+            // 检查任务状态
+            TaskInfo task = taskExists ? tasks.get(info.taskId) : null;
+            boolean isExecuting = task != null && task.status == TaskStatus.IN_PROGRESS;
+            boolean isAssigned = task != null && task.status == TaskStatus.ASSIGNED;
             // 检查是否超时
             boolean timeout = currentTick - info.occupyTime > com.icewolf.maidrestaurant.business.config.TaskSafetyConfig.deviceOccupyTimeout;
 
-            if (!taskExists || timeout) {
-                toRelease.add(entry.getKey());
-                MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 占用超时或任务不存在，强制释放（任务存在={} 超时={} 占用时长={}tick）",
-                    entry.getKey(), taskExists, timeout, currentTick - info.occupyTime);
+            // 如果任务是ASSIGNED状态，说明女仆还在准备食材（拿食材、接水等），不应该释放厨具
+            // 只有当任务是ASSIGNED且超过ASSIGNED超时时间的2倍时，才认为是真的卡住了
+            if (isAssigned) {
+                long assignedDuration = currentTick - task.assignTime;
+                if (assignedDuration > getAssignedTimeout() * 2) {
+                    // ASSIGNED状态超过2倍超时时间，认为是真的卡住了，释放厨具
+                    toRelease.add(entry.getKey());
+                    MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 占用超时（ASSIGNED状态超过2倍超时），强制释放（任务存在={} 状态={} 占用时长={}tick ASSIGNED时长={}tick）",
+                        entry.getKey(), taskExists, task.status, currentTick - info.occupyTime, assignedDuration);
+                }
+            } else if (!taskExists || !isExecuting) {
+                if (timeout) {
+                    toRelease.add(entry.getKey());
+                    MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 占用超时或任务不存在，强制释放（任务存在={} 执行中={} 超时={} 占用时长={}tick）",
+                        entry.getKey(), taskExists, isExecuting, timeout, currentTick - info.occupyTime);
+                }
             }
         }
         for (BlockPos pos : toRelease) {
@@ -511,6 +585,8 @@ public class TaskManager {
             int total = tasks.size();
         }
 
+        // 清理ASSIGNED状态超时的任务（女仆未开始交互，自动失败重新分配）
+        cleanupAssignedTimeoutTasks(level);
         // 清理超时的厨具占用（自愈机制）
         cleanupTimeoutDevices();
 
