@@ -389,6 +389,10 @@ public class DishwashingBridge {
                     BlockPos rackPos = DishwashingBridge.findNearestPlateRack(level, maid);
                     if (rackPos != null) {
                         DishwashingBridge.putCleanPlatesToRack(level, maid, rackPos);
+                        // 手臂摇摆动画：女仆将干净盘子放入盘子架
+                        try {
+                            maid.swing(net.minecraft.world.InteractionHand.OFF_HAND);
+                        } catch (Throwable t) {}
                     }
                     // TaskManager：任务完成
                     TaskManager.getInstance().completeTask(maid.getUUID());

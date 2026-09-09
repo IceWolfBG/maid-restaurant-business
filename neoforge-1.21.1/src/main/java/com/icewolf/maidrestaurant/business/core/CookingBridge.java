@@ -90,6 +90,10 @@ public class CookingBridge {
     // 记录最近一次食材不足时缺少的食材名称（最多3种）
     private static List<String> lastMissingIngredients = new ArrayList<>();
 
+    // 食材不足冷却机制：key为操作台位置的long编码，value为冷却截止时间
+    private static final java.util.Map<Long, Long> insufficientIngredientsCooldown = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS = 100L; // 5秒冷却
+
     public static void tickCooking(ServerLevel level, BusinessManager manager) {
         // 清空本tick已发布任务缓存（每个tick只清空一次）
         long currentTick = level.getGameTime();
@@ -110,7 +114,20 @@ public class CookingBridge {
                 if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) {
                     continue;
                 }
-                CookingBridge.processCounter(level, counterPos, machinePos, manager);
+                // 食材不足冷却检查
+            long counterKey = counterPos.asLong();
+            Long cooldownEnd = insufficientIngredientsCooldown.get(counterKey);
+            if (cooldownEnd != null && currentTick < cooldownEnd) {
+                continue;
+            }
+            boolean postedAny = CookingBridge.processCounter(level, counterPos, machinePos, manager);
+            // 如果没有发布任何烹饪任务，设置冷却
+            if (!postedAny) {
+                insufficientIngredientsCooldown.put(counterKey, currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
+            } else {
+                // 发布了任务，清除冷却
+                insufficientIngredientsCooldown.remove(counterKey);
+            }
             }
             catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("Error processing counter at {}", counterPos, t);
@@ -429,6 +446,10 @@ public class CookingBridge {
                     BlockEntity be = level.getBlockEntity(counterPos);
                     IItemHandler iItemHandler = counterInv = be != null ? OrderBridge.getItemHandler(be) : null;
                     if (counterInv != null && (inserted = MaidUtils.transferFromMaid(maid, task.itemId, task.needed, counterInv)) > 0) {
+                        // 手臂摇摆动画：女仆把食材放入操作台
+                        try {
+                            maid.swing(net.minecraft.world.InteractionHand.OFF_HAND);
+                        } catch (Throwable t) {}
                     }
                     if (task.foods != null && counterInv != null) {
                         CookRequest request;
@@ -451,14 +472,15 @@ public class CookingBridge {
         }
     }
 
-    private static void processCounter(ServerLevel level, BlockPos counterPos, BlockPos machinePos, BusinessManager manager) {
+    private static boolean processCounter(ServerLevel level, BlockPos counterPos, BlockPos machinePos, BusinessManager manager) {
+        boolean postedAnyTask = false;
         BlockEntity be = level.getBlockEntity(counterPos);
         if (!(be instanceof TakeoutBoxBlockEntity)) {
-            return;
+            return false;
         }
         IItemHandler inv = OrderBridge.getItemHandler(be);
         if (inv == null) {
-            return;
+            return false;
         }
         // 扫描所有槽位查找订单物品
         ItemStack orderStack = ItemStack.EMPTY;
@@ -481,17 +503,17 @@ public class CookingBridge {
                 CookingBridge.cancelCookRequestsForCounter(level, counterPos);
                 manager.getActiveOrders().remove(counterPos);
             }
-            return;
+            return false;
         }
         CompoundTag nbt = com.icewolf.maidrestaurant.business.util.ItemStackUtils.getTag(orderStack);
         if (nbt == null || !nbt.contains("FoodList")) {
-            return;
+            return false;
         }
         if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) {
-            return;
+            return false;
         }
         if (!OrderBridge.isActivated(level, machinePos)) {
-            return;
+            return false;
         }
         CompoundTag foodList = nbt.getCompound("FoodList");
         int prestige = nbt.getInt("Prestige");
@@ -537,10 +559,10 @@ public class CookingBridge {
         // 残留任务问题已通过之前的清理解决，后续只在订单变更或超时时才取消
         // 如果已经有备菜任务在执行，跳过（避免任务打架）
         if (prepTasks.containsKey(counterPos)) {
-            return;
+            return false;
         }
         if (CookingBridge.tryStartPrep(level, counterPos, remaining)) {
-            return;
+            return false;
         }
         if (manager.getActiveOrders().containsKey(counterPos)) {
             ActiveOrder active = manager.getActiveOrders().get(counterPos);
@@ -565,7 +587,7 @@ public class CookingBridge {
             // 后面的 isAnyMaidCookingForItem 和 getCookingCountForItem 会避免同一种食物重复发布
         }
         if (remaining.values().stream().allMatch(c -> c <= 0)) {
-            return;
+            return false;
         }
         // 多厨师优化：统计真正空闲的厨师数量（没有烹饪任务的厨师）
         // 避免所有任务都被第一个空闲厨师领取
@@ -733,8 +755,9 @@ public class CookingBridge {
                     // 直接添加到指定厨师的handler中（参考RequestManager.tryDistributeCookRequest的实现）
                     if (finalHandler != null) {
                         finalHandler.add(request);
-                        // 显示厨师开始烹饪气泡
+                        // 显示厨师开始烹饪气泡（先清除去重标记，确保连续烹饪每次都能显示）
                         try {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(targetMaid);
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefStartCooking(targetMaid);
                         } catch (Exception e) {}
                     } else {
@@ -793,6 +816,7 @@ public class CookingBridge {
             if (!postedThisItem) {
             }
         }
+        return postedAnyTask;
     }
 
     private static boolean tryStartPrep(ServerLevel level, BlockPos counterPos, Map<String, Integer> remaining) {

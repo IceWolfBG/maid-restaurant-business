@@ -325,7 +325,7 @@ public class DeliveryBridge {
         } else if (stage == STAGE_GO_TO_STATION) {
             // 外卖配送：前往酒狐速递站
             if (!data.contains(TAG_STATION_POS)) {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] 没有速递站位置，结束任务");
+                MaidRestaurantBusiness.LOGGER.warn("没有速递站位置，结束任务");
                 finishDelivery(maid, false);
                 return;
             }
@@ -333,13 +333,13 @@ public class DeliveryBridge {
             // 速递站消失检测
             BlockEntity stationBe = level.getBlockEntity(stationPos);
             if (!(stationBe instanceof com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station)) {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] 酒狐速递站 {} 已消失，结束任务", stationPos);
+                MaidRestaurantBusiness.LOGGER.warn("酒狐速递站 {} 已消失，结束任务", stationPos);
                 finishDelivery(maid, false);
                 return;
             }
             // 检查速递站是否还有空格
             if (!station.hasEmptySlot()) {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] 酒狐速递站 {} 已满，结束任务", stationPos);
+                MaidRestaurantBusiness.LOGGER.warn("酒狐速递站 {} 已满，结束任务", stationPos);
                 finishDelivery(maid, false);
                 return;
             }
@@ -353,7 +353,7 @@ public class DeliveryBridge {
                     manager.getCounterToMachine().remove(counterPos);
                     finishDelivery(maid, true);
                 } else {
-                    MaidRestaurantBusiness.LOGGER.warn("[外卖调试] 放入速递站失败，结束任务");
+                    MaidRestaurantBusiness.LOGGER.warn("放入速递站失败，结束任务");
                     finishDelivery(maid, false);
                 }
             } else {
@@ -964,7 +964,7 @@ public class DeliveryBridge {
         try {
             CombinedInvWrapper inv = maid.getAvailableInv(false);
             if (inv == null) {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] deliverToStation: 女仆背包为空");
+                MaidRestaurantBusiness.LOGGER.warn("deliverToStation: 女仆背包为空");
                 return false;
             }
             int bagSlot = -1;
@@ -979,20 +979,24 @@ public class DeliveryBridge {
                 break;
             }
             if (bagStack.isEmpty()) {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] deliverToStation: 女仆背包中没有外卖袋");
+                MaidRestaurantBusiness.LOGGER.warn("deliverToStation: 女仆背包中没有外卖袋");
                 return false;
             }
             java.util.UUID ownerUuid = maid.getOwnerUUID();
             boolean success = station.addDeliveryBag(bagStack.copy(), machinePos, ownerUuid);
             if (success) {
                 inv.extractItem(bagSlot, 1, false);
+                // 手臂摇摆动画：女仆把外卖袋放入速递站
+                try {
+                    maid.swing(net.minecraft.world.InteractionHand.OFF_HAND);
+                } catch (Throwable t) {}
                 return true;
             } else {
-                MaidRestaurantBusiness.LOGGER.warn("[外卖调试] station.addDeliveryBag失败，速递站可能已满");
+                MaidRestaurantBusiness.LOGGER.warn("station.addDeliveryBag失败，速递站可能已满");
                 return false;
             }
         } catch (Exception e) {
-            MaidRestaurantBusiness.LOGGER.error("[外卖调试] 外卖配送放入速递站错误: {}", e.toString(), e);
+            MaidRestaurantBusiness.LOGGER.error("外卖配送放入速递站错误: {}", e.toString(), e);
             return false;
         }
     }
