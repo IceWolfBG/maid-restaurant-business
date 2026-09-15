@@ -9,7 +9,7 @@ version = mod_version
 group = mod_group_id
 
 base {
-    archivesName = "[女仆餐厅：营业中]" + mod_id
+    archivesName = mod_id // 文件名必须纯ASCII(中文/全角字符会导致securejarhandler运行时找不到class)
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -92,7 +92,7 @@ tasks.named('processResources', ProcessResources) {
 }
 
 tasks.withType(Jar).configureEach {
-    archiveFileName = "[女仆餐厅：营业中]${mod_id}-${minecraft_version}-${mod_version}.jar"
+    archiveFileName = "${mod_id}-${minecraft_version}-neoforge-${mod_version}.jar"
     manifest {
         attributes([
             "Specification-Title"     : mod_id,
