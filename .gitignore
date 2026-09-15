@@ -27,3 +27,9 @@ logs/
 # Temporary
 *.tmp
 *.bak
+
+# 本地发布 jar 归档（永久留本地 + GitHub Release，不进 git）
+releases/
+
+# 构建临时输出
+build_out.txt
