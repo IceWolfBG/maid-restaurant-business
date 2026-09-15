@@ -4,7 +4,7 @@
  * Could not load the following classes:
  *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
  *  com.google.common.collect.Lists
- *  com.mastermarisa.maid_restaurant.maid.TaskWaiter
+ *  com.mastermarisa.maid_restaurant.maid.task.TaskWaiter
  *  com.mojang.datafixers.util.Pair
  *  net.minecraft.world.entity.ai.behavior.BehaviorControl
  *  org.spongepowered.asm.mixin.Mixin
@@ -18,7 +18,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.common.collect.Lists;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.maid.MaidDeliverOrderTask;
-import com.mastermarisa.maid_restaurant.maid.TaskWaiter;
+import com.mastermarisa.maid_restaurant.maid.task.TaskWaiter;
 import com.mojang.datafixers.util.Pair;
 import java.util.ArrayList;
 import java.util.List;

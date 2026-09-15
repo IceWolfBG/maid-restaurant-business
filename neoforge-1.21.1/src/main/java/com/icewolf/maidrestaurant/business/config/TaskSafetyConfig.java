@@ -142,15 +142,14 @@ public class TaskSafetyConfig {
     }
 
     @SubscribeEvent
-    static void onLoad(ModConfigEvent event) {
-        if (event.getConfig().getSpec() == SPEC) {
-            loadValues();
-        }
+    static void onLoad(ModConfigEvent.Loading event) {
+        // 注意：Loading事件中配置还未完全加载，不能调用.get()方法
+        // 配置值加载放在Reloading事件中处理
     }
 
     @SubscribeEvent
     static void onReload(ModConfigEvent.Reloading event) {
-        if (event.getConfig().getSpec() == SPEC) {
+        if (event.getConfig().getModId().equals("maid_restaurant_business")) {
             loadValues();
         }
     }

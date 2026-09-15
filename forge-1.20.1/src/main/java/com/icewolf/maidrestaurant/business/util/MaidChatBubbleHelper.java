@@ -6,10 +6,10 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 女仆对话气泡工具类
@@ -18,9 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MaidChatBubbleHelper {
     private static final Random RANDOM = new Random();
     
-    // 记录每个女仆的气泡状态（使用ConcurrentHashMap确保多人模式线程安全）
-    private static final Map<UUID, Long> lastBubbleTime = new ConcurrentHashMap<>();
-    private static final Map<UUID, String> lastBubbleType = new ConcurrentHashMap<>();
+    // 记录每个女仆的气泡状态
+    private static final Map<UUID, Long> lastBubbleTime = new HashMap<>();
+    private static final Map<UUID, String> lastBubbleType = new HashMap<>();
     
     // ==================== 厨师女仆气泡 ====================
     
@@ -94,33 +94,37 @@ public class MaidChatBubbleHelper {
     }
     
     /**
-     * 厨师没有厨具（根本没有这种厨具）
+     * 厨师没有对应厨具
+     * @param maid 女仆实体
+     * @param deviceName 厨具名称（如"汤锅"、"炒锅"等）
      */
     public static void chefNoDeviceAtAll(EntityMaid maid, String deviceName) {
         showCustomBubble(maid, "chef_no_device_all_" + deviceName,
             new String[]{
-                "好像没有" + deviceName + "呢..",
-                "需要一个" + deviceName + "才行呢..",
+                "好像没有" + deviceName + "呢...(´；ω；`)",
+                "需要一个" + deviceName + "才行呀...",
                 "没有" + deviceName + "做不了呢...",
-                deviceName + "在哪里呢，找不到"
+                deviceName + "在哪里呢？找不到(´；ω；`)"
             },
             80);
     }
-
+    
     /**
-     * 厨师没有空闲厨具（厨具都被占用了）
+     * 厨师没有空闲厨具
+     * @param maid 女仆实体
+     * @param deviceName 厨具名称（如"汤锅"、"炒锅"等）
      */
     public static void chefNoDeviceBusy(EntityMaid maid, String deviceName) {
         showCustomBubble(maid, "chef_no_device_busy_" + deviceName,
             new String[]{
-                deviceName + "都被占用了呢...",
-                "没有空闲的" + deviceName + "了呢...",
+                deviceName + "都被占用了呢...(´；ω；`)",
+                "没有空闲的" + deviceName + "了呀...",
                 deviceName + "都在忙呢，等一下吧~",
-                "想要用" + deviceName + "...但是都在用"
+                "想要用" + deviceName + "...但是都在用(´；ω；`)"
             },
             80);
     }
-
+    
     /**
      * 厨师空闲
      */
@@ -234,51 +238,61 @@ public class MaidChatBubbleHelper {
             100);
     }
     
-    // ==================== 错误提示气泡 ====================
-    
     /**
-     * 找不到顾客
+     * 侍者找不到顾客
      */
     public static void waiterCustomerNotFound(EntityMaid maid) {
         forceShowBubble(maid, "waiter_customer_not_found",
             new String[]{
-                "咦？客人去哪里了？",
+                "哎？客人去哪里了呢",
                 "找不到客人了呢...(｡•́︿•̀｡)",
                 "客人好像走掉了",
-                "嗯？客人不在呀"
+                "哎？客人不在呢"
             },
             60);
     }
     
     /**
-     * 找不到盘子架
+     * 侍者找不到盘子架
      */
     public static void waiterPlateRackNotFound(EntityMaid maid) {
         forceShowBubble(maid, "waiter_plate_rack_not_found",
             new String[]{
                 "盘子架在哪里呢？",
-                "找不到放盘子的地方了...(；´д｀)",
-                "嗯？盘子架不见了？",
+                "找不到放盘子的地方了...(>_<)",
+                "哎？盘子架不见了？",
                 "干净盘子放哪里好呢"
             },
             60);
     }
     
     /**
-     * 速递站已满
+     * 酒狐速递站已满
      */
     public static void waiterStationFull(EntityMaid maid) {
         forceShowBubble(maid, "waiter_station_full",
             new String[]{
-                "速递站满了呀...",
+                "速递站满了呢...",
                 "酒狐速递站放不下了",
-                "嗯？速递站都满了？(｡･ω･｡)",
+                "哎？速递站都满了？(⊙o⊙)",
                 "外卖袋放不进去了呢"
             },
             60);
     }
     
     // ==================== 核心方法 ====================
+
+    /**
+     * 显示自定义气泡（公共方法，用于外部调用）
+     * @param maid 女仆实体
+     * @param type 气泡类型（用于去重）
+     * @param messages 可选消息列表
+     * @param duration 持续时间（tick）
+     */
+    public static void showCustomBubble(EntityMaid maid, String type, String[] messages, int duration) {
+        showBubble(maid, type, messages, duration);
+    }
+
     
     /**
      * 显示气泡
@@ -347,19 +361,8 @@ public class MaidChatBubbleHelper {
     }
     
     /**
-     * 显示自定义气泡（公共方法，用于外部调用）
-     * @param maid 女仆实体
-     * @param type 气泡类型（用于去重）
-     * @param messages 可选消息列表
-     * @param duration 持续时间（tick）
-     */
-    public static void showCustomBubble(EntityMaid maid, String type, String[] messages, int duration) {
-        showBubble(maid, type, messages, duration);
-    }
-    
-    
-    /**
-     * 强制显示气泡（忽略全局冷却，用于错误提示）
+     * 强制显示气泡（跳过冷却时间检查）
+     * 用于重要的错误提示，如找不到顾客、找不到盘子架等
      * @param maid 女仆实体
      * @param type 气泡类型（用于去重）
      * @param messages 可选消息列表
@@ -379,7 +382,7 @@ public class MaidChatBubbleHelper {
         long now = maid.level().getGameTime();
         String maidName = maid.getName().getString();
         
-        // 同类气泡去重（状态没变就不显示）
+        // 只检查同类气泡去重，不检查全局冷却
         String lastType = lastBubbleType.get(uuid);
         if (type.equals(lastType)) {
             return;

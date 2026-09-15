@@ -20,12 +20,12 @@
  *  net.minecraft.world.level.block.state.properties.IntegerProperty
  *  net.minecraft.world.level.block.state.properties.Property
  *  net.minecraft.world.phys.AABB
- *  net.neoforged.neoforge.common.util.FakePlayer
- *  net.neoforged.neoforge.common.util.FakePlayerFactory
- *  net.neoforged.neoforge.items.IItemHandler
- *  net.neoforged.neoforge.items.ItemHandlerHelper
- *  net.neoforged.neoforge.registries.NeoNeoNeoForgeRegistries
- *  net.neoforged.neoforge.server.ServerLifecycleHooks
+ *  net.minecraftforge.common.util.FakePlayer
+ *  net.minecraftforge.common.util.FakePlayerFactory
+ *  net.minecraftforge.items.IItemHandler
+ *  net.minecraftforge.items.ItemHandlerHelper
+ *  net.minecraftforge.registries.ForgeRegistries
+ *  net.minecraftforge.server.ServerLifecycleHooks
  */
 package com.icewolf.maidrestaurant.business.core;
 
@@ -66,11 +66,12 @@ import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.FakePlayer;
-import net.neoforged.neoforge.common.util.FakePlayerFactory;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.common.util.FakePlayerFactory;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.ItemHandlerHelper;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 public class DishwashingBridge {
     private static final int STATE_GO_TO_PLATE = 0;
@@ -116,7 +117,7 @@ public class DishwashingBridge {
         reflectionInit = true;
     }
 
-    public static boolean isDirtyStage(BlockState state) {
+    private static boolean isDirtyStage(BlockState state) {
         DishwashingBridge.initReflection();
         if (isDirtyStageMethod == null) {
             return false;
@@ -475,7 +476,7 @@ public class DishwashingBridge {
             String itemId;
             ResourceLocation rl;
             ItemStack stack = maidInv.getStackInSlot(slot);
-            if (stack.isEmpty() || (rl = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem())) == null || !(itemId = rl.toString()).equals("ordertocook:clean_plate") && !itemId.contains("clean_plate") || (toPut = Math.min(stack.getCount(), 18 - plates)) <= 0) continue;
+            if (stack.isEmpty() || (rl = ForgeRegistries.ITEMS.getKey(stack.getItem())) == null || !(itemId = rl.toString()).equals("ordertocook:clean_plate") && !itemId.contains("clean_plate") || (toPut = Math.min(stack.getCount(), 18 - plates)) <= 0) continue;
             plates += toPut;
             maidInv.extractItem(slot, toPut, false);
             putCount += toPut;
@@ -494,7 +495,7 @@ public class DishwashingBridge {
         for (int i = 0; i < inv.getSlots(); ++i) {
             ResourceLocation rl;
             ItemStack stack = inv.getStackInSlot(i);
-            if (stack.isEmpty() || (rl = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:dirty_plate")) continue;
+            if (stack.isEmpty() || (rl = ForgeRegistries.ITEMS.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:dirty_plate")) continue;
             count += stack.getCount();
         }
         return count;
@@ -527,7 +528,7 @@ public class DishwashingBridge {
                     face, pos, false
                 );
                 // 调用use交互，FoodPlateBlock.use()会把物品给FakePlayer并移除方块
-                InteractionResult result = invokeUseWithoutItem(state, level, pos, fakePlayer, hit);
+                InteractionResult result = state.use(level, (Player)fakePlayer, InteractionHand.MAIN_HAND, hit);
                 if (result == InteractionResult.SUCCESS || result == InteractionResult.CONSUME) {
                     // 将FakePlayer背包中的物品转移到女仆背包
                     for (int i = 0; i < fakePlayer.getInventory().getContainerSize(); ++i) {
@@ -550,12 +551,9 @@ public class DishwashingBridge {
         }
         // 备用方案：直接移除方块（不产生掉落物），然后给女仆一个脏盘子
         level.removeBlock(pos, false);
-        ItemStack dirtyPlate = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(ResourceLocation.tryParse("ordertocook:dirty_plate")));
-        if (maidInv != null) {
-            ItemStack leftover = net.neoforged.neoforge.items.ItemHandlerHelper.insertItemStacked(maidInv, dirtyPlate, false);
-            if (!leftover.isEmpty()) {
-                level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, leftover));
-            }
+        ItemStack dirtyPlate = new ItemStack(ForgeRegistries.ITEMS.getValue(new ResourceLocation("ordertocook:dirty_plate")));
+        if (!dirtyPlate.isEmpty()) {
+            ItemHandlerHelper.insertItemStacked((IItemHandler)maidInv, (ItemStack)dirtyPlate, (boolean)false);
         }
         return true;
     }
@@ -590,7 +588,7 @@ public class DishwashingBridge {
                 ItemStack extracted;
                 ResourceLocation rl;
                 ItemStack stack = maidInv.getStackInSlot(i);
-                if (stack.isEmpty() || (rl = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:dirty_plate") || (extracted = maidInv.extractItem(i, take = Math.min(remaining, stack.getCount()), false)).isEmpty()) continue;
+                if (stack.isEmpty() || (rl = ForgeRegistries.ITEMS.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:dirty_plate") || (extracted = maidInv.extractItem(i, take = Math.min(remaining, stack.getCount()), false)).isEmpty()) continue;
                 fakePlayer.getInventory().add(extracted);
                 remaining -= take;
             }
@@ -639,7 +637,7 @@ public class DishwashingBridge {
             for (int i = 0; i < fakePlayer.getInventory().getContainerSize(); ++i) {
                 ResourceLocation rl;
                 ItemStack stack = fakePlayer.getInventory().getItem(i);
-                if (stack.isEmpty() || (rl = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:clean_plate")) continue;
+                if (stack.isEmpty() || (rl = ForgeRegistries.ITEMS.getKey(stack.getItem())) == null || !rl.toString().equals("ordertocook:clean_plate")) continue;
                 ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler)maidInv, (ItemStack)stack.copy(), (boolean)false);
                 stack.setCount(remainder.getCount());
             }
@@ -662,31 +660,29 @@ public class DishwashingBridge {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
             if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) continue;
             
-            // 从TaskManager缓存获取脏盘子列表
-            List<BlockPos> cachedPlates = TaskManager.getInstance().getCachedDirtyPlates(machinePos);
-            for (BlockPos pos : cachedPlates) {
-                if (!dirtyPlates.contains(pos)) {
-                    dirtyPlates.add(pos);
+            for (BlockPos pos : BlockPos.betweenClosed(
+                    machinePos.offset(-scanRange, -4, -scanRange), 
+                    machinePos.offset(scanRange, 4, scanRange))) {
+                BlockState state = level.getBlockState(pos);
+                if (state.getBlock().getClass().getName().contains("FoodPlateBlock") && DishwashingBridge.isDirtyStage(state)) {
+                    if (!dirtyPlates.contains(pos.immutable())) {
+                        dirtyPlates.add(pos.immutable());
+                    }
                 }
             }
         }
         
         if (dirtyPlates.isEmpty()) {
-            // 没有找到脏盘子，跳过收盘子任务
             return;
         }
-        
         
         // 为每个脏盘子创建收盘子任务
         for (BlockPos platePos : dirtyPlates) {
             if (collectTasks.containsKey(platePos)) continue;
             
             BlockPos nearestMachine = findNearestActivatedMachine(level, platePos, manager);
-            
             EntityMaid maid = MaidUtils.findWaiterMaidSmart(level, platePos, scanRange, nearestMachine);
-            if (maid == null) {
-                continue;
-            }
+            if (maid == null) continue;
             
             // 任务冲突检查
             if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
@@ -719,17 +715,25 @@ public class DishwashingBridge {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
             if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) continue;
             
-            // 使用TaskManager的中心化缓存（每10tick更新一次），避免重复扫描
-            List<BlockPos> dishwashers = TaskManager.getInstance().getCachedDishwashers(machinePos);
+            // 以打单机为中心扫描洗碗机
+            ArrayList<BlockPos> dishwashers = new ArrayList<BlockPos>();
+            for (BlockPos pos : BlockPos.betweenClosed(
+                    machinePos.offset(-scanRange, -4, -scanRange), 
+                    machinePos.offset(scanRange, 4, scanRange))) {
+                if (level.getBlockEntity(pos) instanceof DishwasherBlockEntity) {
+                    dishwashers.add(pos.immutable());
+                }
+            }
             if (dishwashers.isEmpty()) {
                 continue; // 这台打单机附近没有洗碗机，跳过
             }
             
             // 查找附近的侍者女仆（scanRange格范围内）
             List<EntityMaid> nearbyMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                nearbyMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, 
-                    new AABB(machinePos).inflate(scanRange)));
+            // 使用TaskManager的中心化检索缓存（以激活的打单机为中心搜索），避免遍历所有维度
+            List<EntityMaid> cachedMaids = TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos);
+            for (EntityMaid maid : cachedMaids) {
+                nearbyMaids.add(maid);
             }
             
             for (EntityMaid maid : nearbyMaids) {
@@ -879,28 +883,6 @@ public class DishwashingBridge {
                     MaidUtils.setOccupied(maid, false);
                 }
             }
-        }
-    }
-
-    /**
-     * 通过反射调用Block.useWithoutItem方法（protected方法）
-     * 用于收盘子时触发FoodPlateBlock的右键交互，避免破坏粒子和掉落物
-     */
-    private static InteractionResult invokeUseWithoutItem(net.minecraft.world.level.block.state.BlockState state, 
-            net.minecraft.world.level.Level level, net.minecraft.core.BlockPos pos, 
-            net.minecraft.world.entity.player.Player player, net.minecraft.world.phys.BlockHitResult hit) {
-        try {
-            java.lang.reflect.Method useMethod = state.getBlock().getClass().getMethod("useWithoutItem",
-                net.minecraft.world.level.block.state.BlockState.class,
-                net.minecraft.world.level.Level.class,
-                net.minecraft.core.BlockPos.class,
-                net.minecraft.world.entity.player.Player.class,
-                net.minecraft.world.phys.BlockHitResult.class);
-            useMethod.setAccessible(true);
-            return (InteractionResult) useMethod.invoke(state.getBlock(), state, level, pos, player, hit);
-        } catch (Exception e) {
-            MaidRestaurantBusiness.LOGGER.error("反射调用useWithoutItem失败", e);
-            return InteractionResult.FAIL;
         }
     }
 }

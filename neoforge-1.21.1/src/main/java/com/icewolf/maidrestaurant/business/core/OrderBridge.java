@@ -238,7 +238,9 @@ public class OrderBridge {
         CompoundTag foodList = orderNbt.getCompound("FoodList");
         int range = BusinessConfig.searchRange;
         HashMap<String, Integer> available = new HashMap<String, Integer>();
-        for (BlockPos check : BlockPos.betweenClosed((BlockPos)machinePos.offset(-range, -range / 2, -range), (BlockPos)machinePos.offset(range, range / 2, range))) {
+        // 使用TaskManager的中心化缓存（每10tick更新一次），避免重复扫描
+        List<BlockPos> cachedContainers = TaskManager.getInstance().getCachedContainers(machinePos);
+        for (BlockPos check : cachedContainers) {
             try {
                 IItemHandler handler = MaidStorages.tryGetHandler((Level)level, (BlockPos)check);
                 if (handler == null) continue;
@@ -273,10 +275,9 @@ public class OrderBridge {
         HashMap<String, Integer> available = new HashMap<String, Integer>();
         int containerCount = 0;
         
-        // 只检测操作台（TakeoutBoxBlockEntity）和冰箱（RefrigeratorBlockEntity），其他容器都不检测
-        for (BlockPos check : BlockPos.betweenClosed(
-            (BlockPos)machinePos.offset(-range, -range, -range), 
-            (BlockPos)machinePos.offset(range, range, range))) {
+        // 使用TaskManager的中心化缓存（每10tick更新一次），避免重复扫描
+        List<BlockPos> cachedCounters = TaskManager.getInstance().getCachedCountersAndFridges(machinePos);
+        for (BlockPos check : cachedCounters) {
             try {
                 BlockEntity be = level.getBlockEntity(check);
                 if (be == null) continue;

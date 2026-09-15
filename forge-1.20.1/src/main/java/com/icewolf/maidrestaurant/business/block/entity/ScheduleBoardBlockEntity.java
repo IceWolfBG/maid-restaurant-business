@@ -146,7 +146,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         return false;
     }
 
-    // Getters and setters for config
+    // Getters and setters
     public boolean isAutoEnabled() { return autoEnabled; }
     public void setAutoEnabled(boolean v) {
         boolean oldValue = this.autoEnabled;
@@ -351,10 +351,6 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
                 if (be instanceof net.minecraft.world.level.block.entity.BlockEntity) {
                     this.level.sendBlockUpdated(this.boundMachinePos, be.getBlockState(), be.getBlockState(), 3);
                 }
-                // 同步BusinessManager.activatedMachines
-                if (this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-                    notifyActivationIfChanged(serverLevel, this.boundMachinePos, active);
-                }
             }
         } catch (Exception e) {
             // 静默失败
@@ -418,8 +414,6 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         if (this.hasBoundMachine && this.boundMachinePos != null && this.autoEnabled
                 && this.level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
             ActivationCache.activate(serverLevel, this.boundMachinePos);
-            // 即时触发激活通知，同步BusinessManager.activatedMachines
-            notifyActivationIfChanged(serverLevel, this.boundMachinePos, true);
         }
     }
 
@@ -436,8 +430,8 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         };
     }
 
-    public void loadAdditional(CompoundTag tag, net.minecraft.core.HolderLookup.Provider provider) {
-        super.loadAdditional(tag, provider);
+    public void load(CompoundTag tag) {
+        super.load(tag);
         this.hasBoundMachine = tag.getBoolean(TAG_HAS_MACHINE);
         if (this.hasBoundMachine) {
             this.boundMachinePos = new BlockPos(tag.getInt(TAG_MACHINE_X), tag.getInt(TAG_MACHINE_Y), tag.getInt(TAG_MACHINE_Z));
@@ -456,8 +450,8 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         this.autoAccept = tag.contains(TAG_AUTO_ACCEPT) ? tag.getBoolean(TAG_AUTO_ACCEPT) : false;
     }
 
-    protected void saveAdditional(CompoundTag tag, net.minecraft.core.HolderLookup.Provider provider) {
-        super.saveAdditional(tag, provider);
+    protected void saveAdditional(CompoundTag tag) {
+        super.saveAdditional(tag);
         tag.putBoolean(TAG_HAS_MACHINE, this.hasBoundMachine);
         if (this.hasBoundMachine && this.boundMachinePos != null) {
             tag.putInt(TAG_MACHINE_X, this.boundMachinePos.getX());
@@ -484,9 +478,9 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     }
 
     @Override
-    public CompoundTag getUpdateTag(net.minecraft.core.HolderLookup.Provider provider) {
+    public CompoundTag getUpdateTag() {
         CompoundTag tag = new CompoundTag();
-        this.saveAdditional(tag, provider);
+        this.saveAdditional(tag);
         return tag;
     }
 }

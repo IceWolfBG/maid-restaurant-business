@@ -48,17 +48,19 @@ public class BusinessConfig {
 
     @SubscribeEvent
     static void onLoad(ModConfigEvent.Loading event) {
-        if (event.getConfig().getSpec() == SPEC) {
-            loadConfigValues();
-            MaidRestaurantBusiness.LOGGER.info("[配置] 配置文件已加载: autoAccept={}, levelBasedProgression={}, autoPack={}", autoAccept, levelBasedProgression, autoPack);
+        if (event.getConfig().getModId().equals("maid_restaurant_business")) {
+            try {
+                loadConfigValues();
+            } catch (Exception e) {
+                // 配置尚未完全加载，等待Reloading事件
+            }
         }
     }
 
     @SubscribeEvent
     static void onReload(ModConfigEvent.Reloading event) {
-        if (event.getConfig().getSpec() == SPEC) {
+        if (event.getConfig().getModId().equals("maid_restaurant_business")) {
             loadConfigValues();
-            MaidRestaurantBusiness.LOGGER.info("[配置] 配置文件已重新加载: autoAccept={}, levelBasedProgression={}, autoPack={}", autoAccept, levelBasedProgression, autoPack);
         }
     }
 

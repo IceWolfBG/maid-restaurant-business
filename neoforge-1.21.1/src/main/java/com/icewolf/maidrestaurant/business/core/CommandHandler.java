@@ -24,14 +24,58 @@ public class CommandHandler {
     private static void safeSetBoolean(net.neoforged.neoforge.common.ModConfigSpec.BooleanValue configValue, boolean value) {
         try {
             configValue.set(value);
+            saveConfigToFile();
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.warn("配置保存失败（运行时值已生效）: " + e.getMessage());
         }
+    }
+    
+    private static void saveConfigToFile() {
+        try {
+            var configDir = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().toFile();
+            String[] configFiles = {
+                "maid_restaurant_business-common.toml",
+                "maid_restaurant_business-safety.toml", 
+                "maid_restaurant_business-takeout.toml"
+            };
+            
+            for (String configFileName : configFiles) {
+                var configFile = new java.io.File(configDir, configFileName);
+                if (configFile.exists()) {
+                    String fileContent = new String(java.nio.file.Files.readAllBytes(configFile.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+                    
+                    fileContent = updateConfigValue(fileContent, "autoAccept", String.valueOf(BusinessConfig.autoAccept));
+                    fileContent = updateConfigValue(fileContent, "acceptDelivery", String.valueOf(BusinessConfig.acceptDelivery));
+                    fileContent = updateConfigValue(fileContent, "autoPack", String.valueOf(BusinessConfig.autoPack));
+                    fileContent = updateConfigValue(fileContent, "waiterDeliver", String.valueOf(BusinessConfig.waiterDeliver));
+                    fileContent = updateConfigValue(fileContent, "autoWash", String.valueOf(BusinessConfig.autoWash));
+                    fileContent = updateConfigValue(fileContent, "levelBasedProgression", String.valueOf(BusinessConfig.levelBasedProgression));
+                    fileContent = updateConfigValue(fileContent, "maxPendingOrders", String.valueOf(BusinessConfig.maxPendingOrders));
+                    fileContent = updateConfigValue(fileContent, "searchRange", String.valueOf(BusinessConfig.searchRange));
+                    fileContent = updateConfigValue(fileContent, "acceptDelay", String.valueOf(BusinessConfig.acceptDelay));
+                    fileContent = updateConfigValue(fileContent, "minPlatesToWash", String.valueOf(BusinessConfig.minPlatesToWash));
+                    fileContent = updateConfigValue(fileContent, "dishScanRange", String.valueOf(BusinessConfig.dishScanRange));
+                    fileContent = updateConfigValue(fileContent, "favorabilityBonus", String.valueOf(BusinessConfig.favorabilityBonus));
+                    fileContent = updateConfigValue(fileContent, "bubbleCooldown", String.valueOf(BusinessConfig.bubbleCooldown));
+                    
+                    java.nio.file.Files.write(configFile.toPath(), fileContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.warn("配置保存失败: " + e.getMessage());
+        }
+    }
+    
+    private static String updateConfigValue(String content, String key, String value) {
+        // 使用正则表达式替换配置值
+        String pattern = "(\\s*" + java.util.regex.Pattern.quote(key) + "\\s*=\\s*)[^\\n\\r]*";
+        return content.replaceAll(pattern, "$1" + value);
     }
 
     private static void safeSetInt(net.neoforged.neoforge.common.ModConfigSpec.IntValue configValue, int value) {
         try {
             configValue.set(value);
+            saveConfigToFile();
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.warn("配置保存失败（运行时值已生效）: " + e.getMessage());
         }

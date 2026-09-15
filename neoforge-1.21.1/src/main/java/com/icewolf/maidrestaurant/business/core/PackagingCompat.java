@@ -37,7 +37,7 @@ public class PackagingCompat {
                 if (name.equals("PACK")) actionPack = a;
                 if (name.equals("PLATE")) actionPlate = a;
             }
-            LOGGER.info("PackagingCompat: actionPack={}, actionPlate={}", actionPack, actionPlate);
+
             executeMethod = apiClass.getMethod("execute", Level.class, BlockPos.class, actionClass, Player.class, boolean.class);
             hasAutomationApi = true;
             LOGGER.info("PackagingCompat: CountertopAutomationApi 初始化成功，使用API模式");
@@ -75,12 +75,12 @@ public class PackagingCompat {
             // Forge/NeoForge 版本：使用 CountertopAutomationApi
             try {
                 Object action = isDelivery ? actionPack : actionPlate;
-                LOGGER.info("PackagingCompat: 调用CountertopAutomationApi.execute, pos={}, isDelivery={}, simulate={}, action={}", counterPos, isDelivery, simulate, action);
+
                 Object result = executeMethod.invoke(null, level, counterPos, action, player, simulate);
                 if (result != null) {
                     Method successMethod = result.getClass().getMethod("success");
                     boolean success = (Boolean) successMethod.invoke(result);
-                    LOGGER.info("PackagingCompat: CountertopAutomationApi.execute返回, success={}, result={}", success, result);
+
                     return success;
                 } else {
                     LOGGER.warn("PackagingCompat: CountertopAutomationApi.execute返回null");
@@ -91,17 +91,17 @@ public class PackagingCompat {
             return false;
         } else {
             // Fabric/回退 版本：直接调用 TakeoutBoxBlockEntity 方法
-            LOGGER.info("PackagingCompat: 使用直接调用模式, hasAutomationApi={}, executeMethod={}", hasAutomationApi, executeMethod);
+
             try {
                 Method method = isDelivery ? tryPackOrderMethod : tryPlateOrderMethod;
                 if (method != null) {
                     if (simulate) {
                         // 模拟模式：检查上方是否有空间
                         boolean airAbove = level.getBlockState(counterPos.above()).isAir();
-                        LOGGER.info("PackagingCompat: 模拟模式, 上方是否空气={}", airAbove);
+
                         return airAbove;
                     } else {
-                        LOGGER.info("PackagingCompat: 实际执行, 调用{}", method.getName());
+
                         method.invoke(counter, player);
                         return true;
                     }

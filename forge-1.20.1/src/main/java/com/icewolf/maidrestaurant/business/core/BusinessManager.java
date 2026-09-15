@@ -16,7 +16,6 @@ import com.icewolf.maidrestaurant.business.core.DeliveryBridge;
 import com.icewolf.maidrestaurant.business.core.DishwashingBridge;
 import com.icewolf.maidrestaurant.business.core.OrderBridge;
 import com.icewolf.maidrestaurant.business.core.PackagingBridge;
-import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -76,7 +75,7 @@ public class BusinessManager {
                     if (resetCount > 0 || idleStuckCount > 0) {
                     }
                     // 绑定关系统计调试（每100tick=5秒输出一次）
-                    for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {
+                    for (BlockPos machinePos : this.getActivatedMachines()) {
                         int boundCount = MaidUtils.getWorkerCountForMachine(machinePos);
                         int maxWorkers = ProgressionManager.getMaxWorkers(level, machinePos);
                     }
@@ -84,14 +83,7 @@ public class BusinessManager {
                 // 自动接单已集成到TaskManager中，每10tick检查一次，这里不需要单独调用了
                 // TaskManager.tick会调用OrderBridge.tickOrders，少一次监测，提高性能
                 if (this.tickCounter - this.lastCookingTick >= 10L) {
-                    // 更新每个激活打单机的厨具统计（按打单机隔离）
-                    if (!this.getActivatedMachines().isEmpty()) {
-                        for (BlockPos machinePos : this.getActivatedMachines()) {
-                            CookingDeviceStatsManager.getInstance().updateStation(level, machinePos, this.tickCounter);
-                        }
-                        // 清理非激活打单机的统计数据
-                        CookingDeviceStatsManager.getInstance().cleanupInactiveStations(this.getActivatedMachines(), this.tickCounter);
-                    }
+                    // 厨具状态已集成到TaskManager中，每10tick自动更新
                     CookingBridge.tickCooking(level, this);
                     this.lastCookingTick = this.tickCounter;
                 }

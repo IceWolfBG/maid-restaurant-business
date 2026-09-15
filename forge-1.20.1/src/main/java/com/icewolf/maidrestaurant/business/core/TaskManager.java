@@ -1,19 +1,16 @@
 package com.icewolf.maidrestaurant.business.core;
 
-import com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager;
-
 import cn.breezeth.ordertocook.block.entity.FoodPlateBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
-import cn.breezeth.ordertocook.block.entity.DishwasherBlockEntity;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager;
 import com.mastermarisa.maid_restaurant.request.CookRequest;
 import com.mastermarisa.maid_restaurant.utils.RequestManager;
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
@@ -128,7 +125,9 @@ public class TaskManager {
 
     private long lastCheckTick = 0;
     private long currentTick = 0;
-    private ServerLevel serverLevel = null; // 缓存当前服务端世界，用于检查女仆烹饪状态 // 当前游戏tick，在tick方法中更新
+    private ServerLevel serverLevel = null; 
+// 缓存当前服务端世界，用于检查女仆烹饪状态 
+// 当前游戏tick，在tick方法中更新
     
     // BusinessManager引用，用于自动接单等功能
     private BusinessManager businessManager;
@@ -138,29 +137,10 @@ public class TaskManager {
     private long lastMaidCacheTick = 0;
     private static final long MAID_CACHE_INTERVAL = 10L; // 每10tick更新一次女仆缓存
 
-    // ========== Dishwashing caches (per machine) ==========
-    // Dirty plates cache: machine pos asLong -> list of dirty plate positions
-    private final Map<Long, List<BlockPos>> cachedDirtyPlates = new HashMap<>();
-    // Dishwasher cache: machine pos asLong -> list of dishwasher positions
-    private final Map<Long, List<BlockPos>> cachedDishwashers = new HashMap<>();
-    private long lastDishCacheTick = 0;
-    private static final long DISH_CACHE_INTERVAL = 10L;
-
-    // ========== Container caches (per machine) ==========
-    // All containers cache: machine pos asLong -> list of container positions
-    private final Map<Long, List<BlockPos>> cachedContainers = new HashMap<>();
-    // Counters and refrigerators cache: machine pos asLong -> list of positions
-    private final Map<Long, List<BlockPos>> cachedCountersAndFridges = new HashMap<>();
-    private long lastContainerCacheTick = 0;
-    private static final long CONTAINER_CACHE_INTERVAL = 10L;
-
-    // ========== Delivery caches (global, not per machine) ==========
-    // Counters with plates cache: list of counter positions that have plates with food
+    // 带餐盘的操作台缓存（用于送餐任务）
     private List<BlockPos> cachedCountersWithPlates = new ArrayList<>();
-    // Counters with takeout bags cache: list of counter positions that have takeout bags
-    private List<BlockPos> cachedCountersWithTakeoutBags = new ArrayList<>();
-    private long lastDeliveryCacheTick = 0;
-    private static final long DELIVERY_CACHE_INTERVAL = 10L; // 每10tick更新一次餐盘缓存
+    private long lastPlateCacheTick = 0;
+    private static final long PLATE_CACHE_INTERVAL = 10L; // 每10tick更新一次餐盘缓存
 
     // ========== 厨具占用管理（混合检测方案） ==========
     // 正在被使用的厨具（位置 -> 占用信息）
@@ -206,6 +186,18 @@ public class TaskManager {
      * @return 任务ID，如果该位置已有同类型任务则返回null
      */
     public String createTask(String taskType, BlockPos targetPos, BlockPos machinePos) {
+        return createTask(taskType, targetPos, machinePos, null);
+    }
+
+    /**
+     * 创建任务（带厨具类型）
+     * @param taskType 任务类型
+     * @param targetPos 目标位置
+     * @param machinePos 打单机位置
+     * @param deviceType 厨具类型（Stockpot/CookingPot/Pot/Steamer）
+     * @return 任务ID，如果创建失败返回null
+     */
+    public String createTask(String taskType, BlockPos targetPos, BlockPos machinePos, String deviceType) {
         // 检查该位置是否已有同类型的PENDING或ASSIGNED任务
         Set<String> existingTasks = tasksByTarget.get(targetPos);
         if (existingTasks != null) {
@@ -221,6 +213,7 @@ public class TaskManager {
 
         String taskId = UUID.randomUUID().toString();
         TaskInfo task = new TaskInfo(taskId, taskType, targetPos, machinePos, currentTick);
+        task.deviceType = deviceType;
         tasks.put(taskId, task);
         tasksByTarget.computeIfAbsent(targetPos, k -> new HashSet<>()).add(taskId);
 
@@ -374,17 +367,16 @@ public class TaskManager {
     }
 
     /**
-     * 根据任务ID获取任务信息
-     */
-    public TaskInfo getTask(String taskId) {
-        if (taskId == null) return null;
-        return tasks.get(taskId);
-    }
-
-    /**
      * 检查女仆是否有任务在执行
      * 注意：会自动清理卡住超过超时时间1.5倍的任务，避免女仆永远无法分配新任务
      */
+    /**
+     * 获取女仆当前任务ID（调试用）
+     */
+    public String getMaidTaskId(UUID maidUUID) {
+        return tasksByMaid.get(maidUUID);
+    }
+
     public boolean hasMaidTask(UUID maidUUID) {
         // 先检查是否有卡住的任务，如果有就强制释放
         String taskId = tasksByMaid.get(maidUUID);
@@ -496,6 +488,44 @@ public class TaskManager {
      */
     public int getOccupiedDeviceCount() {
         return occupiedDevices.size();
+    }
+    
+    /**
+     * 统计指定厨具类型的活跃烹饪任务数量
+     * 通过检查烹饪任务的目标位置的BlockEntity类型来判断
+     * @param deviceType 厨具类型（如"Stockpot"、"Pot"等）
+     * @param level 服务端世界
+     * @return 活跃烹饪任务数量
+     */
+    /**
+     * 统计指定打单机的指定厨具类型的活跃烹饪任务数量（按打单机隔离）
+     * @param deviceType 厨具类型
+     * @param machinePos 打单机位置
+     * @param level 服务端世界
+     * @return 活跃烹饪任务数量
+     */
+    public int getActiveCookingTaskCountByDeviceType(String deviceType, BlockPos machinePos, ServerLevel level) {
+        int count = 0;
+        for (TaskInfo task : tasks.values()) {
+            // 只统计烹饪任务
+            if (!task.taskType.equals(TYPE_COOKING)) continue;
+            // 按打单机隔离：只统计同一打单机的任务
+            if (machinePos != null && task.machinePos != null && !task.machinePos.equals(machinePos)) continue;
+            // 统计待分配、已分配和进行中的任务（包括刚创建还没分配的PENDING任务）
+            if (task.status != TaskStatus.PENDING && task.status != TaskStatus.ASSIGNED && task.status != TaskStatus.IN_PROGRESS) continue;
+            // 使用任务记录的deviceType字段（创建任务时设置），避免通过targetPos重新判断导致不准确
+            if (task.deviceType != null && deviceType.equals(task.deviceType)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 统计全局指定厨具类型的活跃烹饪任务数量（不按打单机隔离，向后兼容）
+     */
+    public int getActiveCookingTaskCountByDeviceType(String deviceType, ServerLevel level) {
+        return getActiveCookingTaskCountByDeviceType(deviceType, null, level);
     }
 
     /**
@@ -719,25 +749,18 @@ public class TaskManager {
             }
         }
 
-        // 更新洗碗相关缓存（脏盘子、洗碗机），统一扫描，避免DishwashingBridge重复扫描
+        // 更新厨具统计（按打单机隔离）
         try {
-            updateDishCaches(level);
-        } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新洗碗缓存异常", t);
-        }
-
-        // 更新容器缓存（所有容器、操作台和冰箱），统一扫描，避免OrderBridge重复扫描
-        try {
-            updateContainerCaches(level);
-        } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新容器缓存异常", t);
-        }
-
-        // 更新配送缓存（带餐盘的操作台、带外卖袋的操作台），统一扫描，避免DeliveryBridge重复扫描
-        try {
-            updateDeliveryCaches(level);
-        } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新配送缓存异常", t);
+            Set<BlockPos> activatedMachines = ActivationCache.getActivatedMachines(level);
+            for (BlockPos machinePos : activatedMachines) {
+                if (machinePos != null) {
+                    CookingDeviceStatsManager.getInstance().updateStation(level, machinePos, currentTick);
+                }
+            }
+            // 清理非激活打单机的统计数据
+            CookingDeviceStatsManager.getInstance().cleanupInactiveStations(activatedMachines, currentTick);
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("TaskManager: 厨具统计更新异常", e);
         }
 
         // 每200tick（10秒）输出一次任务统计信息
@@ -872,27 +895,6 @@ public class TaskManager {
     }
 
     /**
-     * 根据厨具类型统计正在进行的烹饪任务数
-     * @param deviceType 厨具类型（Stockpot/CookingPot/Pot/Steamer）
-     * @param level 服务端世界
-     * @return 正在进行的该类型烹饪任务数
-     */
-    public int getActiveCookingTaskCountByDeviceType(String deviceType, ServerLevel level) {
-        int count = 0;
-        for (TaskInfo task : tasks.values()) {
-            // 只统计烹饪任务
-            if (!task.taskType.equals(TYPE_COOKING)) continue;
-            // 统计待分配、已分配和进行中的任务（包括刚创建还没分配的PENDING任务）
-            if (task.status != TaskStatus.PENDING && task.status != TaskStatus.ASSIGNED && task.status != TaskStatus.IN_PROGRESS) continue;
-            // 使用任务记录的deviceType字段（创建任务时设置），避免通过targetPos重新判断导致不准确
-            if (task.deviceType != null && deviceType.equals(task.deviceType)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    /**
      * 获取缓存的女仆列表（中心化检索，避免各个Bridge重复获取所有女仆）
      * 每10tick更新一次缓存
      */
@@ -954,255 +956,13 @@ public class TaskManager {
     /**
      * 获取缓存的带餐盘的操作台列表（中心化检索，避免每个女仆重复遍历区块）
      * 每10tick更新一次缓存
+     * 注意：当前版本暂时返回空列表，由DeliveryBridge使用自己的检索逻辑
+     * 后续版本会实现真正的中心化检索
      */
     public List<BlockPos> getCachedCountersWithPlates(ServerLevel level) {
-        return new ArrayList<>(cachedCountersWithPlates);
-    }
-
-    /**
-     * 获取缓存的带外卖袋的操作台列表（中心化检索，避免每个女仆重复遍历区块）
-     * 每10tick更新一次缓存
-     */
-    public List<BlockPos> getCachedCountersWithTakeoutBags(ServerLevel level) {
-        return new ArrayList<>(cachedCountersWithTakeoutBags);
-    }
-
-    /**
-     * Update delivery caches (counters with plates, counters with takeout bags).
-     * Called every 10 ticks from tick().
-     * Scans all loaded chunks for counters that have plates or takeout bags.
-     */
-    private void updateDeliveryCaches(ServerLevel level) {
-        if (currentTick - lastDeliveryCacheTick < DELIVERY_CACHE_INTERVAL) return;
-        lastDeliveryCacheTick = currentTick;
-
-        if (businessManager == null) return;
-
-        List<BlockPos> newCountersWithPlates = new ArrayList<>();
-        List<BlockPos> newCountersWithTakeoutBags = new ArrayList<>();
-
-        try {
-            // 复用updateContainerCaches已经缓存的操作台和冰箱位置，避免重复扫描
-            Set<BlockPos> activeMachines = businessManager.getActivatedMachines();
-            for (BlockPos machinePos : activeMachines) {
-                List<BlockPos> cachedPositions = getCachedCountersAndFridges(machinePos);
-                for (BlockPos pos : cachedPositions) {
-                    try {
-                        BlockEntity be = level.getBlockEntity(pos);
-                        if (!(be instanceof cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity)) continue;
-
-                        BlockPos counterPos = pos.immutable();
-                        BlockPos abovePos = counterPos.above();
-                        BlockEntity aboveBe = level.getBlockEntity(abovePos);
-
-                        if (aboveBe == null) continue;
-                        String className = aboveBe.getClass().getSimpleName();
-
-                        // Check for food plate
-                        if (className.contains("FoodPlate") || className.contains("Plate")) {
-                            try {
-                                java.lang.reflect.Method getPlateStack = aboveBe.getClass().getMethod("getPlateStack");
-                                ItemStack plateStack = (ItemStack) getPlateStack.invoke(aboveBe);
-                                if (plateStack != null && !plateStack.isEmpty()) {
-                                    newCountersWithPlates.add(counterPos);
-                                }
-                            } catch (Exception e) {
-                                // If reflection fails, just add it
-                                newCountersWithPlates.add(counterPos);
-                            }
-                        }
-
-                        // Check for takeout bag
-                        if (className.contains("Takeout") || className.contains("Bag")) {
-                            try {
-                                java.lang.reflect.Method getBagStack = aboveBe.getClass().getMethod("getTakeoutBagStack");
-                                ItemStack bagStack = (ItemStack) getBagStack.invoke(aboveBe);
-                                if (bagStack != null && !bagStack.isEmpty()) {
-                                    newCountersWithTakeoutBags.add(counterPos);
-                                }
-                            } catch (Exception e) {
-                                // If reflection fails, try other method names
-                                try {
-                                    java.lang.reflect.Method getItem = aboveBe.getClass().getMethod("getItem");
-                                    ItemStack itemStack = (ItemStack) getItem.invoke(aboveBe);
-                                    if (itemStack != null && !itemStack.isEmpty()) {
-                                        String itemName = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString();
-                                        if (itemName.contains("takeout") || itemName.contains("bag")) {
-                                            newCountersWithTakeoutBags.add(counterPos);
-                                        }
-                                    }
-                                } catch (Exception e2) {
-                                    // Just add it if we can't check
-                                    newCountersWithTakeoutBags.add(counterPos);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {}
-                }
-            }
-        } catch (Exception e) {
-            MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新配送缓存异常", e);
-        }
-
-        cachedCountersWithPlates = newCountersWithPlates;
-        cachedCountersWithTakeoutBags = newCountersWithTakeoutBags;
-    }
-
-    /**
-     * Update dishwashing caches (dirty plates and dishwashers) for all activated machines.
-     * Called every 10 ticks from tick().
-     */
-    private void updateDishCaches(ServerLevel level) {
-        if (currentTick - lastDishCacheTick < DISH_CACHE_INTERVAL) return;
-        lastDishCacheTick = currentTick;
-
-        if (businessManager == null) return;
-
-        int scanRange = com.icewolf.maidrestaurant.business.config.BusinessConfig.dishScanRange;
-        Set<BlockPos> activeMachines = businessManager.getActivatedMachines();
-
-        // Clean up inactive machines
-        Set<Long> activeKeys = new HashSet<>();
-        for (BlockPos pos : activeMachines) {
-            activeKeys.add(pos.asLong());
-        }
-        for (Long key : new HashSet<>(cachedDirtyPlates.keySet())) {
-            if (!activeKeys.contains(key)) {
-                cachedDirtyPlates.remove(key);
-                cachedDishwashers.remove(key);
-            }
-        }
-
-        // Scan each activated machine
-        for (BlockPos machinePos : activeMachines) {
-            long key = machinePos.asLong();
-            List<BlockPos> dirtyPlates = new ArrayList<>();
-            List<BlockPos> dishwashers = new ArrayList<>();
-
-            for (BlockPos pos : BlockPos.betweenClosed(
-                    machinePos.offset(-scanRange, -4, -scanRange),
-                    machinePos.offset(scanRange, 4, scanRange))) {
-                // Check for dirty plates (use DishwashingBridge.isDirtyStage to avoid code duplication)
-                try {
-                    net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
-                    if (state.getBlock().getClass().getName().contains("FoodPlateBlock")) {
-                        if (com.icewolf.maidrestaurant.business.core.DishwashingBridge.isDirtyStage(state)) {
-                            dirtyPlates.add(pos.immutable());
-                        }
-                    }
-                } catch (Exception e) {}
-
-                // Check for dishwasher
-                try {
-                    BlockEntity be = level.getBlockEntity(pos);
-                    if (be instanceof DishwasherBlockEntity) {
-                        dishwashers.add(pos.immutable());
-                    }
-                } catch (Exception e) {}
-            }
-
-            cachedDirtyPlates.put(key, dirtyPlates);
-            cachedDishwashers.put(key, dishwashers);
-        }
-
-
-    }
-
-    /**
-     * Get cached dirty plates for a specific machine.
-     */
-    public List<BlockPos> getCachedDirtyPlates(BlockPos machinePos) {
-        List<BlockPos> result = cachedDirtyPlates.get(machinePos.asLong());
-        return result != null ? result : new ArrayList<>();
-    }
-
-    /**
-     * Get cached dishwashers for a specific machine.
-     */
-    public List<BlockPos> getCachedDishwashers(BlockPos machinePos) {
-        List<BlockPos> result = cachedDishwashers.get(machinePos.asLong());
-        return result != null ? result : new ArrayList<>();
-    }
-
-    /**
-     * Update container caches (all containers, counters and fridges) for all activated machines.
-     * Called every 10 ticks from tick().
-     */
-    private void updateContainerCaches(ServerLevel level) {
-        if (currentTick - lastContainerCacheTick < CONTAINER_CACHE_INTERVAL) return;
-        lastContainerCacheTick = currentTick;
-
-        if (businessManager == null) return;
-
-        int scanRange = com.icewolf.maidrestaurant.business.config.BusinessConfig.searchRange;
-        Set<BlockPos> activeMachines = businessManager.getActivatedMachines();
-
-        // Clean up inactive machines
-        Set<Long> activeKeys = new HashSet<>();
-        for (BlockPos pos : activeMachines) {
-            activeKeys.add(pos.asLong());
-        }
-        for (Long key : new HashSet<>(cachedContainers.keySet())) {
-            if (!activeKeys.contains(key)) {
-                cachedContainers.remove(key);
-                cachedCountersAndFridges.remove(key);
-            }
-        }
-
-        // Scan each activated machine
-        for (BlockPos machinePos : activeMachines) {
-            long key = machinePos.asLong();
-            List<BlockPos> allContainers = new ArrayList<>();
-            List<BlockPos> countersAndFridges = new ArrayList<>();
-
-            for (BlockPos pos : BlockPos.betweenClosed(
-                    machinePos.offset(-scanRange, -scanRange, -scanRange),
-                    machinePos.offset(scanRange, scanRange, scanRange))) {
-                try {
-                    BlockEntity be = level.getBlockEntity(pos);
-                    if (be == null) continue;
-
-                    // Check if it is a counter (TakeoutBoxBlockEntity) or fridge
-                    boolean isCounterOrFridge = be instanceof cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity ||
-                                                be.getClass().getSimpleName().equals("RefrigeratorBlockEntity");
-                    if (isCounterOrFridge) {
-                        countersAndFridges.add(pos.immutable());
-                    }
-
-                    // Check if it has an item handler (all containers)
-                    try {
-                        Object handler = com.mastermarisa.maid_restaurant.utils.MaidStorages.tryGetHandler(level, pos);
-                        if (handler != null) {
-                            allContainers.add(pos.immutable());
-                        }
-                    } catch (Exception e) {
-                        // If tryGetHandler fails, check if it is a Container
-                        if (be instanceof net.minecraft.world.Container) {
-                            allContainers.add(pos.immutable());
-                        }
-                    }
-                } catch (Exception e) {}
-            }
-
-            cachedContainers.put(key, allContainers);
-            cachedCountersAndFridges.put(key, countersAndFridges);
-        }
-    }
-
-    /**
-     * Get cached all containers for a specific machine.
-     */
-    public List<BlockPos> getCachedContainers(BlockPos machinePos) {
-        List<BlockPos> result = cachedContainers.get(machinePos.asLong());
-        return result != null ? result : new ArrayList<>();
-    }
-
-    /**
-     * Get cached counters and fridges for a specific machine.
-     */
-    public List<BlockPos> getCachedCountersAndFridges(BlockPos machinePos) {
-        List<BlockPos> result = cachedCountersAndFridges.get(machinePos.asLong());
-        return result != null ? result : new ArrayList<>();
+        // 暂时返回空列表，由DeliveryBridge使用自己的检索逻辑
+        // 后续版本会实现真正的中心化检索
+        return new ArrayList<>();
     }
 
     /**
