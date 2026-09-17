@@ -49,6 +49,8 @@ import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -117,7 +119,7 @@ public class DishwashingBridge {
         reflectionInit = true;
     }
 
-    private static boolean isDirtyStage(BlockState state) {
+    static boolean isDirtyStage(BlockState state) {
         DishwashingBridge.initReflection();
         if (isDirtyStageMethod == null) {
             return false;
@@ -143,7 +145,7 @@ public class DishwashingBridge {
         
         boolean collectUnlocked = false;
         boolean washUnlocked = false;
-        for (BlockPos machinePos : manager.getActivatedMachines()) {
+        for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
             // 排班表配置检查
             if (MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) {
@@ -458,6 +460,9 @@ public class DishwashingBridge {
         return nearest;
     }
 
+    // 按音效 id 自行构造来跨 mod 播放 OTC 已注册的盘子架放置音效，不直接引用 OTC 的 RegistryObject
+    private static final SoundEvent SOUND_PLATE_PLACE = SoundEvent.createVariableRangeEvent(new ResourceLocation("ordertocook", "plate_place"));
+
     private static void putCleanPlatesToRack(ServerLevel level, EntityMaid maid, BlockPos rackPos) {
         IItemHandler maidInv = MaidUtils.getInventory(maid);
         if (maidInv == null) {
@@ -483,6 +488,10 @@ public class DishwashingBridge {
         }
         if (putCount > 0) {
             level.setBlock(rackPos, (BlockState)state.setValue(intProp, Integer.valueOf(plates)), 3);
+            // OTC 盘子架放干净盘子音效 plate_place，与玩家手动放盘听感一致；播放失败不影响放回
+            try {
+                level.playSound(null, rackPos, SOUND_PLATE_PLACE, SoundSource.BLOCKS, 0.75f, 0.95f + level.random.nextFloat() * 0.1f);
+            } catch (Throwable t) {}
         }
     }
 
@@ -656,18 +665,13 @@ public class DishwashingBridge {
         ArrayList<BlockPos> dirtyPlates = new ArrayList<BlockPos>();
         
         // 以所有已激活打单机为中心扫描
-        for (BlockPos machinePos : manager.getActivatedMachines()) {
+        for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
             if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COLLECT)) continue;
-            
-            for (BlockPos pos : BlockPos.betweenClosed(
-                    machinePos.offset(-scanRange, -4, -scanRange), 
-                    machinePos.offset(scanRange, 4, scanRange))) {
-                BlockState state = level.getBlockState(pos);
-                if (state.getBlock().getClass().getName().contains("FoodPlateBlock") && DishwashingBridge.isDirtyStage(state)) {
-                    if (!dirtyPlates.contains(pos.immutable())) {
-                        dirtyPlates.add(pos.immutable());
-                    }
+
+            for (BlockPos pos : TaskManager.getInstance().getCachedDirtyPlates(level, machinePos)) {
+                if (!dirtyPlates.contains(pos)) {
+                    dirtyPlates.add(pos);
                 }
             }
         }
@@ -711,19 +715,13 @@ public class DishwashingBridge {
         int scanRange = BusinessConfig.dishScanRange;
         
         // 遍历所有已激活打单机
-        for (BlockPos machinePos : manager.getActivatedMachines()) {
+        for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {
             if (!ProgressionManager.isDishwashingUnlocked(level, machinePos)) continue;
             if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) continue;
             
             // 以打单机为中心扫描洗碗机
-            ArrayList<BlockPos> dishwashers = new ArrayList<BlockPos>();
-            for (BlockPos pos : BlockPos.betweenClosed(
-                    machinePos.offset(-scanRange, -4, -scanRange), 
-                    machinePos.offset(scanRange, 4, scanRange))) {
-                if (level.getBlockEntity(pos) instanceof DishwasherBlockEntity) {
-                    dishwashers.add(pos.immutable());
-                }
-            }
+            // Dishwasher positions come from TaskManager central cache (per-machine, 10tick, dimension-local)
+            List<BlockPos> dishwashers = TaskManager.getInstance().getCachedDishwashers(level, machinePos);
             if (dishwashers.isEmpty()) {
                 continue; // 这台打单机附近没有洗碗机，跳过
             }
@@ -787,7 +785,7 @@ public class DishwashingBridge {
     private static BlockPos findNearestActivatedMachine(ServerLevel level, BlockPos center, BusinessManager manager) {
         BlockPos nearest = null;
         double minDist = Double.MAX_VALUE;
-        for (BlockPos machinePos : manager.getActivatedMachines()) {
+        for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {
             double dist = machinePos.distSqr(center);
             if (dist < minDist) {
                 minDist = dist;

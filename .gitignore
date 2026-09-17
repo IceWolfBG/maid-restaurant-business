@@ -33,3 +33,6 @@ releases/
 
 # 构建临时输出
 build_out.txt
+
+# 封面/设计素材（未定稿，不入库）
+art/

@@ -568,39 +568,126 @@ public class DeliveryBridge {
     }
 
     /**
-     * 手动发放收益（当反射调用completeDelivery失败时的终极回退）
-     * 复制completeDelivery中的核心收益计算逻辑
+     * 手动发放收益（当反射调用 completeDelivery 失败时的终极回退）。
+     * 必须真正调用 OTC 的 CoinUtils.giveCoins 发钱；若发钱 API 不可用则不发“到账”消息，避免玩家看到虚假到账提示。
      */
     private static void manuallyGiveReward(ServerLevel level, Player player, ItemStack plateStack, CompoundTag nbt) {
         try {
             int baseCoin = nbt.contains("Prestige") ? nbt.getInt("Prestige") : 0;
             boolean isUrgent = nbt.getBoolean("Urgent");
-            String customer = nbt.contains("CustomerName") ? nbt.getString("CustomerName") : "顾客";
-            if (customer == null || customer.isBlank()) customer = "顾客";
-
-            // 简单的小费计算（10%概率给1-5小费）
-            int tipCoin = 0;
-            if (level.random.nextDouble() < 0.1) {
-                tipCoin = 1 + level.random.nextInt(5);
+            String customer = nbt.contains("CustomerName") ? nbt.getString("CustomerName") : "";
+            if (customer == null || customer.isBlank()) {
+                customer = net.minecraft.network.chat.Component.translatable("keyword.ordertocook.customer").getString();
             }
 
+            // 小费按 OTC 配置计算（反射；读取失败则不计小费，但本金 Prestige 一定发放）
+            int tipCoin = computeFallbackTip(level, isUrgent);
             int finalCoin = baseCoin + tipCoin;
 
-            // 给玩家金币（通过经验值或其他方式）
-            // 注意：这里简化处理，实际应该调用otc的CoinUtils
-
-            // 发送消息给玩家
-            if (tipCoin > 0) {
-                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("订单完成！获得 " + finalCoin + " 金币（含小费 " + tipCoin + "）").withStyle(net.minecraft.ChatFormatting.GOLD));
+            boolean paid = invokeGiveCoins(player, finalCoin);
+            if (paid) {
+                // 记录声望（失败不影响收款）
+                invokeAddPrestige(player, finalCoin);
+                // 与 OTC 正常结算一致的到账提示（actionbar）
+                if (tipCoin > 0) {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.ordertocook.order_completed_with_tip", finalCoin, customer, tipCoin)
+                            .withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                } else {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.ordertocook.order_complete", finalCoin)
+                            .withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                }
             } else {
-                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("订单完成！获得 " + finalCoin + " 金币").withStyle(net.minecraft.ChatFormatting.GOLD));
+                MaidRestaurantBusiness.LOGGER.error("送餐: 兜底发薪失败，未能向 {} 发放 {} 金币（已避免虚假到账提示）", player.getName().getString(), finalCoin);
             }
 
-            // 消耗餐盘
+            // 消耗餐盘（与 OTC completeDelivery 末尾的 stack.shrink(1) 对齐）
             plateStack.shrink(1);
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("手动发放收益失败", t);
         }
+    }
+
+    // ===== OTC 收益 API 反射缓存（跨版本解耦，避免直接引用字段在运行期类型不一致） =====
+    private static Method coinGiveMethod;
+    private static boolean coinGiveResolved;
+    private static Method prestigeAddMethod;
+    private static boolean prestigeResolved;
+
+    private static boolean invokeGiveCoins(Player player, int amount) {
+        if (amount <= 0) return true;
+        if (!coinGiveResolved) {
+            coinGiveResolved = true;
+            try {
+                Class<?> coinUtils = Class.forName("cn.breezeth.ordertocook.util.CoinUtils");
+                coinGiveMethod = coinUtils.getMethod("giveCoins", Player.class, int.class);
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("送餐: 未找到 OTC CoinUtils.giveCoins，兜底收益将无法发放", t);
+            }
+        }
+        if (coinGiveMethod == null) return false;
+        try {
+            coinGiveMethod.invoke(null, player, amount);
+            return true;
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("送餐: 调用 CoinUtils.giveCoins 失败", t);
+            return false;
+        }
+    }
+
+    private static void invokeAddPrestige(Player player, int amount) {
+        if (amount <= 0) return;
+        if (!prestigeResolved) {
+            prestigeResolved = true;
+            try {
+                Class<?> prestigeManager = Class.forName("cn.breezeth.ordertocook.core.PrestigeManager");
+                prestigeAddMethod = prestigeManager.getMethod("addPlayerPrestige", Player.class, int.class);
+            } catch (Throwable ignored) {}
+        }
+        if (prestigeAddMethod == null) return;
+        try {
+            prestigeAddMethod.invoke(null, player, amount);
+        } catch (Throwable ignored) {}
+    }
+
+    /** 反射读取 OTC 配置计算小费，复刻 TakeoutBagItem.completeDelivery 的普通/急单/下雨逻辑；任何失败返回 0。 */
+    private static int computeFallbackTip(ServerLevel level, boolean isUrgent) {
+        try {
+            Class<?> cfgManager = Class.forName("cn.breezeth.ordertocook.config.ConfigManager");
+            Object cfg = cfgManager.getMethod("get").invoke(null);
+            if (cfg == null) return 0;
+            Class<?> cfgClass = cfg.getClass();
+            double chance = isUrgent ? reflectDouble(cfg, cfgClass, "tipUrgentChance") : reflectDouble(cfg, cfgClass, "tipNormalChance");
+            int min = level.isRaining() ? reflectInt(cfg, cfgClass, "rainTipMin") : reflectInt(cfg, cfgClass, "tipMin");
+            int max = level.isRaining() ? reflectInt(cfg, cfgClass, "rainTipMax") : reflectInt(cfg, cfgClass, "tipMax");
+            if (level.random.nextDouble() < chance) {
+                int span = Math.max(1, max - min + 1);
+                return min + level.random.nextInt(span);
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    private static double reflectDouble(Object cfg, Class<?> cfgClass, String name) throws Exception {
+        java.lang.reflect.Field f = findField(cfgClass, name);
+        return f != null ? f.getDouble(cfg) : 0.0;
+    }
+
+    private static int reflectInt(Object cfg, Class<?> cfgClass, String name) throws Exception {
+        java.lang.reflect.Field f = findField(cfgClass, name);
+        return f != null ? f.getInt(cfg) : 0;
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> type, String name) {
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = c.getDeclaredField(name);
+                f.setAccessible(true);
+                return f;
+            } catch (NoSuchFieldException ignored) {}
+        }
+        return null;
     }
 
     /**
@@ -701,21 +788,13 @@ public class DeliveryBridge {
                     BlockPos counterPos = pos.immutable();
                     double dist = counterPos.distSqr((Vec3i) maidPos);
                     if (dist > 256.0) continue;
-                    boolean plateFound = false;
-                    for (int dy = 0; dy <= 2 && !plateFound; ++dy) {
-                        for (int dx = -2; dx <= 2 && !plateFound; ++dx) {
-                            for (int dz = -2; dz <= 2 && !plateFound; ++dz) {
-                                BlockPos abovePos = counterPos.offset(dx, dy, dz);
-                                BlockEntity plateBe = level.getBlockEntity(abovePos);
-                                if (!(plateBe instanceof FoodPlateBlockEntity)) continue;
-                                FoodPlateBlockEntity plateEntity = (FoodPlateBlockEntity) plateBe;
-                                if (plateEntity.getPlateStack().isEmpty()) continue;
-                                if (dist < nearestDist) {
-                                    nearestDist = dist;
-                                    nearest = counterPos;
-                                    plateFound = true;
-                                }
-                            }
+                    // 待配送餐盘在 OTC 中固定生成于操作台正上方(above())，只检查这一格，
+                    // 不再扫描周围 5x5x3，避免误收邻近操作台或顾客正在吃的餐盘
+                    BlockEntity plateBe = level.getBlockEntity(counterPos.above());
+                    if (plateBe instanceof FoodPlateBlockEntity plateEntity && !plateEntity.getPlateStack().isEmpty()) {
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = counterPos;
                         }
                     }
                 }
@@ -727,25 +806,21 @@ public class DeliveryBridge {
     private static ItemStack pickUpPlate(ServerLevel level, BlockPos counterPos, EntityMaid maid) {
         CombinedInvWrapper inv = maid.getAvailableInv(false);
         if (inv == null) return ItemStack.EMPTY;
-        for (int dy = 0; dy <= 2; ++dy) {
-            for (int dx = -2; dx <= 2; ++dx) {
-                for (int dz = -2; dz <= 2; ++dz) {
-                    BlockPos abovePos = counterPos.offset(dx, dy, dz);
-                    BlockEntity be = level.getBlockEntity(abovePos);
-                    if (!(be instanceof FoodPlateBlockEntity)) continue;
-                    FoodPlateBlockEntity plateBe = (FoodPlateBlockEntity) be;
-                    ItemStack plateStack = plateBe.getPlateStack().copy();
-                    if (plateStack.isEmpty()) continue;
-                    ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, true);
-                    if (!remainder.isEmpty()) {
-                        MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆背包已满, 无法拿起餐盘");
-                        return ItemStack.EMPTY;
-                    }
-                    plateBe.setPlateStack(ItemStack.EMPTY);
-                    level.removeBlock(abovePos, false);
-                    ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, false);
-                    return plateStack;
+        // 只从操作台正上方取待配送餐盘，与 findCounterWithPlate / OTC 装盘位置(above())一致
+        BlockPos abovePos = counterPos.above();
+        BlockEntity be = level.getBlockEntity(abovePos);
+        if (be instanceof FoodPlateBlockEntity plateBe) {
+            ItemStack plateStack = plateBe.getPlateStack().copy();
+            if (!plateStack.isEmpty()) {
+                ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, true);
+                if (!remainder.isEmpty()) {
+                    MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆背包已满, 无法拿起餐盘");
+                    return ItemStack.EMPTY;
                 }
+                plateBe.setPlateStack(ItemStack.EMPTY);
+                level.removeBlock(abovePos, false);
+                ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, false);
+                return plateStack;
             }
         }
         return ItemStack.EMPTY;
@@ -794,6 +869,20 @@ public class DeliveryBridge {
         BlockPos nearest = null;
         double nearestDist = Double.MAX_VALUE;
 
+        // 先尝试 TaskManager 中心化检索缓存（24格内最近），未命中再走原 chunk 扫描兜底
+        List<BlockPos> countersWithBags = TaskManager.getInstance().getCachedCountersWithTakeoutBags(level);
+        if (countersWithBags != null && !countersWithBags.isEmpty()) {
+            for (BlockPos counterPos : countersWithBags) {
+                double dist = counterPos.distSqr((Vec3i) maidPos);
+                if (dist > 576.0) continue; // 24格范围内
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = counterPos;
+                }
+            }
+            if (nearest != null) return nearest;
+        }
+
         int chunkX = maidPos.getX() >> 4;
         int chunkZ = maidPos.getZ() >> 4;
         for (int cx = chunkX - 2; cx <= chunkX + 2; ++cx) {
@@ -818,19 +907,8 @@ public class DeliveryBridge {
             }
         }
         
-        // 如果没有找到，检查女仆周围的外卖袋掉落物
-        if (nearest == null) {
-            for (net.minecraft.world.entity.item.ItemEntity itemEntity : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(maidPos).inflate(16.0))) {
-                if (isTakeoutBag(itemEntity.getItem())) {
-                    BlockPos itemPos = itemEntity.blockPosition();
-                    double dist = itemPos.distSqr((Vec3i) maidPos);
-                    if (dist < nearestDist) {
-                        nearestDist = dist;
-                        nearest = itemPos;
-                    }
-                }
-            }
-        }
+        // 注意：不再把地上的外卖袋掉落物坐标当作操作台返回——掉落物位置不是 TakeoutBoxBlockEntity，
+        // 女仆导航过去后交互必失败、只会朝空地空跑。操作台 3 格内的掉落物兜底已在 hasTakeoutBagInCounter 处理。
         return nearest;
     }
 
@@ -873,7 +951,7 @@ public class DeliveryBridge {
     /**
      * 从外卖袋BlockEntity中获取物品栈（参考FoodPlateBlockEntity.getPlateStack）
      */
-    private static ItemStack getTakeoutBagStack(BlockEntity be) {
+    static ItemStack getTakeoutBagStack(BlockEntity be) {
         try {
             // 尝试通过方法名获取
             for (java.lang.reflect.Method m : be.getClass().getMethods()) {
@@ -903,7 +981,7 @@ public class DeliveryBridge {
     /**
      * 检查物品是否是外卖袋
      */
-    private static boolean isTakeoutBag(ItemStack stack) {
+    static boolean isTakeoutBag(ItemStack stack) {
         if (stack.isEmpty()) return false;
         try {
             return stack.getItem() instanceof TakeoutBagItem;

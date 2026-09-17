@@ -1,6 +1,7 @@
 package com.icewolf.maidrestaurant.business.registry;
 
 import com.icewolf.maidrestaurant.business.block.JiuhuStationBlock;
+import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.PublicNoticeBoardBlock;
 import com.icewolf.maidrestaurant.business.block.ScheduleBoardBlock;
 import net.minecraft.world.level.block.Block;
@@ -15,6 +16,7 @@ public class ModBlocks {
     public static final RegistryObject<Block> PUBLIC_NOTICE_BOARD = BLOCKS.register("public_notice_board", PublicNoticeBoardBlock::new);
     public static final RegistryObject<Block> SCHEDULE_BOARD = BLOCKS.register("schedule_board", ScheduleBoardBlock::new);
     public static final RegistryObject<Block> JIUHU_STATION = BLOCKS.register("jiuhu_station", JiuhuStationBlock::new);
+    public static final RegistryObject<Block> ORDER_CLIP = BLOCKS.register("order_clip", OrderClipBlock::new);
 
     public static void register(IEventBus eventBus) {
         BLOCKS.register(eventBus);

@@ -39,6 +39,8 @@ public class BusinessManager {
     private long lastPackagingTick = -10L;
     private long lastDeliveryTick = -10L;
     private long lastDishwashTick = -10L;
+    private long lastGreetTick = -10L;
+    private long lastFetchTick = -10L;
     private long lastStaleCleanupTick = -1200L;
     private final Map<BlockPos, Long> orderCooldowns = new HashMap<BlockPos, Long>();
     private final Map<BlockPos, BlockPos> counterToMachine = new HashMap<BlockPos, BlockPos>();
@@ -95,8 +97,17 @@ public class BusinessManager {
                     DeliveryBridge.tickDelivery(level, this);
                     this.lastDeliveryTick = this.tickCounter;
                 }
+                if (BusinessConfig.autoAccept && this.tickCounter - this.lastGreetTick >= 10L) {
+                    WalkInGreetBridge.tickGreet(level, this);
+                    this.lastGreetTick = this.tickCounter;
+                }
+                if (BusinessConfig.autoAccept && this.tickCounter - this.lastFetchTick >= 10L) {
+                    OrderFetchBridge.tickFetch(level, this);
+                    this.lastFetchTick = this.tickCounter;
+                }
                 if (!BusinessConfig.autoWash || this.tickCounter - this.lastDishwashTick < 10L) continue;
                 DishwashingBridge.tickDishwashing(level, this);
+                RestockBridge.tickRestock(level, this);
                 this.lastDishwashTick = this.tickCounter;
             }
             catch (Throwable t) {

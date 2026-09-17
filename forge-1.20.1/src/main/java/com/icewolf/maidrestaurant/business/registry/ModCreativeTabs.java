@@ -24,6 +24,7 @@ public class ModCreativeTabs {
                     output.accept(ModItems.PUBLIC_NOTICE_BOARD.get());
                     output.accept(ModItems.SCHEDULE_BOARD.get());
                     output.accept(ModItems.JIUHU_STATION.get());
+                    output.accept(ModItems.ORDER_CLIP.get());
                 })
                 .build()
         );

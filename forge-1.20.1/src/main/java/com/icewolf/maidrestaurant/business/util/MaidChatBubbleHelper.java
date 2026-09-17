@@ -124,7 +124,21 @@ public class MaidChatBubbleHelper {
             },
             80);
     }
-    
+
+    /**
+     * 厨师备菜时操作台成品格（及附近冰箱）都满了，做好的菜放不下
+     */
+    public static void chefCounterFull(EntityMaid maid) {
+        forceShowBubble(maid, "chef_counter_full",
+            new String[]{
+                "操作台放满了，菜没地方放了…(´；ω；`)",
+                "成品格塞不下啦，主人收一下菜吧~",
+                "哎？做好的菜放不进去了 (⊙o⊙)",
+                "操作台堆满了，能腾个地方吗…"
+            },
+            80);
+    }
+
     /**
      * 厨师空闲
      */
@@ -281,6 +295,34 @@ public class MaidChatBubbleHelper {
     }
     
     // ==================== 核心方法 ====================
+
+    /**
+     * 侍者去给包装货架补皮革（开始）
+     */
+    public static void waiterRestocking(EntityMaid maid) {
+        showBubble(maid, "waiter_restocking",
+            new String[]{
+                "货架的皮革不够啦，我去补一些~",
+                "去拿点包装用的皮革哦~",
+                "外卖包装要补货啦 (｡･ω･｡)",
+                "我来给货架添些皮革~"
+            },
+            60);
+    }
+
+    /**
+     * 侍者找不到皮革（补货失败，错误类气泡可重复提示）
+     */
+    public static void waiterRestockNoLeather(EntityMaid maid) {
+        forceShowBubble(maid, "waiter_restock_no_leather",
+            new String[]{
+                "包装用的皮革没有了呢…",
+                "找不到皮革，外卖要包不了啦 (｡•́︿•̀｡)",
+                "店里没有皮革了，主人补一点吧~",
+                "哎？皮革都用光了？"
+            },
+            60);
+    }
 
     /**
      * 显示自定义气泡（公共方法，用于外部调用）

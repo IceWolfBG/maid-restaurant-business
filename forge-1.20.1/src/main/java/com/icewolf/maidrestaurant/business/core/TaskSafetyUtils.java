@@ -163,6 +163,25 @@ public class TaskSafetyUtils {
             data.remove("BusinessCookStage");
             data.remove("BusinessCollectPlate");
             data.remove("BusinessCollectStage");
+            data.remove("BusinessGreetNpc");
+            data.remove("BusinessGreetMachine");
+            data.remove("BusinessGreetClip");
+            data.remove("BusinessGreetCounter");
+            data.remove("BusinessGreetStage");
+            data.remove("BusinessGreetOrderId");
+            data.remove("BusinessGreetWaitSince");
+            data.remove("BusinessGreetStart");
+            data.remove("BusinessFetchMachine");
+            data.remove("BusinessFetchCounter");
+            data.remove("BusinessFetchSource");
+            data.remove("BusinessFetchStage");
+            data.remove("BusinessFetchSlot");
+            data.remove("BusinessFetchClip");
+            data.remove("BusinessFetchOrderId");
+            data.remove("BusinessFetchDelivery");
+            data.remove("BusinessFetchStart");
+            data.remove("BusinessFetchWaitSince");
+            data.remove("BusinessFetchLock");
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.warn("任务安全: 清除女仆任务标记失败 {}", t.toString());
         }

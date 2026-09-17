@@ -1,0 +1,77 @@
+{
+  "credit": "Maid Restaurant Business - thin Order Clip rail (with order, centered wide paper)",
+  "render_type": "minecraft:cutout",
+  "textures": {
+    "clip": "maid_restaurant_business:block/order_clip_clip",
+    "cap": "maid_restaurant_business:block/order_clip_cap",
+    "paper": "maid_restaurant_business:block/order_clip_paper",
+    "particle": "maid_restaurant_business:block/order_clip_paper"
+  },
+  "elements": [
+    {
+      "name": "paper",
+      "from": [4, 1, 14.6],
+      "to": [12, 11.2, 15.4],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#paper" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#paper" },
+        "east": { "uv": [0, 0, 2, 16], "texture": "#paper" },
+        "west": { "uv": [0, 0, 2, 16], "texture": "#paper" },
+        "up": { "uv": [0, 0, 16, 2], "texture": "#paper" },
+        "down": { "uv": [0, 0, 16, 2], "texture": "#paper" }
+      }
+    },
+    {
+      "name": "back",
+      "from": [2, 10.5, 15],
+      "to": [14, 13, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#clip" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#clip" },
+        "east": { "uv": [0, 0, 2, 16], "texture": "#clip" },
+        "west": { "uv": [0, 0, 2, 16], "texture": "#clip" },
+        "up": { "uv": [0, 0, 16, 2], "texture": "#clip" },
+        "down": { "uv": [0, 14, 16, 16], "texture": "#clip" }
+      }
+    },
+    {
+      "name": "front",
+      "from": [2, 11, 14],
+      "to": [14, 13, 15.2],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#clip" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#clip" },
+        "east": { "uv": [0, 0, 3, 16], "texture": "#clip" },
+        "west": { "uv": [0, 0, 3, 16], "texture": "#clip" },
+        "up": { "uv": [0, 0, 16, 3], "texture": "#clip" },
+        "down": { "uv": [0, 13, 16, 16], "texture": "#clip" }
+      }
+    },
+    {
+      "name": "cap_left",
+      "from": [1.5, 10.5, 14],
+      "to": [2, 13, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 2, 16], "texture": "#cap" },
+        "south": { "uv": [0, 0, 2, 16], "texture": "#cap" },
+        "east": { "uv": [0, 0, 16, 16], "texture": "#cap" },
+        "west": { "uv": [0, 0, 16, 16], "texture": "#cap" },
+        "up": { "uv": [0, 0, 4, 16], "texture": "#cap" },
+        "down": { "uv": [0, 0, 4, 16], "texture": "#cap" }
+      }
+    },
+    {
+      "name": "cap_right",
+      "from": [14, 10.5, 14],
+      "to": [14.5, 13, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 2, 16], "texture": "#cap" },
+        "south": { "uv": [0, 0, 2, 16], "texture": "#cap" },
+        "east": { "uv": [0, 0, 16, 16], "texture": "#cap" },
+        "west": { "uv": [0, 0, 16, 16], "texture": "#cap" },
+        "up": { "uv": [0, 0, 4, 16], "texture": "#cap" },
+        "down": { "uv": [0, 0, 4, 16], "texture": "#cap" }
+      }
+    }
+  ]
+}

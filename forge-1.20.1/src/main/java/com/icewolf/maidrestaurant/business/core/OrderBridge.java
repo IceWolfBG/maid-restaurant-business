@@ -83,6 +83,15 @@ import net.minecraftforge.registries.ForgeRegistries;
 public class OrderBridge {
     // 记录每个打单机的订单刷新时间（key: machinePos.asLong(), value: 刷新时的游戏tick）
     private static final Map<Long, Long> orderRefreshTimes = new HashMap<>();
+
+    // 方案A（对齐 OTC 范式）：以打单机为中心局部圆扫附近操作台，替代 WorldScanner 全局扫描。
+    // 半径/垂直与 OTC 的 ModConstants 一致（水平24圆形、垂直±8），按机器缓存1秒，
+    // 运行时新放/拆除操作台最迟1秒被识别；key = 维度@打单机坐标。
+    private static final Map<String, List<BlockPos>> counterScanCache = new HashMap<>();
+    private static final Map<String, Long> counterScanTick = new HashMap<>();
+    private static final long COUNTER_SCAN_INTERVAL = 20L;
+    private static final int COUNTER_SCAN_RADIUS = 24;
+    private static final int COUNTER_SCAN_VERTICAL = 8;
     
     /**
      * 由Mixin调用，记录订单刷新时间
@@ -92,28 +101,41 @@ public class OrderBridge {
             long key = pos.asLong();
             long now = level.getGameTime();
             orderRefreshTimes.put(key, now);
+            // 打单机订单刷新，立即令取单入台的成品候选缓存失效
+            if (level instanceof ServerLevel serverLevel) {
+                OrderFetchBridge.invalidate(serverLevel, pos);
+            }
         }
     }
     
     public static void tickOrders(ServerLevel level, BusinessManager manager) {
         List<BlockPos> machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
-        List<BlockPos> counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
         if (machines.isEmpty()) {
             return;
         }
+        // 方案A：操作台不再全局扫描，改为对每台打单机做局部圆扫（半径24、垂直±8、缓存1秒）。
+        // 每台机器记录其局部柜台；同一柜台落在多台机器范围内时归最近的一台（保持原"最近机器"语义）。
+        String dimPrefix = level.dimension().location().toString() + "@";
+        HashSet<String> liveScanKeys = new HashSet<String>();
+        HashMap<BlockPos, List<BlockPos>> countersByMachine = new HashMap<BlockPos, List<BlockPos>>();
         HashMap<BlockPos, BlockPos> newMapping = new HashMap<BlockPos, BlockPos>();
-        for (BlockPos counterPos : counters) {
-            BlockPos nearestMachine = null;
-            double nearestDist = Double.MAX_VALUE;
-            for (BlockPos machinePos : machines) {
+        HashMap<BlockPos, Double> nearestDistByCounter = new HashMap<BlockPos, Double>();
+        for (BlockPos machinePos : machines) {
+            liveScanKeys.add(dimPrefix + machinePos.asLong());
+            List<BlockPos> localCounters = OrderBridge.scanCountersAround(level, machinePos);
+            countersByMachine.put(machinePos, localCounters);
+            for (BlockPos counterPos : localCounters) {
                 double d = counterPos.distSqr((Vec3i)machinePos);
-                if (!(d < nearestDist) || !(d <= 64.0)) continue;
-                nearestDist = d;
-                nearestMachine = machinePos;
+                Double prev = nearestDistByCounter.get(counterPos);
+                if (prev == null || d < prev) {
+                    nearestDistByCounter.put(counterPos, d);
+                    newMapping.put(counterPos, machinePos);
+                }
             }
-            if (nearestMachine == null) continue;
-            newMapping.put(counterPos, nearestMachine);
         }
+        // 清理已拆除打单机遗留的扫描缓存（仅本维度）
+        counterScanCache.keySet().removeIf(k -> k.startsWith(dimPrefix) && !liveScanKeys.contains(k));
+        counterScanTick.keySet().removeIf(k -> k.startsWith(dimPrefix) && !liveScanKeys.contains(k));
         manager.getCounterToMachine().clear();
         manager.getCounterToMachine().putAll(newMapping);
         HashSet<BlockPos> currentActivated = new HashSet<BlockPos>();
@@ -139,134 +161,26 @@ public class OrderBridge {
             manager.getActivatedMachines().remove(pos);
         }
         manager.getActivatedMachines().retainAll(currentActivated);
-        // 全局开关关闭，所有打单机都不自动接单
-        if (!BusinessConfig.autoAccept) {
-            return;
-        }
-        for (BlockPos machinePos : machines) {
-            if (!currentActivated.contains(machinePos)) continue;
-            // 检查排班表的自动接单开关（没有排班表默认开启，有排班表则按排班表设置）
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_ACCEPT)) {
-                continue;
-            }
-            try {
-                OrderBridge.processMachine(level, machinePos, counters, manager);
-            }
-            catch (Throwable t) {
-                MaidRestaurantBusiness.LOGGER.error("Error processing order machine at {}", machinePos, t);
-            }
-        }
+        // 自动接单（厨师取单入台）已改为厨师真实寻路完成，见 OrderFetchBridge（由 BusinessManager 每 10tick 调度）。
+        // tickOrders 现在只负责维护打单机激活态与“操作台→打单机”归属映射，供其它桥复用。
     }
 
-    private static boolean processMachine(ServerLevel level, BlockPos machinePos, List<BlockPos> counters, BusinessManager manager) {
-        BlockPos counterPos;
-        BlockEntity be = level.getBlockEntity(machinePos);
-        if (!(be instanceof OrderMachineBlockEntity)) {
-            return false;
-        }
-        if (!OrderBridge.isActivated(level, machinePos)) {
-            return false;
-        }
-        if (!ProgressionManager.isAutoOrderUnlocked(level, machinePos)) {
-            return true;
-        }
-        long now = level.getGameTime();
-        // 基于订单刷新时间的延迟：只有订单刷新后超过acceptDelay才接单
+    /**
+     * 打单机内订单是否已过“刷新延迟”（acceptDelay）。供 OrderFetchBridge 判断打单机来源候选。
+     */
+    static boolean isPastAcceptDelay(ServerLevel level, BlockPos machinePos) {
         Long refreshTime = orderRefreshTimes.get(machinePos.asLong());
         if (refreshTime == null) {
-            // 还没有检测到订单刷新，不接单
-            return true;
+            return false;
         }
-        long elapsed = now - refreshTime;
-        if (elapsed < (long)BusinessConfig.acceptDelay) {
-            return true;
-        }
-        IItemHandler machineInv = OrderBridge.getItemHandler(be);
-        if (machineInv == null) {
-            return true;
-        }
-        ArrayList<OrderEntry> orders = new ArrayList<OrderEntry>();
-        for (int i = 0; i < machineInv.getSlots(); ++i) {
-            CompoundTag nbt;
-            ItemStack stack = machineInv.getStackInSlot(i);
-            if (stack.isEmpty() || !stack.is((Item)OtcCompat.ORDER()) || (nbt = stack.getTag()) == null) continue;
-            orders.add(new OrderEntry(i, stack, nbt));
-        }
-        if (orders.isEmpty()) {
-            return true;
-        }
-        long activeCount = manager.getActiveOrders().values().stream().filter(o -> o.machinePos.equals(machinePos)).count();
-        if (activeCount >= (long)BusinessConfig.maxPendingOrders) {
-            return true;
-        }
-        ArrayList<OrderEntry> candidates = new ArrayList<OrderEntry>();
-        for (OrderEntry orderEntry : orders) {
-            boolean bl = orderEntry.nbt.getBoolean("Delivery");
-            if (bl && !BusinessConfig.acceptDelivery || !orderEntry.nbt.contains("FoodList")) continue;
-            candidates.add(orderEntry);
-        }
-        if (candidates.isEmpty()) {
-            return true;
-        }
-        // 自动接单时检查操作台和冰箱里有没有现成的成品食物
-        // 有就接（可以直接打包送餐），没有就不接（避免订单卡在操作台）
-        ArrayList<OrderEntry> readyOrders = new ArrayList<OrderEntry>();
-        for (OrderEntry orderEntry : candidates) {
-            if (OrderBridge.hasReadyFood(level, machinePos, orderEntry.nbt)) {
-                readyOrders.add(orderEntry);
-            }
-        }
-        if (readyOrders.isEmpty()) {
-            return true;
-        }
-        candidates = readyOrders;
-        if (BusinessConfig.priorityMode == BusinessConfig.PriorityMode.PRESTIGE) {
-            candidates.sort((a, b) -> Integer.compare(b.nbt.getInt("Prestige"), a.nbt.getInt("Prestige")));
-        }
-        if ((counterPos = OrderBridge.findNearestFreeCounter(level, machinePos, counters, manager)) == null) {
-            return true;
-        }
-        OrderEntry orderEntry = (OrderEntry)candidates.get(0);
-        OrderBridge.transferOrderToCounter(level, machineInv, orderEntry, counterPos, machinePos);
-        manager.getOrderCooldowns().put(machinePos, now);
-        manager.getCounterToMachine().put(counterPos, machinePos);
-        return true;
+        return level.getGameTime() - refreshTime >= (long) BusinessConfig.acceptDelay;
     }
 
-    private static boolean canFulfillOrder(ServerLevel level, BlockPos machinePos, CompoundTag orderNbt) {
-        if (!orderNbt.contains("FoodList")) {
-            return false;
-        }
-        CompoundTag foodList = orderNbt.getCompound("FoodList");
-        int range = BusinessConfig.searchRange;
-        HashMap<String, Integer> available = new HashMap<String, Integer>();
-        for (BlockPos check : BlockPos.betweenClosed((BlockPos)machinePos.offset(-range, -range / 2, -range), (BlockPos)machinePos.offset(range, range / 2, range))) {
-            try {
-                IItemHandler handler = MaidStorages.tryGetHandler((Level)level, (BlockPos)check);
-                if (handler == null) continue;
-                for (int i = 0; i < handler.getSlots(); ++i) {
-                    ItemStack stack = handler.getStackInSlot(i);
-                    if (stack.isEmpty()) continue;
-                    String id = Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
-                    available.merge(id, stack.getCount(), Integer::sum);
-                }
-            }
-            catch (Throwable handler) {
-            }
-        }
-        for (String key : foodList.getAllKeys()) {
-            int required = foodList.getInt(key);
-            if (available.getOrDefault(key, 0) >= required) continue;
-            return false;
-        }
-        return true;
-    }
-    
     /**
      * 检查操作台和冰箱里有没有订单所需的现成成品食物
      * 用于自动接单判断：有现成食物就接（可以直接打包），没有就不接
      */
-    private static boolean hasReadyFood(ServerLevel level, BlockPos machinePos, CompoundTag orderNbt) {
+    static boolean hasReadyFood(ServerLevel level, BlockPos machinePos, CompoundTag orderNbt) {
         if (!orderNbt.contains("FoodList")) {
             return false;
         }
@@ -390,7 +304,46 @@ public class OrderBridge {
         }
     }
 
-    private static BlockPos findNearestFreeCounter(ServerLevel level, BlockPos machinePos, List<BlockPos> counters, BusinessManager manager) {
+    /**
+     * OTC 范式：以打单机为中心局部圆扫附近操作台（水平半径24圆形、垂直±8），按机器缓存1秒。
+     * 运行时新放/拆除操作台最迟1秒被识别。
+     */
+    static List<BlockPos> scanCountersAround(ServerLevel level, BlockPos machinePos) {
+        String key = level.dimension().location().toString() + "@" + machinePos.asLong();
+        long now = level.getGameTime();
+        List<BlockPos> cached = counterScanCache.get(key);
+        Long last = counterScanTick.get(key);
+        if (cached != null && last != null && now - last < COUNTER_SCAN_INTERVAL) {
+            return cached;
+        }
+        List<BlockPos> found = new ArrayList<BlockPos>();
+        BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+        int cx = machinePos.getX();
+        int cy = machinePos.getY();
+        int cz = machinePos.getZ();
+        int minY = level.getMinBuildHeight();
+        int maxY = level.getMaxBuildHeight();
+        int radiusSqr = COUNTER_SCAN_RADIUS * COUNTER_SCAN_RADIUS;
+        for (int dx = -COUNTER_SCAN_RADIUS; dx <= COUNTER_SCAN_RADIUS; dx++) {
+            for (int dz = -COUNTER_SCAN_RADIUS; dz <= COUNTER_SCAN_RADIUS; dz++) {
+                if (dx * dx + dz * dz > radiusSqr) continue;
+                for (int dy = -COUNTER_SCAN_VERTICAL; dy <= COUNTER_SCAN_VERTICAL; dy++) {
+                    int y = cy + dy;
+                    if (y < minY || y >= maxY) continue;
+                    m.set(cx + dx, y, cz + dz);
+                    if (!level.getBlockState(m).hasBlockEntity()) continue;
+                    if (level.getBlockEntity(m) instanceof TakeoutBoxBlockEntity) {
+                        found.add(m.immutable());
+                    }
+                }
+            }
+        }
+        counterScanCache.put(key, found);
+        counterScanTick.put(key, now);
+        return found;
+    }
+
+    static BlockPos findNearestFreeCounter(ServerLevel level, BlockPos machinePos, List<BlockPos> counters, BusinessManager manager) {
         BlockPos nearest = null;
         double nearestDist = Double.MAX_VALUE;
         for (BlockPos counterPos : counters) {
@@ -404,24 +357,7 @@ public class OrderBridge {
         return nearest;
     }
 
-    private static void transferOrderToCounter(ServerLevel level, IItemHandler machineInv, OrderEntry entry, BlockPos counterPos, BlockPos machinePos) {
-        ItemStack orderStack = machineInv.extractItem(entry.slot, 1, false);
-        if (orderStack.isEmpty()) {
-            return;
-        }
-        BlockEntity counterBe = level.getBlockEntity(counterPos);
-        if (counterBe == null) {
-            return;
-        }
-        IItemHandler counterInv = OrderBridge.getItemHandler(counterBe);
-        if (counterInv != null) {
-            ItemHandlerHelper.insertItem((IItemHandler)counterInv, (ItemStack)orderStack, (boolean)false);
-        }
-        OrderBridge.spawnCustomerForOrder(level, machinePos, entry.nbt);
-        level.updateNeighbourForOutputSignal(counterPos, counterBe.getBlockState().getBlock());
-    }
-
-    private static void spawnCustomerForOrder(ServerLevel level, BlockPos machinePos, CompoundTag nbt) {
+    static void spawnCustomerForOrder(ServerLevel level, BlockPos machinePos, CompoundTag nbt) {
         try {
             long expirySys;
             boolean delivery = nbt.getBoolean("Delivery");
@@ -491,9 +427,6 @@ public class OrderBridge {
             // empty catch block
         }
         return null;
-    }
-
-    private record OrderEntry(int slot, ItemStack stack, CompoundTag nbt) {
     }
 
     private static class ItemStackHandlerAdapter

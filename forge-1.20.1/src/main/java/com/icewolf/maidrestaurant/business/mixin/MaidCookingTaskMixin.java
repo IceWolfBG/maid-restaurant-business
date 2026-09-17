@@ -47,40 +47,6 @@ public class MaidCookingTaskMixin {
     }
 
     /**
-     * 拦截 checkExtraStartConditions，输出详细的条件检查日志
-     */
-    @Inject(method={"checkExtraStartConditions"}, at=@At("RETURN"), remap=false)
-    private void onCheckExtraStartConditions(ServerLevel level, EntityMaid maid, CallbackInfoReturnable<Boolean> cir) {
-        try {
-            UUID maidUUID = getEntityUUID(maid);
-            CookRequest request = (CookRequest) RequestManager.peek(maid, CookRequest.TYPE);
-            boolean hasBusiness = request != null && request.extraData != null && request.extraData.contains("BusinessCounter");
-            if (hasBusiness) {
-                boolean result = cir.getReturnValue();
-                // 每100tick输出一次检查结果，避免刷屏
-                long currentTick = TaskManager.getInstance().getCurrentTick();
-                if (currentTick % 100L == 0L) {
-                    // 详细检查每个条件
-                    int targetType = BehaviorUtils.getTargetType(maid);
-                    boolean hasTargetPos = maid.getBrain().hasMemoryValue(ModEntities.TARGET_POS.get());
-                    boolean hasChairPos = maid.getBrain().hasMemoryValue(ModEntities.CHAIR_POS.get());
-                    MaidStateManager.CookState cookState = MaidStateManager.cookState(maid, level);
-                    
-                    String reason = "";
-                    if (targetType != 2) reason += " targetType=" + targetType;
-                    if (!hasTargetPos) reason += " noTargetPos";
-                    if (!hasChairPos) reason += " noChairPos";
-                    if (cookState != MaidStateManager.CookState.COOK) reason += " cookState=" + cookState;
-                    
-                    // 已删除 checkExtraStartConditions 日志，避免刷屏（行为树会频繁调用此方法）
-                }
-            }
-        } catch (Throwable t) {
-            // 静默处理
-        }
-    }
-
-    /**
      * 烹饪任务开始时调用：标记任务为 IN_PROGRESS
      */
     @Inject(method={"start"}, at=@At("HEAD"), remap=false)

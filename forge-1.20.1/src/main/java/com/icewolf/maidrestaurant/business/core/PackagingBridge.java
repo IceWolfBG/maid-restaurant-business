@@ -55,37 +55,28 @@ public class PackagingBridge {
         int counterCount = manager.getCounterToMachine().size();
         // 每次都输出调试日志，方便排查问题
         
-        // 如果counterToMachine为空，直接扫描附近的操作台
+        // 冷启动兜底：counterToMachine 为空时，以每台打单机为中心局部扫描操作台建立绑定。
+        // 方案A：不再全局扫描操作台，复用 OrderBridge 的 OTC 式局部圆扫（半径24、垂直±8、缓存1秒）。
         if (counterCount == 0) {
-            List<BlockPos> counters = null;
+            List<BlockPos> machines = null;
             try {
-                counters = WorldScanner.scan(level, TakeoutBoxBlockEntity.class);
+                machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
             } catch (Throwable t) {
-                MaidRestaurantBusiness.LOGGER.error("打包: 扫描操作台失败", t);
+                MaidRestaurantBusiness.LOGGER.error("打包: 扫描打单机失败", t);
             }
-            if (counters != null && !counters.isEmpty()) {
-                List<BlockPos> machines = null;
-                try {
-                    machines = WorldScanner.scan(level, OrderMachineBlockEntity.class);
-                } catch (Throwable t) {
-                    MaidRestaurantBusiness.LOGGER.error("打包: 扫描打单机失败", t);
-                }
-                for (BlockPos counterPos : counters) {
-                    // 查找附近的打单机
-                    BlockPos machinePos = null;
-                    if (machines != null) {
-                        for (BlockPos mp : machines) {
-                            if (counterPos.distSqr(mp) <= 64.0) {
-                                machinePos = mp;
-                                break;
-                            }
-                        }
-                    }
-                    if (machinePos == null) {
+            if (machines != null) {
+                for (BlockPos machinePos : machines) {
+                    List<BlockPos> localCounters;
+                    try {
+                        localCounters = OrderBridge.scanCountersAround(level, machinePos);
+                    } catch (Throwable t) {
+                        MaidRestaurantBusiness.LOGGER.error("打包: 局部扫描操作台失败", t);
                         continue;
                     }
-                    // 临时添加到counterToMachine
-                    manager.getCounterToMachine().put(counterPos, machinePos);
+                    for (BlockPos counterPos : localCounters) {
+                        // 临时添加到counterToMachine（下一周期 OrderBridge 会按最近机器重建）
+                        manager.getCounterToMachine().putIfAbsent(counterPos, machinePos);
+                    }
                 }
             }
         }

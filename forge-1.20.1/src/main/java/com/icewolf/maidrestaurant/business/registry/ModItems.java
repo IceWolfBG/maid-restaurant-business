@@ -31,6 +31,7 @@ public class ModItems {
     public static final RegistryObject<Item> PUBLIC_NOTICE_BOARD = ITEMS.register("public_notice_board", () -> new BlockItem((Block)ModBlocks.PUBLIC_NOTICE_BOARD.get(), new Item.Properties()));
     public static final RegistryObject<Item> SCHEDULE_BOARD = ITEMS.register("schedule_board", () -> new BlockItem((Block)ModBlocks.SCHEDULE_BOARD.get(), new Item.Properties()));
     public static final RegistryObject<Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new BlockItem((Block)ModBlocks.JIUHU_STATION.get(), new Item.Properties()));
+    public static final RegistryObject<Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new BlockItem((Block)ModBlocks.ORDER_CLIP.get(), new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
