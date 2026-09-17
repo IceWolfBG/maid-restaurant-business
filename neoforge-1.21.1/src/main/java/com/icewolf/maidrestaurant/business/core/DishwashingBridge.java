@@ -49,6 +49,8 @@ import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -457,6 +459,9 @@ public class DishwashingBridge {
         return nearest;
     }
 
+    // 按音效 id 自行构造来跨 mod 播放 OTC 已注册的盘子架放置音效，不直接引用 OTC 的 DeferredHolder
+    private static final SoundEvent SOUND_PLATE_PLACE = SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath("ordertocook", "plate_place"));
+
     private static void putCleanPlatesToRack(ServerLevel level, EntityMaid maid, BlockPos rackPos) {
         IItemHandler maidInv = MaidUtils.getInventory(maid);
         if (maidInv == null) {
@@ -482,6 +487,10 @@ public class DishwashingBridge {
         }
         if (putCount > 0) {
             level.setBlock(rackPos, (BlockState)state.setValue(intProp, Integer.valueOf(plates)), 3);
+            // OTC 盘子架放干净盘子音效 plate_place，与玩家手动放盘听感一致；播放失败不影响放回
+            try {
+                level.playSound(null, rackPos, SOUND_PLATE_PLACE, SoundSource.BLOCKS, 0.75f, 0.95f + level.random.nextFloat() * 0.1f);
+            } catch (Throwable t) {}
         }
     }
 

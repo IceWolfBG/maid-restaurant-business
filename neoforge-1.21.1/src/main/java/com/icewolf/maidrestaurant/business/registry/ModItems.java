@@ -15,6 +15,7 @@ public class ModItems {
     public static final DeferredHolder<Item, Item> PUBLIC_NOTICE_BOARD = ITEMS.register("public_notice_board", () -> new BlockItem(ModBlocks.PUBLIC_NOTICE_BOARD.get(), new Item.Properties()));
     public static final DeferredHolder<Item, Item> SCHEDULE_BOARD = ITEMS.register("schedule_board", () -> new BlockItem(ModBlocks.SCHEDULE_BOARD.get(), new Item.Properties()));
     public static final DeferredHolder<Item, Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new BlockItem(ModBlocks.JIUHU_STATION.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new BlockItem(ModBlocks.ORDER_CLIP.get(), new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);

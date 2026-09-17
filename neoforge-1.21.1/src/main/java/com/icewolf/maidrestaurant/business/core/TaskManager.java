@@ -7,6 +7,8 @@ import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import cn.breezeth.ordertocook.block.entity.DishwasherBlockEntity;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
+import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.mastermarisa.maid_restaurant.request.CookRequest;
 import com.mastermarisa.maid_restaurant.utils.RequestManager;
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
@@ -40,6 +42,9 @@ public class TaskManager {
     public static final String TYPE_PREP = "prep";
     public static final String TYPE_DISHWASHING = "dishwashing";
     public static final String TYPE_COLLECT_PLATE = "collect_plate";
+    public static final String TYPE_RESTOCK = "restock";
+    public static final String TYPE_GREET = "greet";
+    public static final String TYPE_FETCH_ORDER = "fetch_order";
 
     // 任务状态
     public enum TaskStatus {
@@ -162,6 +167,15 @@ public class TaskManager {
     private long lastDeliveryCacheTick = 0;
     private static final long DELIVERY_CACHE_INTERVAL = 10L; // 每10tick更新一次餐盘缓存
 
+    // ========== Order clip caches (per machine) ==========
+    // 空挂单夹缓存：machine pos asLong -> 可夹新订单的空夹位置
+    private final Map<Long, List<BlockPos>> cachedEmptyClips = new HashMap<>();
+    // 已夹订单的挂单夹缓存：machine pos asLong -> 夹着订单待取走入台的夹位置
+    private final Map<Long, List<BlockPos>> cachedClipsWithOrder = new HashMap<>();
+    private long lastClipCacheTick = 0;
+    private static final long CLIP_CACHE_INTERVAL = 10L;
+    private static final int CLIP_Y_RANGE = 8; // 挂单夹归属的垂直搜索范围
+
     // ========== 厨具占用管理（混合检测方案） ==========
     // 正在被使用的厨具（位置 -> 占用信息）
     private final Map<BlockPos, DeviceOccupancyInfo> occupiedDevices = new HashMap<>();
@@ -266,6 +280,44 @@ public class TaskManager {
         }
 
         return bestTask;
+    }
+
+    /**
+     * 把指定任务定向分配给指定女仆（烹饪任务按本订单选定的厨师分配，
+     * 不使用全局“最近任务”，避免多个订单/厨具之间互相抢单）。
+     * @return true 分配成功；false 表示女仆已有任务，或任务不存在/不是 PENDING（调用方应丢弃该任务）
+     */
+    public boolean assignSpecificTask(UUID maidUUID, String taskId) {
+        if (maidUUID == null || taskId == null) return false;
+        if (tasksByMaid.containsKey(maidUUID)) return false;
+        TaskInfo task = tasks.get(taskId);
+        if (task == null || task.status != TaskStatus.PENDING) return false;
+        task.status = TaskStatus.ASSIGNED;
+        task.assignedMaid = maidUUID;
+        task.assignTime = currentTick;
+        task.lastHeartbeat = currentTick;
+        tasksByMaid.put(maidUUID, taskId);
+        return true;
+    }
+
+    /**
+     * 丢弃一个尚未交付执行的任务（如定向分配失败、放弃占位），清理索引并释放其厨具占用。
+     */
+    public void discardTask(String taskId) {
+        if (taskId == null) return;
+        TaskInfo task = tasks.remove(taskId);
+        if (task == null) return;
+        Set<String> targetTasks = tasksByTarget.get(task.targetPos);
+        if (targetTasks != null) {
+            targetTasks.remove(taskId);
+            if (targetTasks.isEmpty()) {
+                tasksByTarget.remove(task.targetPos);
+            }
+        }
+        task.status = TaskStatus.FAILED;
+        if (task.taskType.equals(TYPE_COOKING) && task.targetPos != null) {
+            releaseDevice(task.targetPos);
+        }
     }
 
     /**
@@ -740,6 +792,13 @@ public class TaskManager {
             MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新配送缓存异常", t);
         }
 
+        // 更新挂单夹缓存（空夹 / 有单夹），按激活打单机隔离，统一扫描避免WalkIn/OrderFetch重复扫描
+        try {
+            ensureClipCaches(level);
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("TaskManager: 更新挂单夹缓存异常", t);
+        }
+
         // 每200tick（10秒）输出一次任务统计信息
         if (currentTick % 200L == 0L) {
             int pending = getPendingTaskCount();
@@ -1206,6 +1265,92 @@ public class TaskManager {
     }
 
     /**
+     * 重建挂单夹缓存（空夹 / 有单夹），每 10tick 一次、按本维度激活打单机隔离。
+     * 先按各机器范围立方扫描收集候选夹（去重），再把每个夹归给水平距离最近、
+     * 且确实落在水平 dishScanRange、垂直 CLIP_Y_RANGE 内的机器，保证一个夹只属于一台机器。
+     */
+    private void ensureClipCaches(ServerLevel level) {
+        if (currentTick - lastClipCacheTick < CLIP_CACHE_INTERVAL) return;
+        lastClipCacheTick = currentTick;
+        try {
+            int range = BusinessConfig.dishScanRange;
+            Set<BlockPos> active = ActivationCache.getActivatedMachines(level);
+            Set<Long> activeKeys = new HashSet<>();
+            for (BlockPos m : active) activeKeys.add(m.asLong());
+            cachedEmptyClips.keySet().retainAll(activeKeys);
+            cachedClipsWithOrder.keySet().retainAll(activeKeys);
+
+            Map<Long, List<BlockPos>> emptyMap = new HashMap<>();
+            Map<Long, List<BlockPos>> filledMap = new HashMap<>();
+            for (BlockPos m : active) {
+                emptyMap.put(m.asLong(), new ArrayList<>());
+                filledMap.put(m.asLong(), new ArrayList<>());
+            }
+
+            // 趟1：收集所有激活机器范围内的挂单夹（去重）；先用方块类型过滤，避免逐方块取 BlockEntity
+            Set<BlockPos> candidates = new HashSet<>();
+            for (BlockPos machinePos : active) {
+                for (BlockPos pos : BlockPos.betweenClosed(
+                        machinePos.offset(-range, -CLIP_Y_RANGE, -range),
+                        machinePos.offset(range, CLIP_Y_RANGE, range))) {
+                    try {
+                        if (level.getBlockState(pos).getBlock() instanceof OrderClipBlock
+                                && level.getBlockEntity(pos) instanceof OrderClipBlockEntity) {
+                            candidates.add(pos.immutable());
+                        }
+                    } catch (Exception ignore) {}
+                }
+            }
+
+            // 趟2：每个夹归给合格范围内水平距离最近的机器
+            for (BlockPos clipPos : candidates) {
+                if (!(level.getBlockEntity(clipPos) instanceof OrderClipBlockEntity clip)) continue;
+                BlockPos nearest = null;
+                double bestDist = Double.MAX_VALUE;
+                for (BlockPos m : active) {
+                    int dx = Math.abs(clipPos.getX() - m.getX());
+                    int dy = Math.abs(clipPos.getY() - m.getY());
+                    int dz = Math.abs(clipPos.getZ() - m.getZ());
+                    if (dx > range || dz > range || dy > CLIP_Y_RANGE) continue;
+                    double dist = (double) dx * dx + (double) dz * dz;
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        nearest = m;
+                    }
+                }
+                if (nearest == null) continue;
+                long key = nearest.asLong();
+                if (clip.isEmpty()) {
+                    emptyMap.get(key).add(clipPos.immutable());
+                } else {
+                    filledMap.get(key).add(clipPos.immutable());
+                }
+            }
+
+            cachedEmptyClips.clear();
+            cachedEmptyClips.putAll(emptyMap);
+            cachedClipsWithOrder.clear();
+            cachedClipsWithOrder.putAll(filledMap);
+        } catch (Exception e) {
+            MaidRestaurantBusiness.LOGGER.error("TaskManager: 挂单夹缓存更新异常", e);
+        }
+    }
+
+    /** 获取指定打单机周围缓存的空挂单夹位置（可夹新订单，10tick更新） */
+    public List<BlockPos> getCachedEmptyClips(ServerLevel level, BlockPos machinePos) {
+        ensureClipCaches(level);
+        List<BlockPos> r = cachedEmptyClips.get(machinePos.asLong());
+        return r != null ? r : java.util.Collections.emptyList();
+    }
+
+    /** 获取指定打单机周围缓存的、已夹订单待取走入台的挂单夹位置（10tick更新） */
+    public List<BlockPos> getCachedClipsWithOrder(ServerLevel level, BlockPos machinePos) {
+        ensureClipCaches(level);
+        List<BlockPos> r = cachedClipsWithOrder.get(machinePos.asLong());
+        return r != null ? r : java.util.Collections.emptyList();
+    }
+
+    /**
      * 清理所有任务（用于世界卸载时）
      */
     public void clearAll() {
@@ -1214,5 +1359,10 @@ public class TaskManager {
         tasksByMaid.clear();
         cachedMaids.clear();
         cachedCountersWithPlates.clear();
+        cachedCountersWithTakeoutBags.clear();
+        cachedDirtyPlates.clear();
+        cachedDishwashers.clear();
+        cachedEmptyClips.clear();
+        cachedClipsWithOrder.clear();
     }
 }

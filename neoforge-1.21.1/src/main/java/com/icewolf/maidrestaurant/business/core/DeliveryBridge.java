@@ -580,39 +580,126 @@ public class DeliveryBridge {
     }
 
     /**
-     * 手动发放收益（当反射调用completeDelivery失败时的终极回退）
-     * 复制completeDelivery中的核心收益计算逻辑
+     * 手动发放收益（当反射调用 completeDelivery 失败时的终极回退）。
+     * 必须真正调用 OTC 的 CoinUtils.giveCoins 发钱；若发钱 API 不可用则不发“到账”消息，避免玩家看到虚假到账提示。
      */
     private static void manuallyGiveReward(ServerLevel level, Player player, ItemStack plateStack, CompoundTag nbt) {
         try {
             int baseCoin = nbt.contains("Prestige") ? nbt.getInt("Prestige") : 0;
             boolean isUrgent = nbt.getBoolean("Urgent");
-            String customer = nbt.contains("CustomerName") ? nbt.getString("CustomerName") : "顾客";
-            if (customer == null || customer.isBlank()) customer = "顾客";
-
-            // 简单的小费计算（10%概率给1-5小费）
-            int tipCoin = 0;
-            if (level.random.nextDouble() < 0.1) {
-                tipCoin = 1 + level.random.nextInt(5);
+            String customer = nbt.contains("CustomerName") ? nbt.getString("CustomerName") : "";
+            if (customer == null || customer.isBlank()) {
+                customer = net.minecraft.network.chat.Component.translatable("keyword.ordertocook.customer").getString();
             }
 
+            // 小费按 OTC 配置计算（反射；读取失败则不计小费，但本金 Prestige 一定发放）
+            int tipCoin = computeFallbackTip(level, isUrgent);
             int finalCoin = baseCoin + tipCoin;
 
-            // 给玩家金币（通过经验值或其他方式）
-            // 注意：这里简化处理，实际应该调用otc的CoinUtils
-
-            // 发送消息给玩家
-            if (tipCoin > 0) {
-                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("订单完成！获得 " + finalCoin + " 金币（含小费 " + tipCoin + "）").withStyle(net.minecraft.ChatFormatting.GOLD));
+            boolean paid = invokeGiveCoins(player, finalCoin);
+            if (paid) {
+                // 记录声望（失败不影响收款）
+                invokeAddPrestige(player, finalCoin);
+                // 与 OTC 正常结算一致的到账提示（actionbar）
+                if (tipCoin > 0) {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.ordertocook.order_completed_with_tip", finalCoin, customer, tipCoin)
+                            .withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                } else {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.ordertocook.order_complete", finalCoin)
+                            .withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                }
             } else {
-                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("订单完成！获得 " + finalCoin + " 金币").withStyle(net.minecraft.ChatFormatting.GOLD));
+                MaidRestaurantBusiness.LOGGER.error("送餐: 兜底发薪失败，未能向 {} 发放 {} 金币（已避免虚假到账提示）", player.getName().getString(), finalCoin);
             }
 
-            // 消耗餐盘
+            // 消耗餐盘（与 OTC completeDelivery 末尾的 stack.shrink(1) 对齐）
             plateStack.shrink(1);
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("手动发放收益失败", t);
         }
+    }
+
+    // ===== OTC 收益 API 反射缓存（跨版本解耦，避免直接引用字段在运行期类型不一致） =====
+    private static Method coinGiveMethod;
+    private static boolean coinGiveResolved;
+    private static Method prestigeAddMethod;
+    private static boolean prestigeResolved;
+
+    private static boolean invokeGiveCoins(Player player, int amount) {
+        if (amount <= 0) return true;
+        if (!coinGiveResolved) {
+            coinGiveResolved = true;
+            try {
+                Class<?> coinUtils = Class.forName("cn.breezeth.ordertocook.util.CoinUtils");
+                coinGiveMethod = coinUtils.getMethod("giveCoins", Player.class, int.class);
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("送餐: 未找到 OTC CoinUtils.giveCoins，兜底收益将无法发放", t);
+            }
+        }
+        if (coinGiveMethod == null) return false;
+        try {
+            coinGiveMethod.invoke(null, player, amount);
+            return true;
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("送餐: 调用 CoinUtils.giveCoins 失败", t);
+            return false;
+        }
+    }
+
+    private static void invokeAddPrestige(Player player, int amount) {
+        if (amount <= 0) return;
+        if (!prestigeResolved) {
+            prestigeResolved = true;
+            try {
+                Class<?> prestigeManager = Class.forName("cn.breezeth.ordertocook.core.PrestigeManager");
+                prestigeAddMethod = prestigeManager.getMethod("addPlayerPrestige", Player.class, int.class);
+            } catch (Throwable ignored) {}
+        }
+        if (prestigeAddMethod == null) return;
+        try {
+            prestigeAddMethod.invoke(null, player, amount);
+        } catch (Throwable ignored) {}
+    }
+
+    /** 反射读取 OTC 配置计算小费，复刻 TakeoutBagItem.completeDelivery 的普通/急单/下雨逻辑；任何失败返回 0。 */
+    private static int computeFallbackTip(ServerLevel level, boolean isUrgent) {
+        try {
+            Class<?> cfgManager = Class.forName("cn.breezeth.ordertocook.config.ConfigManager");
+            Object cfg = cfgManager.getMethod("get").invoke(null);
+            if (cfg == null) return 0;
+            Class<?> cfgClass = cfg.getClass();
+            double chance = isUrgent ? reflectDouble(cfg, cfgClass, "tipUrgentChance") : reflectDouble(cfg, cfgClass, "tipNormalChance");
+            int min = level.isRaining() ? reflectInt(cfg, cfgClass, "rainTipMin") : reflectInt(cfg, cfgClass, "tipMin");
+            int max = level.isRaining() ? reflectInt(cfg, cfgClass, "rainTipMax") : reflectInt(cfg, cfgClass, "tipMax");
+            if (level.random.nextDouble() < chance) {
+                int span = Math.max(1, max - min + 1);
+                return min + level.random.nextInt(span);
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    private static double reflectDouble(Object cfg, Class<?> cfgClass, String name) throws Exception {
+        java.lang.reflect.Field f = findField(cfgClass, name);
+        return f != null ? f.getDouble(cfg) : 0.0;
+    }
+
+    private static int reflectInt(Object cfg, Class<?> cfgClass, String name) throws Exception {
+        java.lang.reflect.Field f = findField(cfgClass, name);
+        return f != null ? f.getInt(cfg) : 0;
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> type, String name) {
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = c.getDeclaredField(name);
+                f.setAccessible(true);
+                return f;
+            } catch (NoSuchFieldException ignored) {}
+        }
+        return null;
     }
 
     /**
@@ -839,9 +926,6 @@ public class DeliveryBridge {
                     }
                 }
             }
-        }
-        if (nearest == null) {
-            // 不输出日志，避免每tick刷屏
         }
         return nearest;
     }

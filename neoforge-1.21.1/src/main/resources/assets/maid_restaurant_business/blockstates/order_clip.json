@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,has_order=false": { "model": "maid_restaurant_business:block/order_clip" },
+    "facing=north,has_order=true":  { "model": "maid_restaurant_business:block/order_clip_filled" },
+    "facing=south,has_order=false": { "model": "maid_restaurant_business:block/order_clip", "y": 180 },
+    "facing=south,has_order=true":  { "model": "maid_restaurant_business:block/order_clip_filled", "y": 180 },
+    "facing=east,has_order=false":  { "model": "maid_restaurant_business:block/order_clip", "y": 90 },
+    "facing=east,has_order=true":   { "model": "maid_restaurant_business:block/order_clip_filled", "y": 90 },
+    "facing=west,has_order=false":  { "model": "maid_restaurant_business:block/order_clip", "y": 270 },
+    "facing=west,has_order=true":   { "model": "maid_restaurant_business:block/order_clip_filled", "y": 270 }
+  }
+}

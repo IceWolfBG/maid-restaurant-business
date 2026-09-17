@@ -17,7 +17,6 @@ package com.icewolf.maidrestaurant.business.mixin;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.common.collect.Lists;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.maid.MaidDeliverOrderTask;
 import com.mastermarisa.maid_restaurant.maid.TaskWaiter;
 import com.mojang.datafixers.util.Pair;
 import java.util.ArrayList;

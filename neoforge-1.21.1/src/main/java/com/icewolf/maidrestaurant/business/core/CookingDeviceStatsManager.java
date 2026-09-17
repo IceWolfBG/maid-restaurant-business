@@ -217,16 +217,10 @@ public class CookingDeviceStatsManager {
             activeKeys.add(pos.asLong());
         }
 
-        int removedCount = 0;
         for (Long key : new HashSet<>(stationStatsMap.keySet())) {
             if (!activeKeys.contains(key)) {
                 stationStatsMap.remove(key);
-                removedCount++;
             }
-        }
-
-        if (removedCount > 0) {
-            MaidRestaurantBusiness.LOGGER.info("[厨具统计] 清理了{}个非激活打单机的统计数据", removedCount);
         }
     }
 

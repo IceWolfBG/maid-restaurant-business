@@ -31,6 +31,7 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -75,6 +76,39 @@ public class WorldScanner {
         }
         for (BlockPos pos : chunk.getBlockEntitiesPos()) {
             set.remove(pos);
+        }
+    }
+
+    /**
+     * 玩家（或其它实体）放置方块：若新方块带方块实体，立即纳入索引。
+     * 修复原先只在区块加载时快照、运行时新放的操作台/打单机永远扫不到的问题。
+     * 仅按"是否带方块实体"粗加入，具体类型由 scan(...) 时的 isInstance 过滤，残留位置无害。
+     */
+    @SubscribeEvent
+    public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel)) {
+            return;
+        }
+        if (!event.getPlacedBlock().hasBlockEntity()) {
+            return;
+        }
+        ServerLevel level = (ServerLevel)event.getLevel();
+        trackedPositions.computeIfAbsent(level, k -> ConcurrentHashMap.newKeySet())
+                .add(event.getPos().immutable());
+    }
+
+    /**
+     * 玩家破坏方块：从索引移除。非玩家破坏（爆炸等）虽不触发本事件，
+     * 但 scan(...) 时 getBlockEntity 返回 null 会自动跳过，不会产生错误绑定。
+     */
+    @SubscribeEvent
+    public static void onBlockBroken(BlockEvent.BreakEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel)) {
+            return;
+        }
+        Set<BlockPos> set = trackedPositions.get((ServerLevel)event.getLevel());
+        if (set != null) {
+            set.remove(event.getPos().immutable());
         }
     }
 

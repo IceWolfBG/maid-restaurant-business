@@ -1,5 +1,6 @@
 package com.icewolf.maidrestaurant.business;
 
+import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
 import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
@@ -13,6 +14,8 @@ import com.icewolf.maidrestaurant.business.registry.ModItems;
 import com.icewolf.maidrestaurant.business.registry.ModMenuTypes;
 import com.icewolf.maidrestaurant.business.registry.ModSounds;
 import net.minecraft.server.level.ServerLevel;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -49,6 +52,14 @@ public class MaidRestaurantBusiness {
         TaskSafetyConfig.register(modEventBus);
         // 注册酒狐速递站外卖配送配置（单独的配置文件）
         modContainer.registerConfig(ModConfig.Type.COMMON, com.icewolf.maidrestaurant.business.config.TakeoutConfig.SPEC, "maid_restaurant_business-takeout.toml");
+        modEventBus.addListener(this::registerCapabilities);
+    }
+
+    private void registerCapabilities(RegisterCapabilitiesEvent event) {
+        // 挂单夹只暴露只读单槽视图，供其它系统查询夹着的订单，不能从侧面塞入或抽出
+        event.registerBlock(Capabilities.ItemHandler.BLOCK,
+                (level, pos, state, blockEntity, side) -> blockEntity instanceof OrderClipBlockEntity clip ? clip.getViewHandler() : null,
+                ModBlocks.ORDER_CLIP.get());
     }
 
     @SubscribeEvent

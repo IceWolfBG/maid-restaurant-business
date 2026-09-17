@@ -4,8 +4,11 @@ import com.icewolf.maidrestaurant.business.client.screen.JiuhuStationScreen;
 import com.icewolf.maidrestaurant.business.client.screen.ScheduleBoardScreen;
 import com.icewolf.maidrestaurant.business.menu.JiuhuStationMenu;
 import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
+import com.icewolf.maidrestaurant.business.registry.ModBlocks;
 import com.icewolf.maidrestaurant.business.registry.ModMenuTypes;
 import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -19,6 +22,8 @@ public class ClientSetup {
     @SubscribeEvent
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static void onClientSetup(FMLClientSetupEvent event) {
+        // 挂单夹是无碰撞薄板，订单纸区域需要镂空，使用 cutout 渲染层
+        event.enqueueWork(() -> ItemBlockRenderTypes.setRenderLayer(ModBlocks.ORDER_CLIP.get(), RenderType.cutout()));
         try {
             Method registerMethod = MenuScreens.class.getDeclaredMethod("register", MenuType.class, MenuScreens.ScreenConstructor.class);
             registerMethod.setAccessible(true);

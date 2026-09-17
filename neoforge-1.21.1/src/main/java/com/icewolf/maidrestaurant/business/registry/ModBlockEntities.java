@@ -2,6 +2,7 @@ package com.icewolf.maidrestaurant.business.registry;
 
 import com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity;
 import com.icewolf.maidrestaurant.business.block.entity.PublicNoticeBoardBlockEntity;
+import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.block.entity.ScheduleBoardBlockEntity;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.Block;
@@ -15,6 +16,7 @@ public class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PublicNoticeBoardBlockEntity>> PUBLIC_NOTICE_BOARD = BLOCK_ENTITIES.register("public_notice_board", () -> BlockEntityType.Builder.of(PublicNoticeBoardBlockEntity::new, ModBlocks.PUBLIC_NOTICE_BOARD.get()).build(null));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ScheduleBoardBlockEntity>> SCHEDULE_BOARD = BLOCK_ENTITIES.register("schedule_board", () -> BlockEntityType.Builder.of(ScheduleBoardBlockEntity::new, ModBlocks.SCHEDULE_BOARD.get()).build(null));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<JiuhuStationBlockEntity>> JIUHU_STATION = BLOCK_ENTITIES.register("jiuhu_station", () -> BlockEntityType.Builder.of(JiuhuStationBlockEntity::new, ModBlocks.JIUHU_STATION.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<OrderClipBlockEntity>> ORDER_CLIP = BLOCK_ENTITIES.register("order_clip", () -> BlockEntityType.Builder.of(OrderClipBlockEntity::new, ModBlocks.ORDER_CLIP.get()).build(null));
 
     public static void register(IEventBus eventBus) {
         BLOCK_ENTITIES.register(eventBus);

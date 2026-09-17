@@ -22,6 +22,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
 
 public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     public static final int SLOT_COUNT = 5;
@@ -31,7 +32,8 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     public static final String TAG_BASE_PROFITS = "BaseProfits";
     public static final String TAG_MACHINE_POS = "MachinePos";
     public static final String TAG_OWNER_UUID = "OwnerUUID";
-    public static final String TAG_CUSTOMER_POS = "CustomerPos";
+    public static final String TAG_OWNER_UUIDS = "OwnerUUIDs";
+    public static final String TAG_MACHINE_POSITIONS = "MachinePositions";
 
     // 配送配置已移至 TakeoutConfig（独立配置文件 maid_restaurant_business-takeout.toml）
 
@@ -39,12 +41,10 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     private final int[] deliveryTimes = new int[SLOT_COUNT]; // 剩余配送时间（tick）
     private final int[] totalDeliveryTimes = new int[SLOT_COUNT]; // 总配送时间（tick），用于进度计算
     private final int[] baseProfits = new int[SLOT_COUNT]; // 基础收益
-    @Nullable
-    private BlockPos machinePos = null; // 关联的打单机位置（用于获取等级和玩家）
-    @Nullable
-    private java.util.UUID ownerUuid = null; // 女仆主人的UUID（用于收益）
-    @Nullable
-    private BlockPos customerPos = null; // 顾客坐标（用于计算配送距离）
+    // 每个槽位独立的归属信息：避免多个外卖袋先后放入时互相覆盖，
+    // 导致所有配送都把收益算给最后一个放入袋子的女仆主人
+    private final BlockPos[] machinePositions = new BlockPos[SLOT_COUNT]; // 各槽关联打单机（初始化算等级用）
+    private final java.util.UUID[] ownerUuids = new java.util.UUID[SLOT_COUNT]; // 各槽女仆主人UUID（结算收益用）
 
     public JiuhuStationBlockEntity(BlockPos pos, BlockState state) {
         super((BlockEntityType)ModBlockEntities.JIUHU_STATION.get(), pos, state);
@@ -76,30 +76,13 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     @Override
     public ItemStack removeItem(int slot, int amount) {
         if (slot < 0 || slot >= SLOT_COUNT) return ItemStack.EMPTY;
-        ItemStack stack = items[slot];
-        if (stack.isEmpty()) return ItemStack.EMPTY;
-        // 正常实现移除逻辑，防止玩家拿取由Slot的mayPickup=false控制
-        ItemStack result = stack.copy();
-        result.setCount(Math.min(amount, stack.getCount()));
-        stack.shrink(amount);
-        if (stack.isEmpty()) {
-            items[slot] = ItemStack.EMPTY;
-            deliveryTimes[slot] = 0;
-            baseProfits[slot] = 0;
-        }
-        setChanged();
-        return result;
+        // 速递站的格子是只读的，玩家不能手动拿取（由 Slot 的 mayPickup=false 控制）
+        return ItemStack.EMPTY;
     }
 
     @Override
     public ItemStack removeItemNoUpdate(int slot) {
-        if (slot < 0 || slot >= SLOT_COUNT) return ItemStack.EMPTY;
-        ItemStack stack = items[slot];
-        if (stack.isEmpty()) return ItemStack.EMPTY;
-        items[slot] = ItemStack.EMPTY;
-        deliveryTimes[slot] = 0;
-        baseProfits[slot] = 0;
-        return stack;
+        return ItemStack.EMPTY;
     }
 
     @Override
@@ -108,7 +91,7 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         items[slot] = stack;
         if (!stack.isEmpty() && deliveryTimes[slot] == 0) {
             // 新放入外卖袋，初始化配送计时
-            initDelivery(slot, stack);
+            initDelivery(slot, stack, machinePositions[slot]);
         }
         setChanged();
     }
@@ -124,7 +107,10 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         for (int i = 0; i < SLOT_COUNT; i++) {
             items[i] = ItemStack.EMPTY;
             deliveryTimes[i] = 0;
+            totalDeliveryTimes[i] = 0;
             baseProfits[i] = 0;
+            machinePositions[i] = null;
+            ownerUuids[i] = null;
         }
     }
 
@@ -141,14 +127,21 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         for (int i = 0; i < SLOT_COUNT; i++) {
             if (items[i].isEmpty()) {
                 items[i] = stack.copy();
-                this.machinePos = machinePos;
-                this.ownerUuid = ownerUuid;
-                initDelivery(i, stack);
+                this.machinePositions[i] = machinePos;
+                this.ownerUuids[i] = ownerUuid;
+                initDelivery(i, stack, machinePos);
                 setChanged();
                 // 同步数据到客户端，让GUI能显示外卖袋
                 if (level != null && !level.isClientSide) {
                     level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
                 }
+                // 外卖袋成功放入（刚消耗1个皮革打包）：立即触发关联打单机的包装货架补皮革检查
+                // 放在放入时而非配送结算时，是因为配送要等较长时间，补货应尽早进行
+                try {
+                    if (level instanceof net.minecraft.server.level.ServerLevel serverLevel && machinePos != null) {
+                        com.icewolf.maidrestaurant.business.core.RestockBridge.requestCheck(serverLevel, machinePos);
+                    }
+                } catch (Throwable t) {}
                 return true;
             }
         }
@@ -168,9 +161,9 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     /**
      * 初始化配送计时
      */
-    private void initDelivery(int slot, ItemStack stack) {
+    private void initDelivery(int slot, ItemStack stack, @Nullable BlockPos machinePos) {
         try {
-            // 通过DataCompat获取外卖袋NBT（和OTC源码一致）
+            // 通过DataCompat获取外卖袋NBT（和OTC源码一致）；1.21.1 不可用时回退到 Data Components
             CompoundTag tag = null;
             try {
                 Class<?> dataCompatClass = Class.forName("cn.breezeth.ordertocook.util.DataCompat");
@@ -180,7 +173,6 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                     tag = (CompoundTag) result;
                 }
             } catch (Exception e) {
-                // DataCompat不可用，1.21.1使用Data Components
                 try {
                     net.minecraft.world.item.component.CustomData customData = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
                     if (customData != null) {
@@ -190,10 +182,10 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                     tag = null;
                 }
             }
-            
+
             int deliveryDist = 50; // 默认距离50格
             int profit = 10; // 默认收益
-            customerPos = null;
+            BlockPos customerPos = null;
 
             if (tag != null) {
                 // 读取顾客坐标（字段名是delivery_pos，CompoundTag包含x和z）
@@ -212,7 +204,7 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                 } else {
                     com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("酒狐速递站: 外卖袋中没有delivery_pos字段，使用默认距离 {} 格", deliveryDist);
                 }
-                
+
                 // 读取收益（字段名是Prestige，不是profit）
                 if (tag.contains("Prestige")) {
                     profit = tag.getInt("Prestige");
@@ -299,39 +291,54 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         if (stack.isEmpty()) return;
 
         int profit = baseProfits[slot];
+        java.util.UUID owner = ownerUuids[slot];
 
-        // 用女仆主人的UUID给收益
-        if (level != null && !level.isClientSide && ownerUuid != null) {
-            net.minecraft.server.level.ServerPlayer owner = level.getServer().getPlayerList().getPlayer(ownerUuid);
-            if (owner != null) {
+        // 用"放入该外卖袋的女仆主人"UUID结算（每槽独立，互不覆盖）。
+        // 主人在线直接发；主人离线时用同一UUID的FakePlayer补发，OTC金币按UUID记账，主人上线后到账。
+        if (level != null && !level.isClientSide && owner != null && level.getServer() != null) {
+            net.minecraft.server.level.ServerPlayer online = level.getServer().getPlayerList().getPlayer(owner);
+            Player payee = online;
+            if (payee == null && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
                 try {
-                    // 调用OTC的CoinUtils给收益（注意参数是Player不是ServerPlayer）
+                    payee = FakePlayerFactory.get(
+                            serverLevel, new com.mojang.authlib.GameProfile(owner, "MaidOwner"));
+                } catch (Throwable t) {
+                    com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("酒狐速递站: 创建离线主人FakePlayer失败", t);
+                }
+            }
+            if (payee != null) {
+                try {
+                    // 调用OTC的CoinUtils给收益（参数是Player不是ServerPlayer，FakePlayer也可）
                     Class<?> coinUtilsClass = Class.forName("cn.breezeth.ordertocook.util.CoinUtils");
-                    java.lang.reflect.Method giveCoinsMethod = coinUtilsClass.getMethod("giveCoins", net.minecraft.world.entity.player.Player.class, int.class);
-                    giveCoinsMethod.invoke(null, owner, profit);
-                    
-                    // 复用OTC原版的订单完成消息提示（翻译键 message.ordertocook.order_complete）
-                    owner.displayClientMessage(net.minecraft.network.chat.Component.translatable("message.ordertocook.order_complete", profit).withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                    java.lang.reflect.Method giveCoinsMethod = coinUtilsClass.getMethod("giveCoins", Player.class, int.class);
+                    giveCoinsMethod.invoke(null, payee, profit);
+                    // 仅在线主人发可见提示（复用OTC原版翻译键 message.ordertocook.order_complete）
+                    if (online != null) {
+                        online.displayClientMessage(Component.translatable("message.ordertocook.order_complete", profit).withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                    }
                 } catch (Exception e) {
                     com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("酒狐速递站: CoinUtils给收益失败", e);
                     // 如果CoinUtils不可用，直接给玩家经验值
-                    owner.giveExperiencePoints(profit);
+                    payee.giveExperiencePoints(profit);
                 }
             } else {
-                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("酒狐速递站: 找不到玩家 {}, 收益未发放", ownerUuid);
+                com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.warn("酒狐速递站: 找不到主人 {} 且无法补发，收益未发放", owner);
             }
         }
 
-        // 清空格子
+        // 清空格子及其归属
         items[slot] = ItemStack.EMPTY;
         deliveryTimes[slot] = 0;
+        totalDeliveryTimes[slot] = 0;
         baseProfits[slot] = 0;
+        machinePositions[slot] = null;
+        ownerUuids[slot] = null;
         setChanged();
     }
 
     // ========== Tick ==========
     private int syncCounter = 0;
-    
+
     public static <T extends BlockEntity> void tick(Level level, BlockPos pos, BlockState state, T blockEntity) {
         if (!(blockEntity instanceof JiuhuStationBlockEntity station)) return;
         if (level.isClientSide) return;
@@ -367,7 +374,10 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         for (int i = 0; i < SLOT_COUNT; i++) {
             items[i] = loadedItems.get(i);
             deliveryTimes[i] = 0;
+            totalDeliveryTimes[i] = 0;
             baseProfits[i] = 0;
+            machinePositions[i] = null;
+            ownerUuids[i] = null;
         }
         if (tag.contains(TAG_DELIVERY_TIMES)) {
             int[] times = tag.getIntArray(TAG_DELIVERY_TIMES);
@@ -387,18 +397,50 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                 baseProfits[i] = profits[i];
             }
         }
-        if (tag.contains(TAG_MACHINE_POS)) {
-            int[] posArr = tag.getIntArray(TAG_MACHINE_POS);
-            if (posArr.length == 3) {
-                machinePos = new BlockPos(posArr[0], posArr[1], posArr[2]);
+        // 每槽归属（新格式：按槽位存列表）
+        java.util.Map<Integer, BlockPos> machineBySlot = new java.util.HashMap<>();
+        java.util.Map<Integer, java.util.UUID> ownerBySlot = new java.util.HashMap<>();
+        if (tag.contains(TAG_MACHINE_POSITIONS)) {
+            ListTag posList = tag.getList(TAG_MACHINE_POSITIONS, Tag.TAG_COMPOUND);
+            for (int i = 0; i < posList.size(); i++) {
+                CompoundTag pt = posList.getCompound(i);
+                int s = pt.getByte("Slot");
+                if (s >= 0 && s < SLOT_COUNT && pt.contains("x") && pt.contains("y") && pt.contains("z")) {
+                    machineBySlot.put((int)s, new BlockPos(pt.getInt("x"), pt.getInt("y"), pt.getInt("z")));
+                }
             }
         }
-        if (tag.contains(TAG_OWNER_UUID)) {
-            try {
-                ownerUuid = tag.getUUID(TAG_OWNER_UUID);
-            } catch (Exception e) {
-                ownerUuid = null;
+        if (tag.contains(TAG_OWNER_UUIDS)) {
+            ListTag ownerList = tag.getList(TAG_OWNER_UUIDS, Tag.TAG_COMPOUND);
+            for (int i = 0; i < ownerList.size(); i++) {
+                CompoundTag ot = ownerList.getCompound(i);
+                int s = ot.getByte("Slot");
+                if (s >= 0 && s < SLOT_COUNT && ot.contains("UUID")) {
+                    ownerBySlot.put((int)s, ot.getUUID("UUID"));
+                }
             }
+        }
+        // 旧存档兼容：旧版本只存单值 ownerUuid/machinePos，迁移到第一个仍有外卖袋的槽位
+        if (ownerBySlot.isEmpty() && tag.contains(TAG_OWNER_UUID)) {
+            try {
+                java.util.UUID legacyOwner = tag.getUUID(TAG_OWNER_UUID);
+                for (int s = 0; s < SLOT_COUNT; s++) {
+                    if (!items[s].isEmpty()) { ownerBySlot.put(s, legacyOwner); break; }
+                }
+            } catch (Exception ignored) {}
+        }
+        if (machineBySlot.isEmpty() && tag.contains(TAG_MACHINE_POS)) {
+            int[] posArr = tag.getIntArray(TAG_MACHINE_POS);
+            if (posArr.length == 3) {
+                BlockPos legacyMachine = new BlockPos(posArr[0], posArr[1], posArr[2]);
+                for (int s = 0; s < SLOT_COUNT; s++) {
+                    if (!items[s].isEmpty()) { machineBySlot.put(s, legacyMachine); break; }
+                }
+            }
+        }
+        for (int s = 0; s < SLOT_COUNT; s++) {
+            machinePositions[s] = machineBySlot.get(s);
+            ownerUuids[s] = ownerBySlot.get(s);
         }
     }
 
@@ -414,12 +456,27 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
         tag.putIntArray(TAG_DELIVERY_TIMES, deliveryTimes);
         tag.putIntArray(TAG_TOTAL_DELIVERY_TIMES, totalDeliveryTimes);
         tag.putIntArray(TAG_BASE_PROFITS, baseProfits);
-        if (machinePos != null) {
-            tag.putIntArray(TAG_MACHINE_POS, new int[]{machinePos.getX(), machinePos.getY(), machinePos.getZ()});
+        // 每槽归属写为列表
+        ListTag machineList = new ListTag();
+        ListTag ownerList = new ListTag();
+        for (int i = 0; i < SLOT_COUNT; i++) {
+            if (machinePositions[i] != null) {
+                CompoundTag pt = new CompoundTag();
+                pt.putByte("Slot", (byte) i);
+                pt.putInt("x", machinePositions[i].getX());
+                pt.putInt("y", machinePositions[i].getY());
+                pt.putInt("z", machinePositions[i].getZ());
+                machineList.add(pt);
+            }
+            if (ownerUuids[i] != null) {
+                CompoundTag ot = new CompoundTag();
+                ot.putByte("Slot", (byte) i);
+                ot.putUUID("UUID", ownerUuids[i]);
+                ownerList.add(ot);
+            }
         }
-        if (ownerUuid != null) {
-            tag.putUUID(TAG_OWNER_UUID, ownerUuid);
-        }
+        tag.put(TAG_MACHINE_POSITIONS, machineList);
+        tag.put(TAG_OWNER_UUIDS, ownerList);
     }
 
     @Override
