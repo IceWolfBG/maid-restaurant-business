@@ -1719,38 +1719,56 @@ public class CookingBridge {
      * 保证"统计说有空闲厨具"时这里一定能找到，不会再静默 continue。
      */
     private static BlockPos findCookingDevice(ServerLevel level, BlockPos machinePos, RecipeType<?> type) {
-        String taskClass = CookTasks.getTask(type).getClass().getSimpleName();
+        com.mastermarisa.maid_restaurant.api.ICookTask cookTask = CookTasks.getTask(type);
+        if (cookTask == null) return null;
+        String taskClass = cookTask.getClass().getSimpleName();
         String neededType = CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClass);
-        if (neededType == null) {
-            // 不在四类厨具管理范围内的任务类型（如部分烤箱类），与旧行为一致：不替它定位厨具
-            return null;
-        }
         int range = BusinessConfig.dishScanRange;
-        BlockPos nearest = null;
-        double nearestDist = Double.MAX_VALUE;
-        // 多厨师并行优化：优先选择没有被占用的厨具
-        BlockPos nearestFree = null;
-        double nearestFreeDist = Double.MAX_VALUE;
-        for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
-            BlockEntity be = level.getBlockEntity(check);
-            if (be == null) continue;
-            // 精确匹配：方块实体的厨具类型必须与任务所需类型完全一致
-            String beType = CookingDeviceStatsManager.getDeviceTypeFromClassName(be.getClass().getName());
-            if (beType == null || !beType.equals(neededType)) continue;
-            double d = check.distSqr((Vec3i) machinePos);
-            // 检查厨具是否被占用（使用TaskManager统一管理）
-            boolean occupied = TaskManager.getInstance().isDeviceOccupied(check.immutable());
-            if (!occupied && d < nearestFreeDist) {
-                nearestFreeDist = d;
-                nearestFree = check.immutable();
+        // 四类锅（汤锅/厨锅/炒锅/蒸笼）：精确类名匹配 + 我们自己的占用管理
+        if (neededType != null) {
+            BlockPos nearest = null;
+            double nearestDist = Double.MAX_VALUE;
+            // 多厨师并行优化：优先选择没有被占用的厨具
+            BlockPos nearestFree = null;
+            double nearestFreeDist = Double.MAX_VALUE;
+            for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
+                BlockEntity be = level.getBlockEntity(check);
+                if (be == null) continue;
+                // 精确匹配：方块实体的厨具类型必须与任务所需类型完全一致
+                String beType = CookingDeviceStatsManager.getDeviceTypeFromClassName(be.getClass().getName());
+                if (beType == null || !beType.equals(neededType)) continue;
+                double d = check.distSqr((Vec3i) machinePos);
+                // 检查厨具是否被占用（使用TaskManager统一管理）
+                boolean occupied = TaskManager.getInstance().isDeviceOccupied(check.immutable());
+                if (!occupied && d < nearestFreeDist) {
+                    nearestFreeDist = d;
+                    nearestFree = check.immutable();
+                }
+                if (d < nearestDist) {
+                    nearestDist = d;
+                    nearest = check.immutable();
+                }
             }
-            if (d < nearestDist) {
-                nearestDist = d;
-                nearest = check.immutable();
-            }
+            // 优先返回没有被占用的厨具，如果没有则返回最近的厨具
+            return nearestFree != null ? nearestFree : nearest;
         }
-        // 优先返回没有被占用的厨具，如果没有则返回最近的厨具
-        return nearestFree != null ? nearestFree : nearest;
+        // 非四类锅、但女仆餐厅已注册的设备（烘焙坊：烤箱Oven/搅拌机Blender/烤面包机Toaster/玻璃杯饮品）：
+        // 类型判断完全交给该 task 自己的 isValidWorkBlock，不硬编码类名，以后女仆餐厅新增兼容设备自动支持。
+        // 仍以打单机为中心、按 dishScanRange 扫描；一次只派一个任务（occupyDevice 按坐标占用）。
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
+            try {
+                if (!cookTask.isValidWorkBlock(level, null, check)) continue;
+                if (TaskManager.getInstance().isDeviceOccupied(check.immutable())) continue;
+                double d = check.distSqr((Vec3i) machinePos);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = check.immutable();
+                }
+            } catch (Throwable ignore) {}
+        }
+        return best;
     }
 
     /** 厨具类型 -> 中文名（用于气泡提示）。 */

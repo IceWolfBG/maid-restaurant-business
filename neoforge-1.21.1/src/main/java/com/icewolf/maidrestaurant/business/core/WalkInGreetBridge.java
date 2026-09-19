@@ -11,6 +11,7 @@ import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.util.ItemStackUtils;
+import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.BlockPos;
@@ -232,6 +233,10 @@ public class WalkInGreetBridge {
 
         BlockPos greetPos = greetStandPos(level, best.npc.blockPosition());
         maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(greetPos, MOVEMENT_SPEED, 1));
+
+        // 新接待开始：清除同类去重后打个招呼（受全局 10 秒冷却约束）
+        MaidChatBubbleHelper.onStateChanged(maid);
+        MaidChatBubbleHelper.waiterGreetCustomer(maid);
     }
 
     private static void processGreetingMaid(ServerLevel level, EntityMaid maid, BusinessManager manager) {

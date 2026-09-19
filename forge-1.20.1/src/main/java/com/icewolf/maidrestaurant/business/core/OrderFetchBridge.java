@@ -230,8 +230,7 @@ public class OrderFetchBridge {
             if (taskId != null) {
                 TaskManager.getInstance().assignTask(cook.getUUID(), TaskManager.TYPE_FETCH_ORDER, level);
             }
-            cook.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                    new WalkTarget(sourcePos, MOVEMENT_SPEED, 1));
+            MaidUtils.moveToSide(cook, sourcePos, MOVEMENT_SPEED);
 
             return; // 每机器每轮一单
         }
@@ -344,8 +343,7 @@ public class OrderFetchBridge {
             }
             double d = maid.distanceToSqr(machine.getX() + 0.5, machine.getY(), machine.getZ() + 0.5);
             if (d > CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
-                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                        new WalkTarget(machine, MOVEMENT_SPEED, 1));
+                MaidUtils.moveToSide(maid, machine, MOVEMENT_SPEED);
                 return;
             }
             if (!takeOrderFromMachine(level, maid, machine, orderId, data)) {
@@ -354,8 +352,7 @@ public class OrderFetchBridge {
             }
             data.putInt(F_STAGE, STAGE_TO_COUNTER);
             data.remove(F_WAIT_SINCE);
-            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                    new WalkTarget(counter, MOVEMENT_SPEED, 1));
+            MaidUtils.moveToSide(maid, counter, MOVEMENT_SPEED);
             return;
         }
 
@@ -368,8 +365,7 @@ public class OrderFetchBridge {
                 counter = alt.immutable();
                 data.putLong(F_COUNTER, counter.asLong());
                 data.remove(F_WAIT_SINCE);
-                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                        new WalkTarget(counter, MOVEMENT_SPEED, 1));
+                MaidUtils.moveToSide(maid, counter, MOVEMENT_SPEED);
                 return;
             }
             if (waitOrGiveUp(level, maid, data, "空闲操作台")) {
@@ -380,8 +376,7 @@ public class OrderFetchBridge {
 
         double cd = maid.distanceToSqr(counter.getX() + 0.5, counter.getY(), counter.getZ() + 0.5);
         if (cd > CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
-            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
-                    new WalkTarget(counter, MOVEMENT_SPEED, 1));
+            MaidUtils.moveToSide(maid, counter, MOVEMENT_SPEED);
             return;
         }
 

@@ -125,12 +125,11 @@ public class MaidChatBubbleHelper {
      * 厨师备菜时操作台成品格（及附近冰箱）都满了，做好的菜放不下
      */
     public static void chefCounterFull(EntityMaid maid) {
-        forceShowBubble(maid, "chef_counter_full",
+        showBubble(maid, "chef_counter_full",
             new String[]{
-                "操作台放满了，菜没地方放了…(´；ω；`)",
-                "成品格塞不下啦，主人收一下菜吧~",
-                "哎？做好的菜放不进去了 (⊙o⊙)",
-                "操作台堆满了，能腾个地方吗…"
+                "做好的菜没地方放啦~ 主人来收一下好不好？",
+                "这边堆得满满的…主人帮我腾点地方嘛~",
+                "菜做好了，可是放不下了 (｡•́︿•̀｡)"
             },
             80);
     }
@@ -247,7 +246,21 @@ public class MaidChatBubbleHelper {
             },
             100);
     }
-    
+
+    /**
+     * 侍者开始迎接到店（walk-in）顾客
+     */
+    public static void waiterGreetCustomer(EntityMaid maid) {
+        showBubble(maid, "waiter_greet",
+            new String[]{
+                "欢迎光临♪ 今天想吃点什么呢？",
+                "欢迎光临~ 客人这边请。",
+                "来客人啦，我去招呼一下！",
+                "欢迎光临~ 要点什么吗？"
+            },
+            60);
+    }
+
     // ==================== 错误提示气泡 ====================
     
     /**
