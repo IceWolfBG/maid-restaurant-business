@@ -163,7 +163,12 @@ public class WalkInGreetBridge {
         GreetCandidate best = null;
         double bestDist = Double.MAX_VALUE;
 
+        BlockPos maidPos = maid.blockPosition();
         for (BlockPos machine : ActivationCache.getActivatedMachines(level)) {
+            // 按打单机隔离：女仆必须在该打单机工作范围内才分配，店外（如出生点）的侍者跳过
+            if (Math.abs(maidPos.getX() - machine.getX()) > RANGE_H) continue;
+            if (Math.abs(maidPos.getZ() - machine.getZ()) > RANGE_H) continue;
+            if (Math.abs(maidPos.getY() - machine.getY()) > RANGE_V) continue;
             // 排班表“自动接单”开关
             if (!MaidUtils.isScheduleBoardEnabled(level, machine, MaidUtils.SCHED_AUTO_ACCEPT)) {
                 continue;

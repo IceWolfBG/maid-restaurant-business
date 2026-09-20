@@ -88,6 +88,8 @@ public class WalkInGreetBridge {
     private static final String OTC_NPC_TAG = "otc_npc";
     private static final String WALKIN_INTERACTED_TAG = "otc_walkin_interacted";
     private static final String OTC_LEVEL_PREFIX = "otc_level:";
+    // 临时调试计数器
+    private static long greetDebugCounter = 0L;
 
     public static void tickGreet(ServerLevel level, BusinessManager manager) {
         try {
@@ -161,7 +163,12 @@ public class WalkInGreetBridge {
         GreetCandidate best = null;
         double bestDist = Double.MAX_VALUE;
 
+        BlockPos maidPos = maid.blockPosition();
         for (BlockPos machine : ActivationCache.getActivatedMachines(level)) {
+            // 按打单机隔离：女仆必须在该打单机工作范围内才分配，店外（如出生点）的侍者跳过
+            if (Math.abs(maidPos.getX() - machine.getX()) > RANGE_H) continue;
+            if (Math.abs(maidPos.getZ() - machine.getZ()) > RANGE_H) continue;
+            if (Math.abs(maidPos.getY() - machine.getY()) > RANGE_V) continue;
             // 排班表“自动接单”开关
             if (!MaidUtils.isScheduleBoardEnabled(level, machine, MaidUtils.SCHED_AUTO_ACCEPT)) {
                 continue;
@@ -566,6 +573,8 @@ public class WalkInGreetBridge {
         }
         return false;
     }
+
+
 
     /** 扫描归属某台激活打单机、尚未被接待 / 认领的 walk-in 顾客（局部范围）。 */
     private static List<LivingEntity> findWalkInNpcs(ServerLevel level, BlockPos machine) {

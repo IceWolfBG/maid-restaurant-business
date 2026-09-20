@@ -108,6 +108,56 @@ public class MaidChatBubbleHelper {
             },
             80);
     }
+
+    /**
+     * 厨师完全没有所需厨具（非四类设备）。
+     * deviceName 为可翻译组件（来自女仆餐厅 getIcon().getHoverName()），随客户端语言显示，
+     * 如中文环境下显示"烤炉"，不再硬编码猜测。
+     */
+    public static void chefNoDeviceAtAll(EntityMaid maid, Component deviceName) {
+        Component d = (deviceName != null) ? deviceName : Component.literal("所需厨具");
+        Component[] msgs = new Component[]{
+            Component.literal("好像没有").append(d).append("呢...(´；ω；`)"),
+            Component.literal("需要一个").append(d).append("才行呀..."),
+            Component.literal("没有").append(d).append("做不了呢..."),
+            d.copy().append("在哪里呢？找不到(´；ω；`)")
+        };
+        showBubbleComponent(maid, "chef_no_device_all_comp", msgs, 80);
+    }
+
+    /**
+     * 与 showBubble 相同，但消息为可翻译 Component[]（设备名随客户端语言翻译）。
+     */
+    private static void showBubbleComponent(EntityMaid maid, String type, Component[] messages, int duration) {
+        if (maid == null || maid.level().isClientSide) {
+            return;
+        }
+        UUID uuid = maid.getUUID();
+        long now = maid.level().getGameTime();
+        long cooldown = getBubbleCooldown();
+        Long lastTime = lastBubbleTime.get(uuid);
+        if (lastTime != null && now - lastTime < cooldown) {
+            return;
+        }
+        String lastType = lastBubbleType.get(uuid);
+        if (type.equals(lastType)) {
+            return;
+        }
+        Component text = messages[RANDOM.nextInt(messages.length)];
+        try {
+            TextChatBubbleData bubbleData = TextChatBubbleData.create(
+                duration, text, IChatBubbleData.TYPE_2, IChatBubbleData.DEFAULT_PRIORITY);
+            Object manager = maid.getChatBubbleManager();
+            if (manager == null) {
+                return;
+            }
+            maid.getChatBubbleManager().addChatBubble(bubbleData);
+            lastBubbleTime.put(uuid, now);
+            lastBubbleType.put(uuid, type);
+        } catch (Exception e) {
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("[气泡] 添加失败 maid={} type={}", maid.getName().getString(), type, e);
+        }
+    }
     
     /**
      * 厨师没有空闲厨具

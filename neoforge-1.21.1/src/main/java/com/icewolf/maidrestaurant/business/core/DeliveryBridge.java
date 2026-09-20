@@ -94,33 +94,32 @@ public class DeliveryBridge {
                 MaidUtils.setOccupied(maid, true);
             }
             processDeliveringMaid(level, maid, manager);
-        }        // 2. 为空闲侍者女仆分配送餐任务
-        int waiterCount = 0;
-        int assignedCount = 0;
+        }
+        // 2. 统一分配：收集空闲侍者，由 TaskManager 缓存统一扫待配送操作台，逐个定向分配
+        //    （不再让每个女仆各自扫餐盘，避免多个侍者抢同一个餐盘）
+        java.util.List<EntityMaid> idleWaiters = new java.util.ArrayList<EntityMaid>();
         for (EntityMaid maid : allMaids) {
             if (!isWaiterMaid(maid)) continue;
-            waiterCount++;
             CompoundTag data = maid.getPersistentData();
-            if (data.contains(TAG_COUNTER_POS)) {
-                if (debugTickCounter % 200 == 0) {
-                }
-                continue;
-            }
-            if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
-                if (debugTickCounter % 200 == 0) {
-                }
-                continue;
-            }
+            if (data.contains(TAG_COUNTER_POS)) continue;
+            // TaskManager智能任务分配：检查女仆是否有任务在执行，避免任务冲突
+            if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) continue;
             if (MaidUtils.isOccupied(maid)) {
-                if (debugTickCounter % 200 == 0) {
+                // 幽灵忙碌检测：被标记忙碌但没有实际任务标记，清理后视为空闲
+                boolean hasTask = data.contains(TAG_COUNTER_POS) ||
+                                  data.contains("BusinessPackCounter") ||
+                                  data.contains("BusinessWashCounter") ||
+                                  data.contains("BusinessCookCounter");
+                if (!hasTask && !MaidUtils.hasTaskTracker(maid.getUUID())) {
+                    MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 被标记为忙碌但没有实际任务，立即清理忙碌标记", maid.getName().getString());
+                    MaidUtils.setOccupied(maid, false);
+                    idleWaiters.add(maid);
                 }
                 continue;
             }
-            assignedCount++;
-            assignDeliveryTask(level, maid, manager);
+            idleWaiters.add(maid);
         }
-        if (debugTickCounter % 200 == 0) {
-        }
+        assignDeliveryTasks(level, manager, idleWaiters);
     }
 
     private static boolean isWaiterMaid(EntityMaid maid) {
@@ -135,43 +134,59 @@ public class DeliveryBridge {
         }
     }
 
-    private static void assignDeliveryTask(ServerLevel level, EntityMaid maid, BusinessManager manager) {
-        // 任务互斥：如果女仆正在执行其他任务（打包/洗碗），不分配送餐任务
-        if (MaidUtils.isOccupied(maid)) {
-            // 幽灵忙碌检测：如果女仆被标记为忙碌但没有实际任务标记，立即清理
-            CompoundTag data = maid.getPersistentData();
-            boolean hasTask = data.contains("BusinessDeliverCounter") || 
-                              data.contains("BusinessPackCounter") || 
-                              data.contains("BusinessWashCounter") ||
-                              data.contains("BusinessCookCounter");
-            if (!hasTask && !MaidUtils.hasTaskTracker(maid.getUUID())) {
-                MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 被标记为忙碌但没有实际任务，立即清理忙碌标记", maid.getName().getString());
-                MaidUtils.setOccupied(maid, false);
-            } else {
-                return;
-            }
-        }
-        // 优先分配外卖任务：如果附近有酒狐速递站，先查找有外卖袋的操作台
-        BlockPos counterPos = null;
-        BlockPos takeoutCounter = findCounterWithTakeoutBag(level, maid, manager);
-        if (takeoutCounter != null) {
-            // 检查附近是否有酒狐速递站
-            com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity nearbyStation = 
-                com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, takeoutCounter, 24);
-            if (nearbyStation != null) {
-                counterPos = takeoutCounter;
-            } else {
-            }
-        }
-        
-        // 如果没有外卖任务，查找有餐盘的操作台
-        if (counterPos == null) {
-            counterPos = findCounterWithPlate(level, maid, manager);
-        }
-        if (counterPos == null) {
-            return;
-        }
+    /**
+     * 统一分配送餐任务：由 TaskManager 缓存统一收集待配送操作台，逐个定向分配给最近的空闲侍者。
+     * 每个操作台只可能被建一个任务、钉给一个女仆，避免多个侍者抢同一个餐盘。
+     */
+    private static void assignDeliveryTasks(ServerLevel level, BusinessManager manager, java.util.List<EntityMaid> idleWaiters) {
+        if (idleWaiters.isEmpty()) return;
 
+        // 外卖袋（速递站方向）优先，其次堂食餐盘
+        java.util.List<BlockPos> bagCounters = TaskManager.getInstance().getCachedCountersWithTakeoutBags(level);
+        if (bagCounters != null) {
+            for (BlockPos counterPos : bagCounters) {
+                if (idleWaiters.isEmpty()) break;
+                if (TaskManager.getInstance().hasTaskAt(counterPos, TaskManager.TYPE_DELIVERY)) continue;
+                EntityMaid maid = nearestWaiter(counterPos, idleWaiters);
+                if (maid == null) break;
+                if (startDeliveryTo(level, maid, counterPos, manager, true)) {
+                    idleWaiters.remove(maid);
+                }
+            }
+        }
+        java.util.List<BlockPos> plateCounters = TaskManager.getInstance().getCachedCountersWithPlates(level);
+        if (plateCounters != null) {
+            for (BlockPos counterPos : plateCounters) {
+                if (idleWaiters.isEmpty()) break;
+                if (TaskManager.getInstance().hasTaskAt(counterPos, TaskManager.TYPE_DELIVERY)) continue;
+                EntityMaid maid = nearestWaiter(counterPos, idleWaiters);
+                if (maid == null) break;
+                if (startDeliveryTo(level, maid, counterPos, manager, false)) {
+                    idleWaiters.remove(maid);
+                }
+            }
+        }
+    }
+
+    private static EntityMaid nearestWaiter(BlockPos counterPos, java.util.List<EntityMaid> maids) {
+        EntityMaid best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (EntityMaid maid : maids) {
+            double dist = counterPos.distSqr(maid.blockPosition());
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = maid;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * 把指定操作台的配送任务定向发起给 maid。
+     * 校验不通过或任务认领失败时不发寻路、并回滚忙碌标记，返回 false。
+     */
+    private static boolean startDeliveryTo(ServerLevel level, EntityMaid maid, BlockPos counterPos, BusinessManager manager, boolean isTakeout) {
+        // 附近必须有激活打单机
         boolean hasActivatedMachine = false;
         for (BlockPos mp : manager.getActivatedMachines()) {
             if (mp.distSqr((Vec3i) counterPos) <= 64.0) {
@@ -179,58 +194,57 @@ public class DeliveryBridge {
                 break;
             }
         }
-        if (!hasActivatedMachine) {
-            return;
-        }
+        if (!hasActivatedMachine) return false;
 
         BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
-        if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) {
-            return;
-        }
-        
-        // 排班表配置检查：如果附近有排班表且关闭了自动配送，则不分配任务
-        if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) {
-            return;
-        }
-        
-        // 绑定检查：如果有女仆绑定到该打单机，只有绑定的女仆才能接任务
+        if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) return false;
+        if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) return false;
+
         int boundCount = machinePos != null ? MaidUtils.getWorkerCountForMachine(machinePos) : 0;
-        if (boundCount > 0) {
-            if (!MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) {
-                return;
+        if (boundCount > 0 && !MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) return false;
+
+        if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) return false;
+
+        // 外卖袋操作台附近必须有酒狐速递站
+        if (isTakeout) {
+            com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station =
+                com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, counterPos, 24);
+            if (station == null) {
+                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 操作台 {} 有外卖袋但附近没有速递站", counterPos);
+                return false;
             }
-        }
-        
-        // 打单机员工人数限制检查
-        if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) {
-            int maxWorkers = ProgressionManager.getMaxWorkers(level, machinePos);
-            return;
         }
 
         CompoundTag data = maid.getPersistentData();
         data.putLong(TAG_COUNTER_POS, counterPos.asLong());
         data.remove(TAG_CUSTOMER_ID);
         data.putInt(TAG_STAGE, STAGE_GO_TO_COUNTER);
-        // 标记女仆忙碌，防止其他任务（打包/洗碗）同时分配
         MaidUtils.setOccupied(maid, true);
-        // 记录任务跟踪信息（用于卡住自愈和人数统计）
         MaidUtils.startTask(maid, machinePos, "delivery", manager.getTickCounter());
-        // 显示侍者开始送餐气泡
         try {
             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.waiterStartDelivery(maid);
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.error("waiterStartDelivery 调用失败 maid={} error={}", maid.getName().getString(), e.toString(), e);
         }
 
-        // TaskManager集成：创建送餐任务并分配给女仆
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DELIVERY, counterPos, machinePos);
-        if (taskId != null) {
-            // 直接分配（因为已经找到了目标）
-            TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DELIVERY, level);
+        if (taskId == null) {
+            data.remove(TAG_COUNTER_POS);
+            data.remove(TAG_STAGE);
+            MaidUtils.setOccupied(maid, false);
+            return false;
+        }
+        if (!TaskManager.getInstance().assignSpecificTask(maid.getUUID(), taskId)) {
+            TaskManager.getInstance().discardTask(taskId);
+            data.remove(TAG_COUNTER_POS);
+            data.remove(TAG_STAGE);
+            MaidUtils.setOccupied(maid, false);
+            return false;
         }
 
-        // 使用车万女仆标准寻路方式
-        maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(counterPos, MOVEMENT_SPEED, 1));
+        maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+            new WalkTarget(counterPos, MOVEMENT_SPEED, 1));
+        return true;
     }
 
     private static void processDeliveringMaid(ServerLevel level, EntityMaid maid, BusinessManager manager) {

@@ -847,8 +847,12 @@ public class CookingBridge {
                 continue;
             }
             boolean postedThisItem = false;
+            // 先遍历所有配方匹配，收集失败原因；第一个能成功分配的就接，不弹气泡
+            // 只有所有配方都失败时，才汇总弹一个气泡（厨具不够或食材不够）
+            java.util.LinkedHashSet<String> missingDevices = new java.util.LinkedHashSet<>();
+            String lastMissingIngredientsSnapshot = "";
             for (RecipeMatch match : allMatches) {
-                // 先检查是否已经有足够的任务在做了，避免已经有厨师在做时还检查厨具数量并发出气泡
+                // 先检查是否已经有足够的任务在做了
                 int demand = (Integer)entry.getValue();
                 int recipeOutput = match.resultCount();
                 int cookingOutputForItem = CookingBridge.getCookingOutputForItem(level, counterPos, (String)entry.getKey());
@@ -857,68 +861,35 @@ public class CookingBridge {
                 cookingOutputForItem += publishedThisTickOutput;
                 int remainingOutput = demand - cookingOutputForItem;
                 if (remainingOutput <= 0) {
-                    // 已经有足够的任务在做了，直接跳过，不检查厨具数量，也不发出气泡
                     continue;
                 }
                 
-                // 厨具检测：先检查是否有可用的对应厨具
+                // 厨具检测
+                String taskClassName = null;
+                String deviceType = null;
                 try {
-                    String taskClassName = CookTasks.getTask(match.recipeType).getClass().getSimpleName();
-                    String deviceType = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClassName);
-                    // 注意：必须使用打单机位置来调用canPublishTask，而不是操作台位置
+                    taskClassName = CookTasks.getTask(match.recipeType).getClass().getSimpleName();
+                    deviceType = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClassName);
                     BlockPos machinePosForCheck = manager.getCounterToMachine().get(counterPos);
                     boolean canPublish = true;
                     if (machinePosForCheck != null) {
                         canPublish = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getInstance().canPublishTask(machinePosForCheck, deviceType, level);
                     }
                     if (!canPublish) {
-                        // 根据厨具总数判断是"根本没有这种厨具"还是"没有空闲厨具"，显示对应的气泡
-                        if (!idleCooks.isEmpty()) {
-                            try {
-                                String deviceName = "厨具";
-                                if ("Stockpot".equals(deviceType)) deviceName = "汤锅";
-                                else if ("Pot".equals(deviceType)) deviceName = "炒锅";
-                                else if ("Steamer".equals(deviceType)) deviceName = "蒸笼";
-                                else if ("CookingPot".equals(deviceType)) deviceName = "厨锅";
-                                
-                                // 获取厨具总数，判断是哪种情况
-                                int totalDevices = 0;
-                                try {
-                                    if (machinePosForCheck != null) {
-                                        com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.StationStats stats = 
-                                            com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getInstance().getStationStats(machinePosForCheck);
-                                        if (stats != null) {
-                                            totalDevices = stats.getDeviceCount(deviceType);
-                                        }
-                                    }
-                                } catch (Exception e) {}
-                                
-                                // 清除同类气泡去重标记，让没有厨具/没有空闲厨具的气泡可以重复触发
-                                com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
-                                
-                                if (totalDevices == 0) {
-                                    // 根本没有这种厨具
-                                    com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(
-                                        idleCooks.get(0), deviceName);
-                                } else {
-                                    // 厨具都被占用了
-                                    com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceBusy(
-                                        idleCooks.get(0), deviceName);
-                                }
-                            } catch (Exception e) {}
-                        }
-                        continue; // 跳过这个配方，不继续检查食材
+                        String deviceName = "厨具";
+                        if ("Stockpot".equals(deviceType)) deviceName = "汤锅";
+                        else if ("Pot".equals(deviceType)) deviceName = "炒锅";
+                        else if ("Steamer".equals(deviceType)) deviceName = "蒸笼";
+                        else if ("CookingPot".equals(deviceType)) deviceName = "厨锅";
+                        missingDevices.add(deviceName);
+                        continue;
                     }
-                } catch (Exception e) {
-                    // 检查失败时不阻止任务发布，避免因为异常导致不发布任务
-                }
-                // ③ 后食材（按厨师个体判定）：逐位空闲厨师算"公共物资+她自己背包"能做几锅，
-                //    只把任务派给确实能做的那位，避免私料/碗在 A 身上却派给 B 导致取不到料卡住
+                } catch (Exception e) {}
+                // ③ 食材检查
                 java.util.LinkedHashMap<java.util.UUID, Integer> perMaid;
                 try {
                     perMaid = CookingBridge.getCookCountByMaid(level, counterPos, match.recipeId, 1, idleCooks);
                 } catch (Throwable t) {
-                    MaidRestaurantBusiness.LOGGER.warn("烹饪食材检查: getCookCountByMaid抛出异常，配方={}", match.recipeId, t);
                     perMaid = new java.util.LinkedHashMap<>();
                 }
                 EntityMaid targetMaid = null;
@@ -932,26 +903,7 @@ public class CookingBridge {
                     }
                 }
                 if (targetMaid == null) {
-                    // 没有任何空闲厨师能做：食材/碗/汤底不足，显示气泡（给第一个空闲厨师）
-                    if (!idleCooks.isEmpty()) {
-                        try {
-                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
-                            String missingMsg = "";
-                            if (!lastMissingIngredients.isEmpty()) {
-                                missingMsg = String.join("、", lastMissingIngredients);
-                            } else {
-                                missingMsg = "食材不够了";
-                            }
-                            // 多种样式随机选择，增加差异化
-                            String[] noIngredientsMessages = new String[]{
-                                "缺少" + missingMsg + "...(；′⌒`)",
-                                "需要" + missingMsg + "呢...",
-                                "这个..." + missingMsg + "不太够呀",
-                                missingMsg + "好像没有了呢...(´；ω；`)"
-                            };
-                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
-                        } catch (Exception e) {}
-                    }
+                    lastMissingIngredientsSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
                     continue;
                 }
                 // 最大效率化：一次任务做尽可能多的次数
@@ -960,6 +912,16 @@ public class CookingBridge {
                 // 一次任务实际做的次数 = min(被选中厨师能做的次数, 需要的烹饪次数)
                 int actualCookTimes = Math.min(chosenCanMake, neededCookTimes);
                 if ((cookPos = CookingBridge.findCookingDevice(level, machinePos, match.recipeType)) == null) {
+                    if (deviceType == null) {
+                        try {
+                            com.mastermarisa.maid_restaurant.api.ICookTask taskForName = com.mastermarisa.maid_restaurant.utils.CookTasks.getTask(match.recipeType);
+                            net.minecraft.network.chat.Component deviceComp = net.minecraft.network.chat.Component.literal("所需厨具");
+                            if (taskForName != null && !taskForName.getIcon().isEmpty()) {
+                                deviceComp = taskForName.getIcon().getHoverName();
+                            }
+                            missingDevices.add(deviceComp.getString());
+                        } catch (Exception bubbleErr) {}
+                    }
                     continue;
                 }
                 CookRequest request = new CookRequest();
@@ -1023,7 +985,6 @@ public class CookingBridge {
                 try {
                     TaskManager.TaskInfo taskInfo = TaskManager.getInstance().getTask(taskId);
                     if (taskInfo != null) {
-                        String taskClassName = CookTasks.getTask(match.recipeType).getClass().getSimpleName();
                         taskInfo.deviceType = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClassName);
                     }
                 } catch (Exception e) {
@@ -1059,7 +1020,25 @@ public class CookingBridge {
                 tasksPosted++;
                 break;
             }
-            if (!postedThisItem) {
+            // 所有配方都失败，汇总弹一个气泡
+            if (!postedThisItem && !idleCooks.isEmpty()) {
+                try {
+                    com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
+                    if (!missingDevices.isEmpty()) {
+                        String[] devArr = missingDevices.toArray(new String[0]);
+                        String shown = devArr.length == 1 ? devArr[0] : devArr[0] + "、" + devArr[1];
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
+                    } else {
+                        String missingMsg = lastMissingIngredientsSnapshot.isEmpty() ? "食材不够了" : lastMissingIngredientsSnapshot;
+                        String[] noIngredientsMessages = new String[]{
+                            "缺少" + missingMsg + "...(；′⌒`)",
+                            "需要" + missingMsg + "呢...",
+                            "这个..." + missingMsg + "不太够呀",
+                            missingMsg + "好像没有了呢...(´；ω；`)"
+                        };
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
+                    }
+                } catch (Exception e) {}
             }
         }
         return postedAnyTask;
@@ -1701,6 +1680,7 @@ public class CookingBridge {
         });
         return matches;
     }
+
 
     private static BlockPos findCookingDevice(ServerLevel level, BlockPos machinePos, RecipeType<?> type) {
         com.mastermarisa.maid_restaurant.api.ICookTask cookTask = CookTasks.getTask(type);
