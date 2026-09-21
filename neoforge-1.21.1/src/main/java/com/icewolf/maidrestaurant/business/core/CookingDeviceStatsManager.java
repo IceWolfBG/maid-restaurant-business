@@ -1,80 +1,62 @@
 package com.icewolf.maidrestaurant.business.core;
 
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
-
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.mastermarisa.maid_restaurant.api.ICookTask;
+import com.mastermarisa.maid_restaurant.utils.CookTasks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 厨具统计管理器（按打单机隔离）
- * 负责统计每个打单机周围的厨具总数，以及正在进行的烹饪任务数
- * 用于发布任务前的检查，避免发布超过厨具数量的任务
+ * 厨具统计管理器（数据驱动 / 全厨具兼容，按激活打单机隔离）
+ *
+ * 厨具类型不再硬编码，统一以女仆餐厅注册的 {@link ICookTask} 的 UID 为粒度：
+ * <ul>
+ *   <li>设备单位 = 一个非空 BlockEntity（设备本体）。部分厨具的 {@code isValidWorkBlock}
+ *       会对设备本体上/下相邻坐标也返回 true（例如 farm_and_charm 火炉的判定在 y-1~y+1
+ *       容错查找炉体），本管理器只在“非空 BlockEntity 位置”归类，并对竖直相邻的同类锚点
+ *       去重（保留更靠上的设备本体），保证一台物理设备只计数 1、只暴露一个本体坐标。</li>
+ *   <li><b>数量容量与动态可用解耦</b>：数量统计只数物理设备台数（结构容量，按激活打单机
+ *       ±dishScanRange、y±4 锚点枚举）；设备此刻有无燃料、点未点燃、厨凳是否被占等动态条件，
+ *       一律交给选台阶段（官方 {@code searchWorkBlock} 与 {@code isValidWorkBlock} 实时复核）。
+ *       带动态热源的设备（如 farm_and_charm 火炉：有燃料或正在烧才算可开工）不会因采样瞬间缺燃料
+ *       被剔出数量闸；选台返回设备本体/厨凳坐标，不会把炉体上、下的容错空气位当成交互目标。</li>
+ *   <li>任务归类用 {@link CookTasks#getUID(RecipeType)}，与统计同一 key，
+ *       天然消除类名 contains（CookingPot 含 Pot）一类误判。</li>
+ * </ul>
+ *
+ * 边界：少数设备（如烘焙坊玻璃杯饮品台）的工作位是没有 BlockEntity 的空气位，
+ * 高频统计扫不到它们，UID 不会进入 {@link #BE_AWARE_UIDS}；{@link #canPublishTask}
+ * 对其放行，数量管理退化为选台阶段的全坐标扫描 + 坐标占用兜底。
  */
 public class CookingDeviceStatsManager {
     private static CookingDeviceStatsManager instance;
 
-    // 厨具类型常量
-    public static final String TYPE_STOCKPOT = "Stockpot";        // 汤锅
-    public static final String TYPE_COOKING_POT = "CookingPot";    // 厨锅（农夫乐事）
-    public static final String TYPE_POT = "Pot";                    // 炒锅（森罗物语）
-    public static final String TYPE_STEAMER = "Steamer";            // 蒸笼
-
-    // 每个打单机的厨具统计
-    public static class StationStats {
-        public final BlockPos machinePos;
-        // 厨具类型 -> 总数
-        public final Map<String, Integer> deviceCounts = new HashMap<>();
-        // 上一次扫描的厨具数量（用于判断是否有变化）
-        public final Map<String, Integer> lastDeviceCounts = new HashMap<>();
-        // 最后更新时间
-        public long lastUpdateTick = 0;
-        // 上一次canPublishTask的结果（用于判断是否有变化）
-        public boolean lastCanPublishResult = true;
-        public String lastCanPublishDeviceType = "";
-
-        public StationStats(BlockPos machinePos) {
-            this.machinePos = machinePos;
-        }
-
-        public int getDeviceCount(String type) {
-            return deviceCounts.getOrDefault(type, 0);
-        }
-
-        // 检查厨具数量是否有变化
-        public boolean hasDeviceCountsChanged() {
-            if (lastDeviceCounts.isEmpty() && deviceCounts.isEmpty()) {
-                return false;
-            }
-            if (lastDeviceCounts.size() != deviceCounts.size()) {
-                return true;
-            }
-            for (Map.Entry<String, Integer> entry : deviceCounts.entrySet()) {
-                if (!lastDeviceCounts.getOrDefault(entry.getKey(), 0).equals(entry.getValue())) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // 更新上一次的厨具数量
-        public void updateLastDeviceCounts() {
-            lastDeviceCounts.clear();
-            lastDeviceCounts.putAll(deviceCounts);
-        }
-    }
-
-    // 打单机位置 -> 厨具统计
+    /** 打单机位置 -> 该机器的厨具统计（按激活打单机隔离） */
     private final Map<Long, StationStats> stationStatsMap = new ConcurrentHashMap<>();
+    private long lastCleanupTick = 0L;
 
-    // 最后清理时间
-    private long lastCleanupTick = 0;
+    /** 设备方块 -> 它结构上所属的厨具任务（按方块粒度固化；同一 BlockEntity 类被多个方块共用时也不会串配） */
+    private static final Map<Block, ICookTask> BLOCK_TASK_CACHE = new ConcurrentHashMap<>();
+    /** 已确认能在“非空 BlockEntity 位置”被识别到的厨具 UID（受数量上限管理的设备集合；无 BE 设备永不进入） */
+    private static final Set<String> BE_AWARE_UIDS = ConcurrentHashMap.newKeySet();
 
-    private CookingDeviceStatsManager() {}
+    private CookingDeviceStatsManager() {
+    }
 
     public static synchronized CookingDeviceStatsManager getInstance() {
         if (instance == null) {
@@ -83,159 +65,251 @@ public class CookingDeviceStatsManager {
         return instance;
     }
 
-    /**
-     * 更新指定打单机的厨具统计（每10tick调用一次）
-     */
-    public void updateStation(ServerLevel level, BlockPos machinePos, long currentTick) {
-        // 使用配置的扫描范围（默认24格，最大48格），与TaskManager和其他扫描保持一致
-        int range = BusinessConfig.dishScanRange;
-        long key = machinePos.asLong();
-        StationStats stats = stationStatsMap.computeIfAbsent(key, k -> new StationStats(machinePos.immutable()));
-
-        // 每10tick更新一次
-        if (currentTick - stats.lastUpdateTick < 10) {
-            return;
+    /** 配方所需厨具 -> UID（数量管理与任务计数共同的权威 key）；无法识别或返回空串时归一为 null。 */
+    public static String getDeviceUid(RecipeType<?> recipeType) {
+        if (recipeType == null) return null;
+        try {
+            String uid = CookTasks.getUID(recipeType);
+            return (uid == null || uid.isEmpty()) ? null : uid;
+        } catch (Throwable t) {
+            return null;
         }
-        stats.lastUpdateTick = currentTick;
+    }
 
-        // 重置统计
-        stats.deviceCounts.clear();
-
-        int scannedBlocks = 0;
-        int foundDevices = 0;
-        // 扫描范围内所有厨具
-        for (BlockPos check : BlockPos.betweenClosed(
-                machinePos.offset(-range, -8, -range),
-                machinePos.offset(range, 8, range))) {
-            scannedBlocks++;
-            BlockEntity be = level.getBlockEntity(check);
-            if (be == null) continue;
-            String cn = be.getClass().getName();
-
-            String type = getDeviceTypeFromClassName(cn);
-            if (type != null) {
-                foundDevices++;
-                stats.deviceCounts.merge(type, 1, Integer::sum);
-            }
-        }
-
+    /** 该 UID 是否属于“有 BlockEntity 本体”的设备（受数量上限管理）。 */
+    public static boolean isBeAwareUid(String uid) {
+        return uid != null && BE_AWARE_UIDS.contains(uid);
     }
 
     /**
-     * 从类名获取厨具类型（严格匹配，避免CookingPot被误判为Pot）
+     * 更新指定打单机的厨具统计（每 10tick 一次），只扫描非空 BlockEntity 位置。
      */
-    public static String getDeviceTypeFromClassName(String className) {
-        // 用正则表达式精确匹配类名结尾（带包名分隔符）
-        if (className.matches(".*\\.StockpotBlockEntity")) {
-            return TYPE_STOCKPOT;
-        } else if (className.matches(".*\\.CookingPotBlockEntity")) {
-            return TYPE_COOKING_POT;
-        } else if (className.matches(".*\\.PotBlockEntity")) {
-            return TYPE_POT;
-        } else if (className.matches(".*\\.SteamerBlockEntity")) {
-            return TYPE_STEAMER;
+    public void updateStation(ServerLevel level, BlockPos machinePos, long currentTick) {
+        int range = BusinessConfig.dishScanRange;
+        long key = machinePos.asLong();
+        StationStats stats = this.stationStatsMap.computeIfAbsent(key, k -> new StationStats(machinePos.immutable()));
+        if (currentTick - stats.lastUpdateTick < 10L) {
+            return;
+        }
+        stats.lastUpdateTick = currentTick;
+        stats.deviceCounts.clear();
+        stats.anchorsByUid.clear();
+
+        List<ICookTask> registered;
+        try {
+            registered = CookTasks.getRegistered();
+        } catch (Throwable t) {
+            return;
+        }
+        if (registered == null || registered.isEmpty()) return;
+
+        // 先按 UID 收集原始“设备本体”锚点（非空 BE 位置），再做竖直相邻去重
+        Map<String, List<BlockPos>> raw = new HashMap<>();
+        for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
+            BlockEntity be = level.getBlockEntity(check);
+            if (be == null) continue;
+            ICookTask matched = resolveTaskForBlockEntity(level, be, check, registered);
+            if (matched == null) continue;
+            String uid = matched.getUID();
+            if (uid == null || uid.isEmpty()) continue;
+            BE_AWARE_UIDS.add(uid);
+            raw.computeIfAbsent(uid, k -> new ArrayList<>()).add(check.immutable());
+        }
+
+        for (Map.Entry<String, List<BlockPos>> e : raw.entrySet()) {
+            List<BlockPos> anchors = verticalDedup(e.getValue());
+            stats.anchorsByUid.put(e.getKey(), anchors);
+            stats.deviceCounts.put(e.getKey(), anchors.size());
+        }
+    }
+
+    /**
+     * 竖直相邻去重：若锚点 a 的正上方也是同类锚点，说明 a 是被“y±1 容错判定”误中的下方支撑方块，
+     * 剔除 a、保留更靠上的真正设备本体。独立设备（上方为空气）不受影响。
+     */
+    private static List<BlockPos> verticalDedup(List<BlockPos> anchors) {
+        if (anchors.size() <= 1) return anchors;
+        Set<Long> occupied = new HashSet<>();
+        for (BlockPos p : anchors) {
+            occupied.add(p.asLong());
+        }
+        List<BlockPos> out = new ArrayList<>(anchors.size());
+        for (BlockPos p : anchors) {
+            if (occupied.contains(p.above().asLong())) continue; // 上方还有同类锚点，本格是被误中的下方块
+            out.add(p);
+        }
+        return out;
+    }
+
+    /**
+     * 实时枚举某个厨具任务在该打单机范围内的“设备本体”锚点（非空 BE、isValidWorkBlock 成立、竖直去重）。
+     * 供选台在统计缓存尚未建立时兜底使用；判定口径与 {@link #updateStation} 完全一致。
+     */
+    public static List<BlockPos> enumerateAnchorsRealTime(ServerLevel level, BlockPos machinePos, ICookTask cookTask) {
+        int range = BusinessConfig.dishScanRange;
+        List<BlockPos> raw = new ArrayList<>();
+        for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
+            if (level.getBlockEntity(check) == null) continue;
+            boolean valid;
+            try {
+                valid = cookTask.isValidWorkBlock(level, null, check);
+            } catch (Throwable t) {
+                valid = false;
+            }
+            if (valid) {
+                raw.add(check.immutable());
+            }
+        }
+        return verticalDedup(raw);
+    }
+
+    /**
+     * 获取该打单机范围内某厨具 UID 的缓存设备本体锚点（副本）。
+     * 调用方在选台时应再用 isValidWorkBlock 实时复核（热源/存在性可能在两次扫描间变化）。
+     */
+    public List<BlockPos> getAnchors(BlockPos machinePos, String uid) {
+        StationStats stats = this.stationStatsMap.get(machinePos.asLong());
+        if (stats == null) return new ArrayList<>();
+        List<BlockPos> list = stats.anchorsByUid.get(uid);
+        return list == null ? new ArrayList<>() : new ArrayList<>(list);
+    }
+
+    /**
+     * 判定某个非空 BlockEntity 位置属于哪个厨具任务。
+     * 已确认结构归属的方块直接返回缓存的那一个 task（按物理设备实例计数，动态可用性归选台阶段判定）。
+     * 未确认的方块先用“任务图标物品 == 该方块实体所在方块的物品”做精确本体归属（纯结构，不看相邻/
+     * 燃料/点燃，避免 ±1 容错让相邻别的设备冒领，例如火炉上、下相邻的砧板把火炉认成砧板）；图标无法
+     * 精确匹配时，再退回 isValidWorkBlock 首个命中的任务认领，兼容图标非常规或无物品形式的设备。
+     */
+    private static ICookTask resolveTaskForBlockEntity(ServerLevel level, BlockEntity be, BlockPos pos, List<ICookTask> registered) {
+        Block block = be.getBlockState().getBlock();
+        ICookTask cached = BLOCK_TASK_CACHE.get(block);
+        if (cached != null) {
+            // 结构归属已学会：该设备方块在物理上就属于此厨具，直接按设备实例计数（容量）。
+            // isValidWorkBlock 内含燃料/点燃、±1 相邻容错等动态条件，不能用它逐轮否决设备的存在性，
+            // 否则火炉在燃料耗尽/未点燃的采样瞬间会被剔出数量统计，使数量闸对其永久放行、一台炉被派多个任务。
+            // “此刻能否开工”仍由选台阶段的官方 searchWorkBlock / safeValidWorkBlock 实时判定（冷炉选不到即不发布）。
+            return cached;
+        }
+
+        // 第一判据（精确本体）：任务图标物品 == 该方块实体所在方块的物品。纯结构判定，不使用
+        // isValidWorkBlock 的 ±1 相邻容错/燃料/点燃，防止相邻的别的设备冒领本格设备。
+        Item blockItem = null;
+        try {
+            blockItem = block.asItem();
+        } catch (Throwable t) {
+            blockItem = null;
+        }
+        if (blockItem != null && blockItem != Items.AIR) {
+            for (ICookTask task : registered) {
+                ItemStack icon;
+                try {
+                    icon = task.getIcon();
+                } catch (Throwable t) {
+                    continue;
+                }
+                if (icon != null && !icon.isEmpty() && icon.getItem() == blockItem) {
+                    BLOCK_TASK_CACHE.put(block, task);
+                    return task;
+                }
+            }
+        }
+
+        // 兜底：图标无法精确匹配（图标非常规、或方块无物品形式）时，退回 isValidWorkBlock 首个认领，保证兼容
+        for (ICookTask task : registered) {
+            boolean valid;
+            try {
+                valid = task.isValidWorkBlock(level, null, pos);
+            } catch (Throwable t) {
+                valid = false;
+            }
+            if (valid) {
+                BLOCK_TASK_CACHE.put(block, task);
+                return task;
+            }
         }
         return null;
     }
 
     /**
-     * 从烹饪任务类名获取厨具类型（严格匹配，注意顺序）
+     * 是否还能发布某厨具类型的烹饪任务（按打单机隔离）。
+     * 活跃任务数（PENDING/ASSIGNED/IN_PROGRESS）必须小于该机器当前可用厨具数。
+     * 无 BlockEntity 的设备（饮品杯等）不在数量管理范围，直接放行，交给选台坐标占用兜底。
      */
-    public static String getDeviceTypeFromTaskClass(String taskClassName) {
-        // 注意：必须先判断CookingPot，再判断Pot，因为"CookingPot"也包含"Pot"
-        if (taskClassName.contains("Stockpot")) {
-            return TYPE_STOCKPOT;
-        } else if (taskClassName.contains("CookingPot")) {
-            return TYPE_COOKING_POT;
-        } else if (taskClassName.contains("Pot")) {
-            return TYPE_POT;
-        } else if (taskClassName.contains("Steamer")) {
-            return TYPE_STEAMER;
-        }
-        return null; // 未知类型返回null，不进行厨具数量管理
-    }
-
-    /**
-     * 检查指定打单机是否可以发布指定类型的烹饪任务
-     * 原理：正在进行的该类型任务数 < 该类型厨具总数
-     */
-    public boolean canPublishTask(BlockPos machinePos, String deviceType, ServerLevel level) {
-        // 未知厨具类型（deviceType为null），不进行厨具数量管理，直接允许发布
-        if (deviceType == null) {
+    public boolean canPublishTask(BlockPos machinePos, String uid, ServerLevel level) {
+        if (uid == null) {
             return true;
         }
-        
-        long key = machinePos.asLong();
-        StationStats stats = stationStatsMap.get(key);
+        // 尚未在世界的非空 BlockEntity 位置出现过的厨具类型：可能是无 BE 设备，也可能玩家还没放置；
+        // 两种情况都交给 findCookingDevice 选台判定（找不到会返回 null 并提示缺厨具），不做数量上限拦截。
+        if (!BE_AWARE_UIDS.contains(uid)) {
+            return true;
+        }
+        StationStats stats = this.stationStatsMap.get(machinePos.asLong());
         if (stats == null) {
-            // 没有统计数据，允许发布（避免因为没扫描到而不发布任务）
-            return true;
+            return true; // 还没完成首次扫描，避免开局误拦
         }
-
-        int totalDevices = stats.getDeviceCount(deviceType);
+        int totalDevices = stats.getDeviceCount(uid);
         if (totalDevices == 0) {
-            // 没有该类型厨具，不允许发布
             return false;
         }
-
-        // 获取正在进行的该类型烹饪任务数
-        int activeTasks = countActiveCookingTasksByType(deviceType, level);
-
-        boolean canPublish = activeTasks < totalDevices;
-        return canPublish;
+        int activeTasks = this.countActiveCookingTasksByType(uid, machinePos, level);
+        return activeTasks < totalDevices;
     }
 
-    /**
-     * 统计正在进行的指定类型烹饪任务数
-     * 通过TaskManager获取所有IN_PROGRESS状态的烹饪任务，然后根据任务的targetPos判断厨具类型
-     */
-    private int countActiveCookingTasksByType(String deviceType, ServerLevel level) {
-        int count = 0;
+    private int countActiveCookingTasksByType(String uid, BlockPos machinePos, ServerLevel level) {
         try {
-            TaskManager taskManager = TaskManager.getInstance();
-            // 遍历所有任务，统计正在进行的烹饪任务
-            // TaskManager的tasks是private的，我们通过其他方式获取
-            // 这里用反射或者提供一个公共方法
-            count = taskManager.getActiveCookingTaskCountByDeviceType(deviceType, level);
+            return TaskManager.getInstance().getActiveCookingTaskCountByDeviceType(uid, machinePos, level);
         } catch (Exception e) {
-            MaidRestaurantBusiness.LOGGER.error("[厨具统计] 统计活跃烹饪任务失败", e);
+            MaidRestaurantBusiness.LOGGER.error("[厨具统计] 统计活跃烹饪任务失败 uid={}", uid, e);
+            return 0;
         }
-        return count;
     }
 
     /**
-     * 清理不在激活列表中的打单机统计
+     * 清理非激活打单机的统计数据
      */
     public void cleanupInactiveStations(Set<BlockPos> activeMachines, long currentTick) {
-        if (currentTick - lastCleanupTick < 100) {
+        if (currentTick - this.lastCleanupTick < 100L) {
             return;
         }
-        lastCleanupTick = currentTick;
-
-        Set<Long> activeKeys = new HashSet<>();
+        this.lastCleanupTick = currentTick;
+        HashSet<Long> activeKeys = new HashSet<>();
         for (BlockPos pos : activeMachines) {
             activeKeys.add(pos.asLong());
         }
-
-        for (Long key : new HashSet<>(stationStatsMap.keySet())) {
-            if (!activeKeys.contains(key)) {
-                stationStatsMap.remove(key);
-            }
+        for (Long key : new HashSet<>(this.stationStatsMap.keySet())) {
+            if (activeKeys.contains(key)) continue;
+            this.stationStatsMap.remove(key);
         }
     }
 
-    /**
-     * 获取指定打单机的统计信息（用于调试）
-     */
     public StationStats getStationStats(BlockPos machinePos) {
-        return stationStatsMap.get(machinePos.asLong());
+        return this.stationStatsMap.get(machinePos.asLong());
+    }
+
+    public void clear() {
+        this.stationStatsMap.clear();
+        this.lastCleanupTick = 0L;
+        // BLOCK_TASK_CACHE / BE_AWARE_UIDS 属于模组加载期的结构事实，不在此清理
     }
 
     /**
-     * 清空所有状态（世界卸载时调用）
+     * 打单机厨具统计数据（key = 厨具 ICookTask 的 UID）
      */
-    public void clear() {
-        stationStatsMap.clear();
-        lastCleanupTick = 0;
+    public static class StationStats {
+        public final BlockPos machinePos;
+        public final Map<String, Integer> deviceCounts = new HashMap<>();
+        /** UID -> 当前可用的设备本体坐标（已竖直去重），供选台复用 */
+        public final Map<String, List<BlockPos>> anchorsByUid = new HashMap<>();
+        public long lastUpdateTick = 0L;
+
+        public StationStats(BlockPos machinePos) {
+            this.machinePos = machinePos;
+        }
+
+        public int getDeviceCount(String uid) {
+            return this.deviceCounts.getOrDefault(uid, 0);
+        }
     }
 }

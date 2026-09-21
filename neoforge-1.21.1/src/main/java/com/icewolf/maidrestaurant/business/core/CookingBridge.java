@@ -33,6 +33,8 @@ import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import cn.breezeth.ordertocook.registry.ModItems;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
+import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
 import com.icewolf.maidrestaurant.business.core.ActiveOrder;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
@@ -51,7 +53,9 @@ import com.mastermarisa.maid_restaurant.utils.MaidStorages;
 import com.mastermarisa.maid_restaurant.utils.RequestManager;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +94,9 @@ public class CookingBridge {
     // value: 已发布的总烹饪次数
     private static final Map<String, Integer> publishedThisTick = new HashMap<>();
     private static long lastPublishedTick = -1;
+    // ===== 挂单夹预烹饪（仅当该打单机24格内存在 OTC 冰箱时启用，成品全部进冰箱，不预定/绑定操作台）=====
+    // 本tick挂单夹已发布产出缓存，key = machinePos.asLong() + "|" + itemId
+    private static final Map<String, Integer> clipPublishedThisTick = new HashMap<>();
     // 记录最近一次食材不足时缺少的食材名称（最多3种）
     private static List<String> lastMissingIngredients = new ArrayList<>();
 
@@ -102,13 +109,13 @@ public class CookingBridge {
         long currentTick = level.getGameTime();
         if (currentTick != lastPublishedTick) {
             publishedThisTick.clear();
+            clipPublishedThisTick.clear();
             lastPublishedTick = currentTick;
         }
         CookingBridge.tickPrepTasks(level);
         CookingBridge.updateBusinessCookMaids(level);
-        int counterCount = manager.getCounterToMachine().size();
-        if (counterCount > 0) {
-        }
+        // 记录本tick哪些打单机的操作台已经发布过烹饪任务（操作台优先，挂单夹预烹饪只对"没发任务"的机器兜底）
+        Set<Long> machinePostedThisRound = new HashSet<>();
         for (Map.Entry<BlockPos, BlockPos> entry : manager.getCounterToMachine().entrySet()) {
             BlockPos counterPos = entry.getKey();
             BlockPos machinePos = entry.getValue();
@@ -118,22 +125,35 @@ public class CookingBridge {
                     continue;
                 }
                 // 食材不足冷却检查
-            long counterKey = counterPos.asLong();
-            Long cooldownEnd = insufficientIngredientsCooldown.get(counterKey);
-            if (cooldownEnd != null && currentTick < cooldownEnd) {
-                continue;
-            }
-            boolean postedAny = CookingBridge.processCounter(level, counterPos, machinePos, manager);
-            // 如果没有发布任何烹饪任务，设置冷却
-            if (!postedAny) {
-                insufficientIngredientsCooldown.put(counterKey, currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
-            } else {
-                // 发布了任务，清除冷却
-                insufficientIngredientsCooldown.remove(counterKey);
-            }
+                long counterKey = counterPos.asLong();
+                Long cooldownEnd = insufficientIngredientsCooldown.get(counterKey);
+                if (cooldownEnd != null && currentTick < cooldownEnd) {
+                    continue;
+                }
+                boolean postedAny = CookingBridge.processCounter(level, counterPos, machinePos, manager);
+                // 如果发布了任务，清除冷却并记录该机器本轮已发任务
+                if (postedAny) {
+                    insufficientIngredientsCooldown.remove(counterKey);
+                    machinePostedThisRound.add(machinePos.asLong());
+                } else {
+                    insufficientIngredientsCooldown.put(counterKey, currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
+                }
             }
             catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("Error processing counter at {}", counterPos, t);
+            }
+        }
+        // 操作台优先的兜底：本轮没发过烹饪任务的机器，处理其挂单夹预烹饪（成品优先入冰箱）；每机器只兜底一次
+        Set<Long> clipHandled = new HashSet<>();
+        for (BlockPos machinePos : manager.getCounterToMachine().values()) {
+            if (machinePos == null) continue;
+            long mk = machinePos.asLong();
+            if (machinePostedThisRound.contains(mk)) continue;
+            if (!clipHandled.add(mk)) continue;
+            try {
+                CookingBridge.processClipOrders(level, machinePos.immutable(), manager, currentTick);
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.error("Error processing order clips for machine {}", machinePos, t);
             }
         }
     }
@@ -184,6 +204,8 @@ public class CookingBridge {
                 for (int i = size - 1; i >= 0; i--) {
                     CookRequest req = handler.getAt(i);
                     if (req == null) continue;
+                    // 挂单夹预烹饪任务归属挂单夹订单，不随操作台真实订单超时被连带取消
+                    if (req.extraData != null && req.extraData.contains("BusinessClip")) continue;
                     boolean hasCounter = req.extraData != null && req.extraData.contains("BusinessCounter");
                     long reqCounter = hasCounter ? req.extraData.getLong("BusinessCounter") : -1;
                     if (hasCounter && reqCounter == counterLong) {
@@ -205,7 +227,7 @@ public class CookingBridge {
             if (pool != null && pool.getRequests() != null && !pool.getRequests().isEmpty()) {
                 for (int i = pool.getRequests().size() - 1; i >= 0; i--) {
                     CookRequest req = pool.getRequests().get(i);
-                    if (req != null && req.extraData != null && req.extraData.contains("BusinessCounter") && req.extraData.getLong("BusinessCounter") == counterLong) {
+                    if (req != null && req.extraData != null && req.extraData.contains("BusinessCounter") && !req.extraData.contains("BusinessClip") && req.extraData.getLong("BusinessCounter") == counterLong) {
                         pool.getRequests().remove(i);
                         cancelled++;
                     }
@@ -270,6 +292,8 @@ public class CookingBridge {
                     for (int i = handler.size() - 1; i >= 0; i--) {
                         CookRequest req = handler.getAt(i);
                         if (req == null || req.extraData == null || !req.extraData.contains("BusinessCounter")) continue;
+                        // 挂单夹预烹饪任务不进 activeOrders，不能按操作台活跃订单集合判残留，交由完成回收/卡住兜底处理
+                        if (req.extraData.contains("BusinessClip")) continue;
                         long reqCounter = req.extraData.getLong("BusinessCounter");
                         // 如果操作台不在活跃订单列表中，说明是残留任务，清理它
                         if (!activeCounterLongs.contains(reqCounter)) {
@@ -285,6 +309,8 @@ public class CookingBridge {
                 for (int i = pool.getRequests().size() - 1; i >= 0; i--) {
                     CookRequest req = pool.getRequests().get(i);
                     if (req == null || req.extraData == null || !req.extraData.contains("BusinessCounter")) continue;
+                    // 挂单夹预烹饪任务不进 activeOrders，不能按操作台活跃订单集合判残留，交由完成回收/卡住兜底处理
+                    if (req.extraData.contains("BusinessClip")) continue;
                     long reqCounter = req.extraData.getLong("BusinessCounter");
                     if (!activeCounterLongs.contains(reqCounter)) {
                         pool.getRequests().remove(i);
@@ -390,6 +416,49 @@ public class CookingBridge {
         }
     }
 
+    /**
+     * 挂单夹预烹饪专用：按"打单机"维度统计某食物当前正在制作的产出量（handler + 世界队列），
+     * 用于合并同一台打单机下所有操作台/挂单夹的在做需求，避免跨操作台重复发布。
+     */
+    public static int getCookingOutputForItemByMachine(ServerLevel level, BlockPos machinePos, String itemId) {
+        try {
+            long machineLong = machinePos.asLong();
+            int totalOutput = 0;
+            if (MaidTracker.maids != null) {
+                for (EntityMaid maid : MaidTracker.maids) {
+                    if (maid == null || !maid.isAlive()) continue;
+                    CookRequestHandler handler = maid.getData(CookRequestHandler.TYPE);
+                    if (handler == null) continue;
+                    for (int i = 0; i < handler.size(); i++) {
+                        CookRequest req = handler.getAt(i);
+                        if (req == null || req.extraData == null) continue;
+                        if (!req.extraData.contains("BusinessMachine")) continue;
+                        if (req.extraData.getLong("BusinessMachine") != machineLong) continue;
+                        String reqItemId = req.extraData.contains("BusinessItemId") ? req.extraData.getString("BusinessItemId") : "";
+                        if (!itemId.equals(reqItemId)) continue;
+                        int recipeOutput = req.extraData.contains("BusinessRecipeOutput") ? req.extraData.getInt("BusinessRecipeOutput") : 1;
+                        totalOutput += req.requested * recipeOutput;
+                    }
+                }
+            }
+            WorldCookRequestHandler pool = level.getData(WorldCookRequestHandler.TYPE);
+            if (pool != null && pool.getRequests() != null) {
+                for (CookRequest req : pool.getRequests()) {
+                    if (req == null || req.extraData == null) continue;
+                    if (!req.extraData.contains("BusinessMachine")) continue;
+                    if (req.extraData.getLong("BusinessMachine") != machineLong) continue;
+                    String reqItemId = req.extraData.contains("BusinessItemId") ? req.extraData.getString("BusinessItemId") : "";
+                    if (!itemId.equals(reqItemId)) continue;
+                    int recipeOutput = req.extraData.contains("BusinessRecipeOutput") ? req.extraData.getInt("BusinessRecipeOutput") : 1;
+                    totalOutput += req.requested * recipeOutput;
+                }
+            }
+            return totalOutput;
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("烹饪产出统计: getCookingOutputForItemByMachine抛出异常", t);
+            return 0;
+        }
+    }
     private static void tickPrepTasks(ServerLevel level) {
         Iterator<Map.Entry<BlockPos, PrepTask>> it = prepTasks.entrySet().iterator();
         while (it.hasNext()) {
@@ -447,20 +516,33 @@ public class CookingBridge {
                     IItemHandler counterInv;
                     BlockEntity be = level.getBlockEntity(counterPos);
                     counterInv = be != null ? OrderBridge.getItemHandler(be) : null;
-                    // 1) 优先把成品放进操作台
                     int inserted = 0;
-                    if (counterInv != null) {
-                        inserted = MaidUtils.transferFromMaid(maid, task.itemId, task.needed, counterInv);
-                    }
-                    // 2) 操作台成品格放不下（已满）时，剩余成品转入操作台范围内、OTC打包时能取到的冰箱。
-                    //    女仆不额外寻路，仍站在操作台旁、对操作台做放入动作，只是物品实际落进冰箱，防止卡死。
                     int toFridge = 0;
-                    if (inserted < task.needed) {
-                        int left = task.needed - inserted;
-                        toFridge = CookingBridge.depositMaidFoodToNearbyFridges(level, counterPos, maid, task.itemId, left);
-                        if (inserted + toFridge < task.needed) {
-                            MaidRestaurantBusiness.LOGGER.warn("[备菜] 操作台已满且附近没有可放的冰箱，剩余成品留在女仆背包(不卡死): 女仆={} 食物={} 已放={} 需求={}",
-                                maid.getName().getString(), task.itemId, inserted + toFridge, task.needed);
+                    if (task.preferFridge) {
+                        // 挂单夹预烹饪：成品优先全部转入冰箱（启用前已保证该机器范围内有冰箱），操作台仅作走位交互点。
+                        toFridge = CookingBridge.depositMaidFoodToNearbyFridges(level, counterPos, maid, task.itemId, task.needed);
+                        if (toFridge < task.needed && counterInv != null) {
+                            // 冰箱暂时放不下的余量再尝试放进操作台，避免成品卡在女仆背包
+                            inserted = MaidUtils.transferFromMaid(maid, task.itemId, task.needed - toFridge, counterInv);
+                        }
+                        if (toFridge + inserted < task.needed) {
+                            MaidRestaurantBusiness.LOGGER.warn("[挂单夹预烹饪] 冰箱与操作台都放不下，剩余成品留在女仆背包(不卡死): 女仆={} 食物={} 已放={} 需求={}",
+                                maid.getName().getString(), task.itemId, toFridge + inserted, task.needed);
+                        }
+                    } else {
+                        // 1) 优先把成品放进操作台
+                        if (counterInv != null) {
+                            inserted = MaidUtils.transferFromMaid(maid, task.itemId, task.needed, counterInv);
+                        }
+                        // 2) 操作台成品格放不下（已满）时，剩余成品转入操作台范围内、OTC打包时能取到的冰箱。
+                        //    女仆不额外寻路，仍站在操作台旁、对操作台做放入动作，只是物品实际落进冰箱，防止卡死。
+                        if (inserted < task.needed) {
+                            int left = task.needed - inserted;
+                            toFridge = CookingBridge.depositMaidFoodToNearbyFridges(level, counterPos, maid, task.itemId, left);
+                            if (inserted + toFridge < task.needed) {
+                                MaidRestaurantBusiness.LOGGER.warn("[备菜] 操作台已满且附近没有可放的冰箱，剩余成品留在女仆背包(不卡死): 女仆={} 食物={} 已放={} 需求={}",
+                                    maid.getName().getString(), task.itemId, inserted + toFridge, task.needed);
+                            }
                         }
                     }
                     // 手臂摇摆动画：女仆对着操作台做放入动作（无论成品最终进操作台还是冰箱）
@@ -806,7 +888,9 @@ public class CookingBridge {
                     // 正在备菜的女仆isOccupied=true，不计入空闲厨师，避免给备菜中的女仆重复派烹饪任务
                     boolean maidOccupied = false;
                     try { maidOccupied = MaidUtils.isOccupied(m); } catch (Throwable t) {}
-                    if ((handler == null || handler.size() == 0) && !maidOccupied) {
+                    boolean maidHasTask = false;
+                    try { maidHasTask = TaskManager.getInstance().hasMaidTask(m.getUUID()); } catch (Throwable t) {}
+                    if ((handler == null || handler.size() == 0) && !maidOccupied && !maidHasTask) {
                         availableCooks++;
                         idleCooks.add(m);
                     }
@@ -864,24 +948,16 @@ public class CookingBridge {
                     continue;
                 }
                 
-                // 厨具检测
-                String taskClassName = null;
-                String deviceType = null;
+                // 厨具检测（数据驱动：UID + 数量/占用上限，按打单机隔离，兼容全部已注册厨具）
+                ICookTask deviceTask = null;
+                String deviceUid = null;
                 try {
-                    taskClassName = CookTasks.getTask(match.recipeType).getClass().getSimpleName();
-                    deviceType = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClassName);
+                    deviceTask = CookTasks.getTask(match.recipeType);
+                    deviceUid = CookingDeviceStatsManager.getDeviceUid(match.recipeType);
                     BlockPos machinePosForCheck = manager.getCounterToMachine().get(counterPos);
-                    boolean canPublish = true;
-                    if (machinePosForCheck != null) {
-                        canPublish = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getInstance().canPublishTask(machinePosForCheck, deviceType, level);
-                    }
-                    if (!canPublish) {
-                        String deviceName = "厨具";
-                        if ("Stockpot".equals(deviceType)) deviceName = "汤锅";
-                        else if ("Pot".equals(deviceType)) deviceName = "炒锅";
-                        else if ("Steamer".equals(deviceType)) deviceName = "蒸笼";
-                        else if ("CookingPot".equals(deviceType)) deviceName = "厨锅";
-                        missingDevices.add(deviceName);
+                    if (deviceUid != null && machinePosForCheck != null
+                            && !CookingDeviceStatsManager.getInstance().canPublishTask(machinePosForCheck, deviceUid, level)) {
+                        missingDevices.add(deviceDisplayName(deviceTask));
                         continue;
                     }
                 } catch (Exception e) {}
@@ -911,17 +987,8 @@ public class CookingBridge {
                 int neededCookTimes = (int)Math.ceil((double)demand / recipeOutput);
                 // 一次任务实际做的次数 = min(被选中厨师能做的次数, 需要的烹饪次数)
                 int actualCookTimes = Math.min(chosenCanMake, neededCookTimes);
-                if ((cookPos = CookingBridge.findCookingDevice(level, machinePos, match.recipeType)) == null) {
-                    if (deviceType == null) {
-                        try {
-                            com.mastermarisa.maid_restaurant.api.ICookTask taskForName = com.mastermarisa.maid_restaurant.utils.CookTasks.getTask(match.recipeType);
-                            net.minecraft.network.chat.Component deviceComp = net.minecraft.network.chat.Component.literal("所需厨具");
-                            if (taskForName != null && !taskForName.getIcon().isEmpty()) {
-                                deviceComp = taskForName.getIcon().getHoverName();
-                            }
-                            missingDevices.add(deviceComp.getString());
-                        } catch (Exception bubbleErr) {}
-                    }
+                if ((cookPos = CookingBridge.selectWorkPosForMaid(level, machinePos, match.recipeType, targetMaid)) == null) {
+                    missingDevices.add(deviceDisplayName(deviceTask));
                     continue;
                 }
                 CookRequest request = new CookRequest();
@@ -981,11 +1048,11 @@ public class CookingBridge {
                     // 同一厨具已有进行中的烹饪任务，跳过本次发布
                     continue;
                 }
-                // 设置任务的厨具类型，用于统计活跃任务数
+                // 设置任务的厨具 UID，用于统计活跃任务数
                 try {
                     TaskManager.TaskInfo taskInfo = TaskManager.getInstance().getTask(taskId);
                     if (taskInfo != null) {
-                        taskInfo.deviceType = com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClassName);
+                        taskInfo.deviceType = deviceUid;
                     }
                 } catch (Exception e) {
                     MaidRestaurantBusiness.LOGGER.warn("烹饪: 设置任务厨具类型失败", e);
@@ -1044,6 +1111,472 @@ public class CookingBridge {
         return postedAnyTask;
     }
 
+    /** 厨具显示名（用于气泡提示）：取餐厅菜单同款图标物品的本地化名称，兼容全部已注册厨具。 */
+    private static String deviceDisplayName(ICookTask cookTask) {
+        if (cookTask == null) return "所需厨具";
+        try {
+            if (!cookTask.getIcon().isEmpty()) {
+                return cookTask.getIcon().getHoverName().getString();
+            }
+        } catch (Throwable ignore) {}
+        return "所需厨具";
+    }
+
+    /** 收集某台打单机范围内、真正空闲的厨师女仆（TaskCook、无烹饪请求、未 occupied），按任务数/距离排序。 */
+    private static List<EntityMaid> collectIdleCooks(ServerLevel level, BlockPos machinePos, BlockPos origin) {
+        List<EntityMaid> idleCooks = new ArrayList<>();
+        try {
+            for (EntityMaid m : TaskManager.getInstance().getCachedMaidsForMachine(level, origin)) {
+                if (m == null || !m.isAlive()) continue;
+                if (m.distanceToSqr(origin.getX() + 0.5, origin.getY(), origin.getZ() + 0.5) > 576.0) continue;
+                String taskClassName = m.getTask() != null ? m.getTask().getClass().getSimpleName() : "";
+                if (!"TaskCook".equals(taskClassName)) continue;
+                CookRequestHandler handler = m.getData(CookRequestHandler.TYPE);
+                boolean maidOccupied = false;
+                try { maidOccupied = MaidUtils.isOccupied(m); } catch (Throwable t) {}
+                boolean maidHasTask = false;
+                try { maidHasTask = TaskManager.getInstance().hasMaidTask(m.getUUID()); } catch (Throwable t) {}
+                if ((handler == null || handler.size() == 0) && !maidOccupied && !maidHasTask) {
+                    idleCooks.add(m);
+                }
+            }
+            final BlockPos o = origin;
+            idleCooks.sort((a, b) -> {
+                CookRequestHandler ha = a.getData(CookRequestHandler.TYPE);
+                CookRequestHandler hb = b.getData(CookRequestHandler.TYPE);
+                int ta = ha != null ? ha.size() : 0;
+                int tb = hb != null ? hb.size() : 0;
+                if (ta != tb) return Integer.compare(ta, tb);
+                return Double.compare(
+                    a.distanceToSqr(o.getX() + 0.5, o.getY(), o.getZ() + 0.5),
+                    b.distanceToSqr(o.getX() + 0.5, o.getY(), o.getZ() + 0.5));
+            });
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.warn("挂单夹预烹饪：收集空闲厨师出错", t);
+        }
+        return idleCooks;
+    }
+
+    /**
+     * 挂单夹逐单选台的无副作用打分：以候选台 c 为原点，先按“冰箱成品 + 该台范围内厨师背包成品”抵扣这单需求，
+     * 再对仍需烹饪的每道菜，用与发布判定同源的谓词/贪心（normalizeIngredients + countCooksByGreedy）判断能否凑齐1锅，
+     * 返回所有菜汇总后仍缺失的原料“种类数”（去重）。数值越小表示这台周围食材越齐全。
+     * 仅用于台之间的相对择优：每台只做一次普通容器扫描 + 一次冰箱原料扫描，不逐厨师、不模拟存储附属流体；
+     * 最终能否发布仍由 getCookCountByMaid 按厨师精确裁决，故打分偏差不会导致发错任务。打分异常的台排最后。
+     */
+    private static int scoreCounterMissingIngredientKinds(ServerLevel level, BlockPos machinePos, BlockPos c,
+                                                          LinkedHashMap<String, Integer> foods) {
+        try {
+            // 成品抵扣（冰箱 + 厨师背包，均只读），得到仍需烹饪的菜
+            LinkedHashMap<String, Integer> remaining = new LinkedHashMap<>(foods);
+            countFridgeReadyFood(level, c, remaining);
+            deductCookMaidBackpackItems(level, c, remaining);
+
+            final class DishPlan {
+                final List<StackPredicate> required;
+                final List<Item> namedItems;
+                final List<String> namedLabels;
+                DishPlan(List<StackPredicate> required, List<Item> namedItems, List<String> namedLabels) {
+                    this.required = required;
+                    this.namedItems = namedItems;
+                    this.namedLabels = namedLabels;
+                }
+            }
+
+            // 逐菜解析配方谓词（与台无关），并汇总全部原料物品 id 供冰箱一次查询
+            List<List<DishPlan>> dishPlans = new ArrayList<>();
+            java.util.Set<String> rawIdUnion = new java.util.HashSet<>();
+            for (Map.Entry<String, Integer> e : remaining.entrySet()) {
+                List<DishPlan> plans = new ArrayList<>();
+                if (e.getValue() > 0) {
+                    for (RecipeMatch rm : findAllRecipes(level, e.getKey(), e.getValue())) {
+                        net.minecraft.world.item.crafting.RecipeHolder<?> rh =
+                                level.getRecipeManager().byKey(rm.recipeId()).orElse(null);
+                        if (rh == null) continue;
+                        Recipe recipe = rh.value();
+                        ICookTask cookTask = CookTasks.getTask((RecipeType) recipe.getType());
+                        if (cookTask == null) continue;
+                        List<StackPredicate> required;
+                        try {
+                            required = (List<StackPredicate>) cookTask.getIngredients((net.minecraft.world.item.crafting.RecipeHolder) rh, level);
+                            if (required == null) required = new ArrayList<>();
+                        } catch (Throwable t) {
+                            required = new ArrayList<>();
+                            for (Object ingObj : recipe.getIngredients()) {
+                                if (ingObj instanceof Ingredient ing && !ing.isEmpty()) required.add(new StackPredicate(ing));
+                            }
+                        }
+                        required = normalizeIngredients(recipe, required);
+                        List<Item> namedItems = new ArrayList<>();
+                        List<String> namedLabels = new ArrayList<>();
+                        buildNamedCandidates(recipe, namedItems, namedLabels);
+                        for (Object ingObj : recipe.getIngredients()) {
+                            if (ingObj instanceof Ingredient ing && !ing.isEmpty()) {
+                                for (ItemStack ms : ing.getItems()) {
+                                    ResourceLocation mid = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(ms.getItem());
+                                    if (mid != null) rawIdUnion.add(mid.toString());
+                                }
+                            }
+                        }
+                        for (Item it : namedItems) {
+                            ResourceLocation mid = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it);
+                            if (mid != null) rawIdUnion.add(mid.toString());
+                        }
+                        plans.add(new DishPlan(required, namedItems, namedLabels));
+                    }
+                }
+                dishPlans.add(plans);
+            }
+
+            // 该台共享容器（一次扫描，全物品汇总，排除台本身）
+            Map<Item, Integer> avail = new HashMap<>();
+            for (BlockPos check : BlockPos.betweenClosed(c.offset(-24, -8, -24), c.offset(24, 8, 24))) {
+                IItemHandler inv;
+                if (check.equals(c) || (inv = MaidStorages.tryGetHandler((Level) level, check)) == null) continue;
+                for (int slot = 0; slot < inv.getSlots(); ++slot) {
+                    ItemStack stack = inv.getStackInSlot(slot);
+                    if (!stack.isEmpty()) avail.merge(stack.getItem(), stack.getCount(), Integer::sum);
+                }
+            }
+            // OTC 冰箱等食材来源（一次查询，传原料 id 并集）
+            try {
+                Class<?> ingredientSourceApi = Class.forName("cn.breezeth.ordertocook.api.IngredientSourceCompatApi");
+                java.lang.reflect.Method countAllNearby = ingredientSourceApi.getMethod("countAllNearby", Level.class, BlockPos.class, int.class, java.util.Collection.class);
+                Object fridgeResult = countAllNearby.invoke(null, level, c, 24, rawIdUnion);
+                if (fridgeResult instanceof Map<?, ?> fridgeMap) {
+                    for (Map.Entry<?, ?> entry : fridgeMap.entrySet()) {
+                        if (entry.getKey() == null || !(entry.getValue() instanceof Integer cnt) || cnt <= 0) continue;
+                        ResourceLocation rl = ResourceLocation.tryParse(entry.getKey().toString());
+                        Item it = rl == null ? null : net.minecraft.core.registries.BuiltInRegistries.ITEM.get(rl);
+                        if (it == net.minecraft.world.item.Items.AIR) it = null;
+                        if (it != null) avail.merge(it, cnt, Integer::sum);
+                    }
+                }
+            } catch (ClassNotFoundException cnfe) {
+                // 旧版 OTC 无该 API，正常
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("挂单夹择台：冰箱原料检索出错", t);
+            }
+            // 空闲厨师背包并集（团队口径，仅用于台之间相对择优）
+            for (EntityMaid maid : collectIdleCooks(level, machinePos, c)) {
+                IItemHandler maidInv = MaidUtils.getInventory(maid);
+                if (maidInv == null) continue;
+                for (int slot = 0; slot < maidInv.getSlots(); ++slot) {
+                    ItemStack stack = maidInv.getStackInSlot(slot);
+                    if (!stack.isEmpty()) avail.merge(stack.getItem(), stack.getCount(), Integer::sum);
+                }
+            }
+
+            // 逐菜判定：任一配方能凑齐1锅即视为可做；所有配方都不行时取缺失种类最少的配方并入集合
+            java.util.Set<String> missingKinds = new java.util.LinkedHashSet<>();
+            int idx = 0;
+            for (Map.Entry<String, Integer> e : remaining.entrySet()) {
+                List<DishPlan> plans = dishPlans.get(idx++);
+                if (e.getValue() <= 0) continue;
+                boolean cookable = false;
+                java.util.Set<String> dishMinMissing = null;
+                for (DishPlan p : plans) {
+                    if (p.required == null || p.required.isEmpty()) { cookable = true; break; }
+                    StackPredicate[] firstFailed = new StackPredicate[1];
+                    int made = countCooksByGreedy(p.required, new HashMap<>(avail), 1, firstFailed);
+                    if (made >= 1) { cookable = true; break; }
+                    // 与 getCookCountByMaid 同源反查：逐个虚拟满足，列出该配方的独立缺失原料
+                    java.util.Set<String> miss = new java.util.LinkedHashSet<>();
+                    Map<Item, Integer> virtual = new HashMap<>(avail);
+                    int guard = 0;
+                    while (guard++ < p.required.size() + 2) {
+                        StackPredicate[] ff = new StackPredicate[1];
+                        int m2 = countCooksByGreedy(p.required, virtual, 1, ff);
+                        if (m2 >= 1 || ff[0] == null) break;
+                        String name = null;
+                        Item sampleItem = null;
+                        for (int i = 0; i < p.namedItems.size(); i++) {
+                            Item cand = p.namedItems.get(i);
+                            if (cand != null && ff[0].test(new ItemStack(cand, 1))) {
+                                name = p.namedLabels.get(i);
+                                sampleItem = cand;
+                                break;
+                            }
+                        }
+                        if (sampleItem == null) { miss.add("材料"); break; }
+                        if (name == null) name = "材料";
+                        miss.add(name);
+                        virtual.merge(sampleItem, 1, Integer::sum);
+                    }
+                    if (dishMinMissing == null || miss.size() < dishMinMissing.size()) dishMinMissing = miss;
+                }
+                if (!cookable && dishMinMissing != null) missingKinds.addAll(dishMinMissing);
+            }
+            return missingKinds.size();
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.warn("挂单夹择台打分出错 counter={}", c, t);
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    /**
+     * 处理一台激活打单机的挂单夹预烹饪（操作台优先的兜底）。
+     * 前提：该机器24格内存在 OTC 冰箱（成品有共用落点）；挂单夹订单按剩余时间升序，每轮每机器最多发布1个烹饪任务。
+     */
+    private static void processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
+        try {
+            if (!BusinessConfig.clipPreCooking) return;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return;
+            if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return;
+            if (!OrderBridge.isActivated(level, machinePos)) return;
+            Long cd = insufficientIngredientsCooldown.get(machinePos.asLong());
+            if (cd != null && currentTick < cd) return;
+            if (cd != null) insufficientIngredientsCooldown.remove(machinePos.asLong());
+
+            List<BlockPos> clips = TaskManager.getInstance().getCachedClipsWithOrder(level, machinePos);
+            if (clips == null || clips.isEmpty()) return;
+
+            // 成品全部进冰箱：逐单选台时再校验“操作台 + 其24格内有冰箱”，此处不再固定单一锚点台
+
+            List<ClipOrder> orders = new ArrayList<>();
+            for (BlockPos clipPos : clips) {
+                if (!(level.getBlockEntity(clipPos) instanceof OrderClipBlockEntity clipBe) || clipBe.isEmpty()) continue;
+                ItemStack stack = clipBe.content();
+                if (stack.isEmpty() || !OrderClipBlock.isOrderItem(stack)) continue;
+                CompoundTag nbt = com.icewolf.maidrestaurant.business.util.ItemStackUtils.getTag(stack);
+                if (nbt == null) continue;
+                if (!nbt.contains("FoodList")) continue;
+                if (nbt.getBoolean("Delivery") && !BusinessConfig.acceptDelivery) continue;
+                long expiry = nbt.contains("ExpiryTick") ? nbt.getLong("ExpiryTick") : Long.MAX_VALUE;
+                if (expiry >= 0L && expiry <= currentTick) continue; // 已过期，交给 OTC 自身处理
+                orders.add(new ClipOrder(clipPos.immutable(), nbt, expiry));
+            }
+            orders.sort(Comparator.comparingLong(o -> o.expiryTick));
+            if (orders.isEmpty()) return;
+
+            boolean postedAny = false;
+            for (ClipOrder co : orders) {
+                if (processClipOrder(level, machinePos, co)) {
+                    postedAny = true;
+                    break; // 每机器每轮最多1个挂单夹烹饪任务
+                }
+            }
+            if (!postedAny) {
+                insufficientIngredientsCooldown.put(machinePos.asLong(), currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("挂单夹预烹饪 processClipOrders 出错 machine={}", machinePos, t);
+        }
+    }
+
+    /**
+     * 处理单个挂单夹订单的预烹饪，最多发布1个烹饪任务。
+     * 成品扣减口径：冰箱成品 + 厨师背包成品 + 全机器在做产出 + 本轮挂单夹已发布；不扣操作台槽位成品（那是真实订单的）。
+     */
+    private static boolean processClipOrder(ServerLevel level, BlockPos machinePos, ClipOrder co) {
+        try {
+            CompoundTag nbt = co.nbt;
+            CompoundTag foodList = nbt.getCompound("FoodList");
+            if (foodList.isEmpty()) return false;
+            LinkedHashMap<String, Integer> foods = new LinkedHashMap<>();
+            for (String key : foodList.getAllKeys()) {
+                foods.put(key, foodList.getInt(key));
+            }
+            // 逐单选台：候选=本机器绑定操作台、当前无备菜任务（直接排除，避免多单挤同台/锚点耦合）、24格内有冰箱（成品有落点）
+            List<BlockPos> candidates = new ArrayList<>();
+            try {
+                for (BlockPos c0 : OrderBridge.scanCountersAround(level, machinePos)) {
+                    if (!(level.getBlockEntity(c0) instanceof TakeoutBoxBlockEntity)) continue;
+                    if (prepTasks.containsKey(c0)) continue;
+                    if (nearbyFridgePositions(level, c0).isEmpty()) continue;
+                    candidates.add(c0.immutable());
+                }
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("挂单夹预烹饪：收集候选操作台出错 machine={}", machinePos, t);
+            }
+            if (candidates.isEmpty()) return false;
+            // 只按“以该台为原点凑不齐的原料种类数”择优，并列取扫描到的第一个（确定性，不掺距离）；单台直接用、零额外扫描
+            BlockPos interactionCounter = candidates.get(0);
+            if (candidates.size() > 1) {
+                int bestScore = Integer.MAX_VALUE;
+                BlockPos best = candidates.get(0);
+                for (BlockPos c : candidates) {
+                    int score = scoreCounterMissingIngredientKinds(level, machinePos, c, foods);
+                    if (score < bestScore) { bestScore = score; best = c; }
+                }
+                interactionCounter = best;
+            }
+            LinkedHashMap<String, Integer> remaining = new LinkedHashMap<>(foods);
+
+            // ① 冰箱成品（共用库存，口径与 OTC 打包取餐一致）
+            countFridgeReadyFood(level, interactionCounter, remaining);
+            // ② 先发起备菜（把厨师背包已做好的成品转入冰箱），再统计背包成品，口径与 processCounter 一致
+            if (!prepTasks.containsKey(interactionCounter)) {
+                tryStartPrep(level, interactionCounter, remaining, true);
+            }
+            deductCookMaidBackpackItems(level, interactionCounter, remaining);
+
+            boolean allMet = true;
+            for (int v : remaining.values()) {
+                if (v > 0) { allMet = false; break; }
+            }
+            if (allMet) return false;
+
+            // ③ 空闲厨师
+            List<EntityMaid> idleCooks = collectIdleCooks(level, machinePos, interactionCounter);
+            if (idleCooks.isEmpty()) return false;
+
+            PrepTask activePrep = prepTasks.get(interactionCounter);
+            for (Map.Entry<String, Integer> entry : remaining.entrySet()) {
+                String itemId = entry.getKey();
+                int demand = entry.getValue();
+                if (demand <= 0) continue;
+                if (activePrep != null && itemId.equals(activePrep.itemId)) continue;
+
+                List<RecipeMatch> allMatches = findAllRecipes(level, itemId, demand);
+                if (allMatches.isEmpty()) continue;
+
+                int cookingOutput = getCookingOutputForItemByMachine(level, machinePos, itemId);
+                String tickKey = machinePos.asLong() + "|" + itemId;
+                int published = clipPublishedThisTick.getOrDefault(tickKey, 0);
+                int remainingOutput = demand - cookingOutput - published;
+                if (remainingOutput <= 0) continue;
+
+                java.util.LinkedHashSet<String> missingDevices = new java.util.LinkedHashSet<>();
+                String missingIngSnapshot = "";
+                for (RecipeMatch match : allMatches) {
+                    // ===== 厨具检查（数据驱动 UID + 数量/占用上限）=====
+                    ICookTask deviceTask = null;
+                    String deviceUid = null;
+                    try {
+                        deviceTask = CookTasks.getTask(match.recipeType());
+                        deviceUid = CookingDeviceStatsManager.getDeviceUid(match.recipeType());
+                        if (deviceUid != null && !CookingDeviceStatsManager.getInstance().canPublishTask(machinePos, deviceUid, level)) {
+                            missingDevices.add(deviceDisplayName(deviceTask));
+                            continue;
+                        }
+                    } catch (Exception e) {}
+
+                    // ===== 食材检查（按厨师粒度）=====
+                    java.util.LinkedHashMap<UUID, Integer> perMaid;
+                    try {
+                        perMaid = getCookCountByMaid(level, interactionCounter, match.recipeId(), 1, idleCooks);
+                    } catch (Throwable t) {
+                        perMaid = new java.util.LinkedHashMap<>();
+                    }
+                    EntityMaid targetMaid = null;
+                    int chosenCanMake = 0;
+                    for (EntityMaid m : idleCooks) {
+                        Integer c = perMaid.get(m.getUUID());
+                        if (c != null && c >= 1) { targetMaid = m; chosenCanMake = c; break; }
+                    }
+                    if (targetMaid == null) {
+                        missingIngSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
+                        continue;
+                    }
+
+                    // ===== 选定厨师后，用官方 searchWorkBlock 定位其“工作位”（厨凳格/锅工作位）=====
+                    BlockPos cookPos = selectWorkPosForMaid(level, machinePos, match.recipeType(), targetMaid);
+                    if (cookPos == null) {
+                        missingDevices.add(deviceDisplayName(deviceTask));
+                        continue;
+                    }
+                    if (TaskManager.getInstance().isDeviceOccupied(cookPos)) {
+                        continue;
+                    }
+
+                    // ===== 计算本次任务次数/产出 =====
+                    int recipeOutput = match.resultCount();
+                    int taskOutput = Math.min(chosenCanMake * recipeOutput, remainingOutput);
+                    int cookTimes = (int)Math.ceil((double)taskOutput / recipeOutput);
+
+                    idleCooks.remove(targetMaid);
+                    CookRequestHandler finalHandler = targetMaid.getData(CookRequestHandler.TYPE);
+                    if (finalHandler == null) continue;
+                    if (finalHandler.size() > 0) continue;
+
+                    // ===== 构建任务请求 =====
+                    CookRequest request = new CookRequest();
+                    request.id = match.recipeId();
+                    request.type = match.recipeType();
+                    request.remain = cookTimes;
+                    request.requested = cookTimes;
+                    request.targets = new long[]{cookPos.asLong()};
+                    request.extraData = new CompoundTag();
+                    request.extraData.putLong("BusinessCounter", interactionCounter.asLong());
+                    request.extraData.putLong("BusinessMachine", machinePos.asLong());
+                    request.extraData.putString("BusinessOrderId", nbt.getString("OrderId"));
+                    request.extraData.putString("BusinessItemId", itemId);
+                    request.extraData.putInt("BusinessRecipeOutput", match.resultCount());
+                    request.extraData.putLong("BusinessClip", co.clipPos.asLong());
+
+                    // ① 先在 TaskManager 创建任务（三参），同厨具已有进行中任务返回 null
+                    String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_COOKING, cookPos, machinePos);
+                    if (taskId == null) continue;
+                    try {
+                        TaskManager.TaskInfo taskInfo = TaskManager.getInstance().getTask(taskId);
+                        if (taskInfo != null) {
+                            taskInfo.deviceType = deviceUid;
+                        }
+                    } catch (Exception e) {
+                        MaidRestaurantBusiness.LOGGER.warn("挂单夹预烹饪: 设置任务厨具类型失败", e);
+                    }
+                    // ② 定向分配
+                    if (!TaskManager.getInstance().assignSpecificTask(targetMaid.getUUID(), taskId)) {
+                        TaskManager.getInstance().discardTask(taskId);
+                        continue;
+                    }
+                    // ③ 占用厨具；失败回滚
+                    if (!TaskManager.getInstance().occupyDevice(cookPos, taskId, targetMaid.getUUID())) {
+                        MaidRestaurantBusiness.LOGGER.warn("挂单夹预烹饪: 厨具 {} 占用失败，回滚任务 {} 厨师={}", cookPos, taskId, targetMaid.getName().getString());
+                        TaskManager.getInstance().failTask(targetMaid.getUUID(), "厨具占用失败");
+                        continue;
+                    }
+                    // ④ 全部成功后才把请求交给厨师
+                    finalHandler.add(request);
+                    try {
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(targetMaid);
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefStartCooking(targetMaid);
+                    } catch (Exception e) {}
+                    clipPublishedThisTick.put(tickKey, published + taskOutput);
+                    return true;
+                }
+                // 该食物所有配方都失败，汇总弹一个气泡（缺厨具 / 缺食材）
+                if (!idleCooks.isEmpty()) {
+                    try {
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
+                        if (!missingDevices.isEmpty()) {
+                            String[] arr = missingDevices.toArray(new String[0]);
+                            String shown = arr.length == 1 ? arr[0] : arr[0] + "、" + arr[1];
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
+                        } else {
+                            String mm = missingIngSnapshot.isEmpty() ? "食材不够了" : missingIngSnapshot;
+                            String[] noIngredientsMessages = new String[]{
+                                "缺少" + mm + "...(；′⌒`)",
+                                "需要" + mm + "呢...",
+                                "这个..." + mm + "不太够呀",
+                                mm + "好像没有了呢...(´；ω；`)"
+                            };
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
+                        }
+                    } catch (Exception e) {}
+                }
+                return false;
+            }
+            return false;
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("挂单夹预烹饪 processClipOrder 出错 clip={}", co.clipPos, t);
+            return false;
+        }
+    }
+
+    /** 挂单夹预烹饪的轻量订单载体（每轮从挂单夹 NBT 实时构建，不持久化、不预定操作台）。 */
+    private static final class ClipOrder {
+        final BlockPos clipPos;
+        final CompoundTag nbt;
+        final long expiryTick;
+        ClipOrder(BlockPos clipPos, CompoundTag nbt, long expiryTick) {
+            this.clipPos = clipPos;
+            this.nbt = nbt;
+            this.expiryTick = expiryTick;
+        }
+    }
+
     /**
      * 把本打单机范围内、厨师女仆背包里已经做好的成品算作"已有库存"，从需求remaining中扣减。
      * 这些成品虽还没备进操作台，但已经做出来、会由备菜流程交付，不能再为它们重复发布烹饪任务。
@@ -1075,6 +1608,13 @@ public class CookingBridge {
     }
 
     private static boolean tryStartPrep(ServerLevel level, BlockPos counterPos, Map<String, Integer> remaining) {
+        return tryStartPrep(level, counterPos, remaining, false);
+    }
+
+    /**
+     * 发起备菜。preferFridge=true 时为挂单夹预烹饪：成品优先转入冰箱（操作台仅作走位交互点）。
+     */
+    private static boolean tryStartPrep(ServerLevel level, BlockPos counterPos, Map<String, Integer> remaining, boolean preferFridge) {
         // 多厨师优化：遍历所有厨师，找到第一个背包里有成品食物的厨师
         // 而不是只检查最近的一个厨师，避免其他厨师背包有食物但不备菜的问题
         List<EntityMaid> allCooks = new ArrayList<>();
@@ -1129,7 +1669,7 @@ public class CookingBridge {
                         break;
                     }
                 }
-                prepTasks.put(counterPos, new PrepTask(null, idStr, toTake, maid, remaining));
+                prepTasks.put(counterPos, new PrepTask(null, idStr, toTake, maid, remaining, preferFridge));
                 return true;
             }
         }
@@ -1682,68 +2222,122 @@ public class CookingBridge {
     }
 
 
+    /**
+     * 在该打单机范围内定位一个具体厨具（数据驱动，全厨具通用），返回“设备本体”坐标。
+     * 与厨具数量统计共用同一套锚点枚举（非空 BlockEntity、isValidWorkBlock、竖直去重，
+     * 打单机 ±dishScanRange、y±4），保证“统计说有空闲厨具”时这里一定选得到，且一台物理设备
+     * 只有一个可选坐标，避免把炉体上/下方的容错坐标（空气位）当成厨具，造成交互目标错误或一炉多任务。
+     * 没有 BlockEntity 的设备（玻璃杯饮品台）退化为全坐标扫描，且本体候选优先于空气位候选。
+     */
     private static BlockPos findCookingDevice(ServerLevel level, BlockPos machinePos, RecipeType<?> type) {
-        com.mastermarisa.maid_restaurant.api.ICookTask cookTask = CookTasks.getTask(type);
+        ICookTask cookTask = CookTasks.getTask(type);
         if (cookTask == null) return null;
-        String taskClass = cookTask.getClass().getSimpleName();
-        String neededType = CookingDeviceStatsManager.getDeviceTypeFromTaskClass(taskClass);
-        int range = BusinessConfig.dishScanRange;
-        // 四类锅（汤锅/厨锅/炒锅/蒸笼）：精确类名匹配 + 我们自己的占用管理
-        if (neededType != null) {
-            BlockPos nearest = null;
-            double nearestDist = Double.MAX_VALUE;
-            // 多厨师并行优化：优先选择没有被占用的厨具
-            BlockPos nearestFree = null;
-            double nearestFreeDist = Double.MAX_VALUE;
-            for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
-                BlockEntity be = level.getBlockEntity(check);
-                if (be == null) continue;
-                // 精确匹配：方块实体的厨具类型必须与任务所需类型完全一致（Stockpot/CookingPot/Pot/Steamer 互斥）
-                String beType = CookingDeviceStatsManager.getDeviceTypeFromClassName(be.getClass().getName());
-                if (beType == null || !beType.equals(neededType)) continue;
-                double d = check.distSqr((Vec3i) machinePos);
-                // 检查厨具是否被占用（使用TaskManager统一管理）
-                boolean occupied = TaskManager.getInstance().isDeviceOccupied(check.immutable());
-                if (!occupied && d < nearestFreeDist) {
-                    nearestFreeDist = d;
-                    nearestFree = check.immutable();
-                }
-                if (d < nearestDist) {
-                    nearestDist = d;
-                    nearest = check.immutable();
+        String uid = CookingDeviceStatsManager.getDeviceUid(type);
+
+        // 有 BlockEntity 本体、已被统计纳管的厨具：只在“设备本体锚点”里挑（对缓存锚点实时复核热源/存在性）
+        if (CookingDeviceStatsManager.isBeAwareUid(uid)) {
+            List<BlockPos> live = new ArrayList<>();
+            for (BlockPos p : CookingDeviceStatsManager.getInstance().getAnchors(machinePos, uid)) {
+                if (safeValidWorkBlock(cookTask, level, p)) {
+                    live.add(p);
                 }
             }
-            // 优先返回没有被占用的厨具，如果没有则返回最近的厨具
-            return nearestFree != null ? nearestFree : nearest;
+            // 缓存为空（开局首次/统计尚未建立）时，按与统计完全相同的口径实时枚举一次
+            if (live.isEmpty()) {
+                live = CookingDeviceStatsManager.enumerateAnchorsRealTime(level, machinePos, cookTask);
+            }
+            return chooseNearestFreeAnchor(live, machinePos);
         }
-        // 非四类锅、但女仆餐厅已注册的设备（烘焙坊：烤箱Oven/搅拌机Blender/烤面包机Toaster/玻璃杯饮品）：
-        // 类型判断完全交给该 task 自己的 isValidWorkBlock，不硬编码类名，以后女仆餐厅新增兼容设备自动支持。
-        // 仍以打单机为中心、按 dishScanRange 扫描；一次只派一个任务（occupyDevice 按坐标占用）。
-        BlockPos best = null;
-        double bestDist = Double.MAX_VALUE;
+
+        // 无 BlockEntity 设备（饮品杯等）：全坐标扫描，本体 BE 候选优先于空气位候选
+        int range = BusinessConfig.dishScanRange;
+        BlockPos beFree = null, beNearest = null, airFree = null, airNearest = null;
+        double beFreeD = Double.MAX_VALUE, beNearD = Double.MAX_VALUE;
+        double airFreeD = Double.MAX_VALUE, airNearD = Double.MAX_VALUE;
         for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
-            try {
-                if (!cookTask.isValidWorkBlock(level, null, check)) continue;
-                if (TaskManager.getInstance().isDeviceOccupied(check.immutable())) continue;
-                double d = check.distSqr((Vec3i) machinePos);
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = check.immutable();
-                }
-            } catch (Throwable ignore) {}
+            if (!safeValidWorkBlock(cookTask, level, check)) continue;
+            BlockPos p = check.immutable();
+            double d = p.distSqr((Vec3i) machinePos);
+            boolean free = !TaskManager.getInstance().isDeviceOccupied(p);
+            if (level.getBlockEntity(p) != null) {
+                if (free && d < beFreeD) { beFreeD = d; beFree = p; }
+                if (d < beNearD) { beNearD = d; beNearest = p; }
+            } else {
+                if (free && d < airFreeD) { airFreeD = d; airFree = p; }
+                if (d < airNearD) { airNearD = d; airNearest = p; }
+            }
         }
-        return best;
+        if (beFree != null) return beFree;
+        if (beNearest != null) return beNearest;
+        if (airFree != null) return airFree;
+        return airNearest;
     }
 
     /**
-     * 统计指定类型的总厨具数量（用于多厨师并行控制的maxParallel计算）
-     * 注意：maxParallel应该基于总厨具数量，因为每个任务会占用一个厨具
+     * 选定厨师后定位本次烹饪的“工作位”坐标（用作 CookRequest.targets 占座与 TaskManager 厨具占用坐标）。
+     * 首选复用女仆餐厅/各扩展官方的 ICookTask.searchWorkBlock：它内部已完成
+     * “设备本体精确识别 → 厨凳/站位映射 → BlockUsageManager 占用过滤 → 就近选择”，
+     * 返回坐标与女仆实际寻路 TARGET_POS、isValidWorkBlock 校验、cookTick 完全同源，
+     * 避免把炉体上/下方的容错空气位误当工作位，导致占座错位、一台设备被派多个任务。
+     * 官方选位不可用（无 BlockEntity 设备、返回 null、抛异常、选中别的打单机范围、或该位已被我方占用）时，
+     * 回退本地锚点/全坐标扫描 findCookingDevice，保证稳定性不低于旧版本。
      */
+    private static BlockPos selectWorkPosForMaid(ServerLevel level, BlockPos machinePos, RecipeType<?> type, EntityMaid maid) {
+        if (maid == null) {
+            return findCookingDevice(level, machinePos, type);
+        }
+        ICookTask cookTask = CookTasks.getTask(type);
+        if (cookTask != null) {
+            try {
+                int h = (int) maid.getRestrictRadius();
+                if (h <= 0) {
+                    h = BusinessConfig.dishScanRange;
+                }
+                BlockPos pos = cookTask.searchWorkBlock(level, maid, h, 2);
+                if (pos != null && isWithinMachineRange(machinePos, pos)
+                        && !TaskManager.getInstance().isDeviceOccupied(pos)) {
+                    return pos.immutable();
+                }
+            } catch (Throwable ignore) {
+                // 官方选位异常时落到本地兜底，不影响发布
+            }
+        }
+        return findCookingDevice(level, machinePos, type);
+    }
 
-    /**
-     * 统计指定类型的可用厨具数量（用于发布任务时选择可用厨具）
-     * 多厨师并行优化：只统计没有被占用的厨具
-     */
+    /** 工作位（厨凳格等）相对设备本体可能偏移 1~2 格，故在打单机扫描半径上留容差，防止选到隔壁打单机的厨具。 */
+    private static boolean isWithinMachineRange(BlockPos machine, BlockPos work) {
+        int r = BusinessConfig.dishScanRange + 2;
+        return Math.abs(work.getX() - machine.getX()) <= r
+                && Math.abs(work.getZ() - machine.getZ()) <= r
+                && Math.abs(work.getY() - machine.getY()) <= 6;
+    }
+
+    private static boolean safeValidWorkBlock(ICookTask cookTask, ServerLevel level, BlockPos p) {
+        try {
+            return cookTask.isValidWorkBlock(level, null, p);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 在设备本体锚点中优先选未被坐标占用、距打单机最近的；全部占用时返回最近的一个（旧 nearest 兜底语义）。 */
+    private static BlockPos chooseNearestFreeAnchor(List<BlockPos> anchors, BlockPos machinePos) {
+        BlockPos nearestFree = null, nearest = null;
+        double nearestFreeDist = Double.MAX_VALUE, nearestDist = Double.MAX_VALUE;
+        for (BlockPos p : anchors) {
+            double d = p.distSqr((Vec3i) machinePos);
+            if (!TaskManager.getInstance().isDeviceOccupied(p) && d < nearestFreeDist) {
+                nearestFreeDist = d;
+                nearestFree = p;
+            }
+            if (d < nearestDist) {
+                nearestDist = d;
+                nearest = p;
+            }
+        }
+        return nearestFree != null ? nearestFree : nearest;
+    }
 
     private static class PrepTask {
         final BlockPos containerPos;
@@ -1753,12 +2347,15 @@ public class CookingBridge {
         int state;
         long lastChange;
         final WeakReference<EntityMaid> maidRef;
+        // true=挂单夹预烹饪的备菜：成品优先转入冰箱，操作台仅作走位交互点
+        final boolean preferFridge;
 
-        PrepTask(BlockPos containerPos, String itemId, int needed, EntityMaid maid, Map<String, Integer> foods) {
+        PrepTask(BlockPos containerPos, String itemId, int needed, EntityMaid maid, Map<String, Integer> foods, boolean preferFridge) {
             this.containerPos = containerPos;
             this.itemId = itemId;
             this.needed = needed;
             this.foods = foods;
+            this.preferFridge = preferFridge;
             this.state = 0;
             this.lastChange = 0L;
             this.maidRef = new WeakReference<EntityMaid>(maid);

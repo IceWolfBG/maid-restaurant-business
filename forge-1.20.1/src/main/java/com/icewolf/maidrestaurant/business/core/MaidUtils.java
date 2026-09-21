@@ -744,6 +744,12 @@ public class MaidUtils {
                     } else if (data.contains("BusinessCollectPlate")) {
                         hasActiveTask = true;
                         activeTaskType = "collect";
+                    } else if (data.contains("BusinessFetchMachine")) {
+                        hasActiveTask = true;
+                        activeTaskType = "fetch_order";
+                    } else if (data.contains("BusinessGreetNpc")) {
+                        hasActiveTask = true;
+                        activeTaskType = "greet";
                     }
                 } catch (Throwable t) {}
                 

@@ -72,7 +72,7 @@ public class OrderFetchBridge {
     private static final int STAGE_TO_COUNTER = 1;
 
     private static final float MOVEMENT_SPEED = 0.4f;
-    private static final double CLOSE_ENOUGH_DIST = 2.0;
+    private static final double CLOSE_ENOUGH_DIST = 2.5; // 与 1.20.1 对齐：台边最近可达落点可能距台中心 2 格以上，过小会一直判未到达而原地卡死
 
     // 成品就绪重检测冷却（10s）
     private static final long READY_CACHE_INTERVAL = 200L;

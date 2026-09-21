@@ -79,8 +79,8 @@ public class OrderClipBlock extends BaseEntityBlock {
         Direction face = context.getClickedFace();
         Direction facing;
         if (face.getAxis().isHorizontal()) {
-            // 贴在被点的那个竖直侧面，朝向与点击面相反
-            facing = face.getOpposite();
+            // 贴在被点的竖直侧面：FACING 取点击面本身（从墙面朝外、朝向玩家），与1.20.1一致；不能getOpposite()否则贴到墙背面
+            facing = face;
         } else {
             // 点在上 / 下面时，沿玩家水平朝向贴墙
             facing = context.getHorizontalDirection().getOpposite();

@@ -21,6 +21,7 @@ package com.icewolf.maidrestaurant.business.core;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import com.mastermarisa.maid_restaurant.request.CookRequestHandler;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -340,22 +341,14 @@ public class MaidUtils {
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.warn("resetMaidState: release BlockUsageManager failed", t);
             }
-            // 7. 清除女仆的所有烹饪请求（避免残留请求导致卡死）
+            // 7. 清除女仆的所有烹饪请求（避免残留请求导致卡死）；1.21.1 用 data capability 获取，无 1.20.1 的静态 getOrCreate
             try {
-                Class<?> requestManager = Class.forName("com.mastermarisa.maid_restaurant.utils.RequestManager");
-                Class<?> cookRequestHandlerClass = Class.forName("com.mastermarisa.maid_restaurant.request.CookRequestHandler");
-                java.lang.reflect.Method getOrCreate = cookRequestHandlerClass.getMethod("getOrCreate", EntityMaid.class);
-                Object handler = getOrCreate.invoke(null, maid);
-                if (handler != null) {
-                    java.lang.reflect.Method sizeMethod = handler.getClass().getMethod("size");
-                    int size = (Integer) sizeMethod.invoke(handler);
-                    if (size > 0) {
-                        for (int i = size - 1; i >= 0; i--) {
-                            try {
-                                java.lang.reflect.Method removeAt = handler.getClass().getMethod("removeAt", int.class);
-                                removeAt.invoke(handler, i);
-                            } catch (Throwable t) {}
-                        }
+                CookRequestHandler handler = maid.getData(CookRequestHandler.TYPE);
+                if (handler != null && handler.size() > 0) {
+                    for (int i = handler.size() - 1; i >= 0; i--) {
+                        try {
+                            handler.removeAt(i);
+                        } catch (Throwable t) {}
                     }
                 }
             } catch (Throwable t) {

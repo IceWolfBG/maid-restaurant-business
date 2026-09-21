@@ -24,6 +24,7 @@ public class BusinessConfig {
     public static final ModConfigSpec.IntValue DISH_SCAN_RANGE;
     public static final ModConfigSpec.DoubleValue FAVORABILITY_BONUS;
     public static final ModConfigSpec.IntValue BUBBLE_COOLDOWN;
+    public static final ModConfigSpec.BooleanValue CLIP_PRE_COOKING;
     public static boolean autoAccept;
     public static boolean acceptDelivery;
     public static boolean autoPack;
@@ -38,6 +39,7 @@ public class BusinessConfig {
     public static int dishScanRange;
     public static double favorabilityBonus;
     public static int bubbleCooldown;
+    public static boolean clipPreCooking;
 
     /**
      * 注册配置文件到NeoForge配置系统
@@ -79,6 +81,7 @@ public class BusinessConfig {
         dishScanRange = (Integer)DISH_SCAN_RANGE.get();
         favorabilityBonus = (Double)FAVORABILITY_BONUS.get();
         bubbleCooldown = (Integer)BUBBLE_COOLDOWN.get();
+        clipPreCooking = (Boolean)CLIP_PRE_COOKING.get();
     }
 
     static {
@@ -97,6 +100,7 @@ public class BusinessConfig {
         DISH_SCAN_RANGE = BUILDER.comment("收盘子和洗碗的扫描范围（以打单机为中心，方块，默认24，最大48）").defineInRange("dishScanRange", 24, 4, 48);
         FAVORABILITY_BONUS = BUILDER.comment("女仆好感度每级的收益加成比例（0-1.0，默认0.1=10%，0级无加成，1级+10%，2级+20%，3级+30%）").defineInRange("favorabilityBonus", 0.1, 0.0, 1.0);
         BUBBLE_COOLDOWN = BUILDER.comment("女仆对话气泡冷却时间（tick，20tick=1秒，默认200=10秒，0=无冷却）").defineInRange("bubbleCooldown", 200, 0, 1200);
+        CLIP_PRE_COOKING = BUILDER.comment("是否让厨师提前烹饪挂单夹里订单所需的食物（仅当该打单机范围内有冰箱时启用，成品优先存入冰箱）").define("clipPreCooking", true);
         BUILDER.pop();
         SPEC = BUILDER.build();
         autoAccept = true;
@@ -113,6 +117,7 @@ public class BusinessConfig {
         dishScanRange = 24;
         favorabilityBonus = 0.1;
         bubbleCooldown = 200;
+        clipPreCooking = true;
     }
 
     /**

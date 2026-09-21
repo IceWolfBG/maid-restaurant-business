@@ -931,19 +931,23 @@ public class TaskManager {
     }
 
     /**
-     * 根据厨具类型统计正在进行的烹饪任务数
-     * @param deviceType 厨具类型（Stockpot/CookingPot/Pot/Steamer）
-     * @param level 服务端世界
-     * @return 正在进行的该类型烹饪任务数
+     * 根据厨具 UID 统计正在进行的烹饪任务数（全局，兼容旧调用）。
      */
     public int getActiveCookingTaskCountByDeviceType(String deviceType, ServerLevel level) {
+        return getActiveCookingTaskCountByDeviceType(deviceType, null, level);
+    }
+
+    /**
+     * 根据厨具 UID 统计指定打单机下正在进行的烹饪任务数（按激活打单机隔离）。
+     * 统计待分配、已分配、进行中的任务（含刚创建尚未分配的 PENDING 任务）。
+     * @param machinePos 打单机位置；null 表示不按机器隔离（全局）
+     */
+    public int getActiveCookingTaskCountByDeviceType(String deviceType, BlockPos machinePos, ServerLevel level) {
         int count = 0;
         for (TaskInfo task : tasks.values()) {
-            // 只统计烹饪任务
             if (!task.taskType.equals(TYPE_COOKING)) continue;
-            // 统计待分配、已分配和进行中的任务（包括刚创建还没分配的PENDING任务）
             if (task.status != TaskStatus.PENDING && task.status != TaskStatus.ASSIGNED && task.status != TaskStatus.IN_PROGRESS) continue;
-            // 使用任务记录的deviceType字段（创建任务时设置），避免通过targetPos重新判断导致不准确
+            if (machinePos != null && (task.machinePos == null || !task.machinePos.equals(machinePos))) continue;
             if (task.deviceType != null && deviceType.equals(task.deviceType)) {
                 count++;
             }

@@ -66,7 +66,7 @@ public class WalkInGreetBridge {
     private static final int STAGE_GO_TO_COUNTER = 1;
 
     private static final float MOVEMENT_SPEED = 0.4f;
-    private static final double CLOSE_ENOUGH_DIST = 2.0;
+    private static final double CLOSE_ENOUGH_DIST = 2.5;
 
     // 与挂单夹归属扫描一致的范围：水平 24、垂直 8
     private static final int RANGE_H = 24;
