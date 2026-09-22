@@ -931,6 +931,10 @@ public class CookingBridge {
                 continue;
             }
             boolean postedThisItem = false;
+            // 该食物是否确实“还需要再做”（在制 + 本tick已发布产出仍未满足需求）。
+            // 需求已被在制任务完全覆盖时，下面每个配方都会因 remainingOutput<=0 而 continue，
+            // 此时 postedThisItem 虽为 false 但属于“已经够了、无需再发”，不能据此误报缺料/缺厨具气泡。
+            boolean needMoreForItem = false;
             // 先遍历所有配方匹配，收集失败原因；第一个能成功分配的就接，不弹气泡
             // 只有所有配方都失败时，才汇总弹一个气泡（厨具不够或食材不够）
             java.util.LinkedHashSet<String> missingDevices = new java.util.LinkedHashSet<>();
@@ -947,6 +951,7 @@ public class CookingBridge {
                 if (remainingOutput <= 0) {
                     continue;
                 }
+                needMoreForItem = true; // 走到这里说明在制 + 本tick产出仍未满足需求，确实还要再做
                 
                 // 厨具检测（数据驱动：UID + 数量/占用上限，按打单机隔离，兼容全部已注册厨具）
                 ICookTask deviceTask = null;
@@ -979,7 +984,7 @@ public class CookingBridge {
                     }
                 }
                 if (targetMaid == null) {
-                    lastMissingIngredientsSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
+                    lastMissingIngredientsSnapshot = String.join("、", lastMissingIngredients);
                     continue;
                 }
                 // 最大效率化：一次任务做尽可能多的次数
@@ -1088,7 +1093,7 @@ public class CookingBridge {
                 break;
             }
             // 所有配方都失败，汇总弹一个气泡
-            if (!postedThisItem && !idleCooks.isEmpty()) {
+            if (!postedThisItem && needMoreForItem && !idleCooks.isEmpty()) {
                 try {
                     com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
                     if (!missingDevices.isEmpty()) {
@@ -1096,13 +1101,25 @@ public class CookingBridge {
                         String shown = devArr.length == 1 ? devArr[0] : devArr[0] + "、" + devArr[1];
                         com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
                     } else {
-                        String missingMsg = lastMissingIngredientsSnapshot.isEmpty() ? "食材不够了" : lastMissingIngredientsSnapshot;
-                        String[] noIngredientsMessages = new String[]{
-                            "缺少" + missingMsg + "...(；′⌒`)",
-                            "需要" + missingMsg + "呢...",
-                            "这个..." + missingMsg + "不太够呀",
-                            missingMsg + "好像没有了呢...(´；ω；`)"
-                        };
+                        String[] noIngredientsMessages;
+                        if (lastMissingIngredientsSnapshot.isEmpty()) {
+                            // 不知道具体缺哪种：用完整句，不再拼“缺少/需要”前缀，避免出现“需要食材不够了呢”这类病句
+                            noIngredientsMessages = new String[]{
+                                "食材不够了...(；′⌒`)",
+                                "好像还缺一些食材呢...",
+                                "这个...食材不太够呀",
+                                "食材好像还没备齐呢...(´；ω；`)"
+                            };
+                        } else {
+                            // 有具体食材名（名词列表）时才拼前缀
+                            String names = lastMissingIngredientsSnapshot;
+                            noIngredientsMessages = new String[]{
+                                "缺少" + names + "...(；′⌒`)",
+                                "需要" + names + "呢...",
+                                "这个..." + names + "不太够呀",
+                                names + "好像没有了呢...(´；ω；`)"
+                            };
+                        }
                         com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
                     }
                 } catch (Exception e) {}
@@ -1466,7 +1483,7 @@ public class CookingBridge {
                         if (c != null && c >= 1) { targetMaid = m; chosenCanMake = c; break; }
                     }
                     if (targetMaid == null) {
-                        missingIngSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
+                        missingIngSnapshot = String.join("、", lastMissingIngredients);
                         continue;
                     }
 
@@ -1545,13 +1562,25 @@ public class CookingBridge {
                             String shown = arr.length == 1 ? arr[0] : arr[0] + "、" + arr[1];
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
                         } else {
-                            String mm = missingIngSnapshot.isEmpty() ? "食材不够了" : missingIngSnapshot;
-                            String[] noIngredientsMessages = new String[]{
-                                "缺少" + mm + "...(；′⌒`)",
-                                "需要" + mm + "呢...",
-                                "这个..." + mm + "不太够呀",
-                                mm + "好像没有了呢...(´；ω；`)"
-                            };
+                            String[] noIngredientsMessages;
+                            if (missingIngSnapshot.isEmpty()) {
+                                // 不知道具体缺哪种：用完整句，不拼“缺少/需要”前缀，避免“需要食材不够了呢”这类病句
+                                noIngredientsMessages = new String[]{
+                                    "食材不够了...(；′⌒`)",
+                                    "好像还缺一些食材呢...",
+                                    "这个...食材不太够呀",
+                                    "食材好像还没备齐呢...(´；ω；`)"
+                                };
+                            } else {
+                                // 有具体食材名（名词列表）时才拼前缀
+                                String names = missingIngSnapshot;
+                                noIngredientsMessages = new String[]{
+                                    "缺少" + names + "...(；′⌒`)",
+                                    "需要" + names + "呢...",
+                                    "这个..." + names + "不太够呀",
+                                    names + "好像没有了呢...(´；ω；`)"
+                                };
+                            }
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
                         }
                     } catch (Exception e) {}

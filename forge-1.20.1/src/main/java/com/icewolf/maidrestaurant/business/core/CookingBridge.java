@@ -1046,7 +1046,7 @@ public class CookingBridge {
                     }
                 }
                 if (targetMaid == null) {
-                    lastMissingIngredientsSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
+                    lastMissingIngredientsSnapshot = String.join("、", lastMissingIngredients);
                     continue;
                 }
 
@@ -1147,13 +1147,25 @@ public class CookingBridge {
                         String shown = devArr.length == 1 ? devArr[0] : devArr[0] + "、" + devArr[1];
                         com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
                     } else {
-                        String missingMsg = lastMissingIngredientsSnapshot.isEmpty() ? "食材不够了" : lastMissingIngredientsSnapshot;
-                        String[] noIngredientsMessages = new String[]{
-                            "缺少" + missingMsg + "...(；′⌒`)",
-                            "需要" + missingMsg + "呢...",
-                            "这个..." + missingMsg + "不太够呀",
-                            missingMsg + "好像没有了呢...(´；ω；`)"
-                        };
+                        String[] noIngredientsMessages;
+                        if (lastMissingIngredientsSnapshot.isEmpty()) {
+                            // 不知道具体缺哪种：用完整句，不再拼“缺少/需要”前缀，避免出现“需要食材不够了呢”这类病句
+                            noIngredientsMessages = new String[]{
+                                "食材不够了...(；′⌒`)",
+                                "好像还缺一些食材呢...",
+                                "这个...食材不太够呀",
+                                "食材好像还没备齐呢...(´；ω；`)"
+                            };
+                        } else {
+                            // 有具体食材名（名词列表）时才拼前缀
+                            String names = lastMissingIngredientsSnapshot;
+                            noIngredientsMessages = new String[]{
+                                "缺少" + names + "...(；′⌒`)",
+                                "需要" + names + "呢...",
+                                "这个..." + names + "不太够呀",
+                                names + "好像没有了呢...(´；ω；`)"
+                            };
+                        }
                         com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
                     }
                 } catch (Exception e) {}
@@ -1512,7 +1524,7 @@ public class CookingBridge {
                         if (c != null && c >= 1) { targetMaid = m; chosenCanMake = c; break; }
                     }
                     if (targetMaid == null) {
-                        missingIngSnapshot = lastMissingIngredients.isEmpty() ? "食材不够了" : String.join("、", lastMissingIngredients);
+                        missingIngSnapshot = String.join("、", lastMissingIngredients);
                         continue;
                     }
 
@@ -1575,13 +1587,25 @@ public class CookingBridge {
                             String shown = arr.length == 1 ? arr[0] : arr[0] + "、" + arr[1];
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
                         } else {
-                            String mm = missingIngSnapshot.isEmpty() ? "食材不够了" : missingIngSnapshot;
-                            String[] noIngredientsMessages = new String[]{
-                                "缺少" + mm + "...(；′⌒`)",
-                                "需要" + mm + "呢...",
-                                "这个..." + mm + "不太够呀",
-                                mm + "好像没有了呢...(´；ω；`)"
-                            };
+                            String[] noIngredientsMessages;
+                            if (missingIngSnapshot.isEmpty()) {
+                                // 不知道具体缺哪种：用完整句，不拼“缺少/需要”前缀，避免“需要食材不够了呢”这类病句
+                                noIngredientsMessages = new String[]{
+                                    "食材不够了...(；′⌒`)",
+                                    "好像还缺一些食材呢...",
+                                    "这个...食材不太够呀",
+                                    "食材好像还没备齐呢...(´；ω；`)"
+                                };
+                            } else {
+                                // 有具体食材名（名词列表）时才拼前缀
+                                String names = missingIngSnapshot;
+                                noIngredientsMessages = new String[]{
+                                    "缺少" + names + "...(；′⌒`)",
+                                    "需要" + names + "呢...",
+                                    "这个..." + names + "不太够呀",
+                                    names + "好像没有了呢...(´；ω；`)"
+                                };
+                            }
                             com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
                         }
                     } catch (Exception e) {}

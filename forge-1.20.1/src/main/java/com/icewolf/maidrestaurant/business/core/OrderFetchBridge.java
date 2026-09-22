@@ -1,14 +1,12 @@
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
-import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import cn.breezeth.ordertocook.core.ModConstants;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.config.BusinessConfig;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -40,11 +38,12 @@ import net.minecraftforge.items.ItemHandlerHelper;
  *       直接把挂单夹上的订单传送到操作台槽 0（夹→台，不经过背包、不落地）；放台失败则回滚到原夹。</li>
  * </ul>
  *
- * <p><b>只送成品已齐的单：</b>仅当操作台 / 冰箱里已有满足订单 FoodList 的成品时才派单（复用
- * {@link OrderBridge#hasReadyFood}）。“打单机槽 / 挂单夹 / 空闲台”这些轻量状态每 10tick 随调度检测，
- * 而“成品是否齐全”这一需要遍历操作台 + 冰箱的重检测，对每台激活打单机做 200tick（10s）冷却缓存，
- * 在打单机刷新订单、侍者夹单、厨师取单成功时立即失效；缓存只用于产生候选，真正放台入槽 0 前
- * 还会对具体订单实时复核一次。</p>
+ * <p><b>派单门槛按来源区分：</b>打单机订单仍要求操作台 / 冰箱里已有满足 FoodList 的成品（复用
+ * {@link OrderBridge#hasReadyFood}）才送台；<b>挂单夹订单不再卡成品</b>——只要有空操作台就转台占台等菜，
+ * 由烹饪主链现做。候选排序：成品已齐能立即出餐的单优先，同为未齐的夹单按订单剩余时间（ExpiryTick）升序，
+ * PRESTIGE 模式再按声望降序。“打单机槽 / 挂单夹 / 空闲台”这些轻量状态每 10tick 随调度检测，而“成品是否
+ * 齐全”这一需要遍历操作台 + 冰箱的重检测，对每台激活打单机做 200tick（10s）冷却缓存，在打单机刷新订单、
+ * 侍者夹单、厨师取单成功时立即失效；缓存只用于产生候选，打单机单真正放台入槽 0 前还会实时复核一次（夹单不复核成品）。</p>
  *
  * <p>每台激活打单机每轮最多派一个取单任务；订单按 orderId（打单机）或挂单夹坐标（夹）锁定，
  * 防止多女仆 / 多轮重复处理。堂食打单机订单放台成功后才生成顾客（沿用旧逻辑）；挂单夹上的
@@ -90,9 +89,13 @@ public class OrderFetchBridge {
         final boolean delivery;
         final int prestige;
         final CompoundTag nbt;
+        /** 成品是否已齐：打单机单始终为 true（维持“成品齐才送台”）；挂单夹单可能为 false（有空台即转台、占台等菜）。 */
+        final boolean ready;
+        /** 订单到期 tick（ExpiryTick），缺失记 Long.MAX_VALUE，用于未齐夹单按剩余时间升序。 */
+        final long expiry;
 
         Candidate(boolean fromClip, int machineSlot, long clipPos, String orderId,
-                  boolean delivery, int prestige, CompoundTag nbt) {
+                  boolean delivery, int prestige, CompoundTag nbt, boolean ready, long expiry) {
             this.fromClip = fromClip;
             this.machineSlot = machineSlot;
             this.clipPos = clipPos;
@@ -100,6 +103,8 @@ public class OrderFetchBridge {
             this.delivery = delivery;
             this.prestige = prestige;
             this.nbt = nbt;
+            this.ready = ready;
+            this.expiry = expiry;
         }
 
         String lockKey(String dim) {
@@ -194,8 +199,8 @@ public class OrderFetchBridge {
             if (lockedKeys.contains(lockKey)) {
                 continue;
             }
-            // 派单前实时复核成品（10s 缓存只产候选）
-            if (!OrderBridge.hasReadyFood(level, machine, cand.nbt)) {
+            // 派单前实时复核：打单机单维持“成品齐才送台”；挂单夹（到店）单有空台即转、成品未齐也放行
+            if (!cand.fromClip && !OrderBridge.hasReadyFood(level, machine, cand.nbt)) {
                 continue;
             }
             BlockPos counter = OrderBridge.findNearestFreeCounter(level, machine, counters, manager);
@@ -236,7 +241,7 @@ public class OrderFetchBridge {
         }
     }
 
-    /** 计算（或读缓存）某台机器“成品已齐、可立即送台”的候选订单，挂单夹 walk-in 单优先。 */
+    /** 计算（或读缓存）某台机器可送台的候选订单：打单机单需成品齐，挂单夹单有空台即可；按成品齐→到期时间→声望排序。 */
     private static List<Candidate> getOrComputeReady(ServerLevel level, BlockPos machine) {
         String key = level.dimension().location().toString() + "@" + machine.asLong();
         long now = level.getGameTime();
@@ -271,8 +276,9 @@ public class OrderFetchBridge {
                         continue;
                     }
                     String orderId = nbt.getString("OrderId");
+                    long machineExpiry = nbt.contains("ExpiryTick") ? nbt.getLong("ExpiryTick") : Long.MAX_VALUE;
                     list.add(new Candidate(false, slot, 0L, orderId, delivery,
-                            nbt.getInt("Prestige"), nbt.copy()));
+                            nbt.getInt("Prestige"), nbt.copy(), true, machineExpiry));
                 }
             }
         }
@@ -294,18 +300,23 @@ public class OrderFetchBridge {
             if (delivery && !BusinessConfig.acceptDelivery) {
                 continue;
             }
-            if (!OrderBridge.hasReadyFood(level, machine, nbt)) {
-                continue;
-            }
+            // 挂单夹（到店）单不再要求成品齐：有空台即转台、占台等菜；成品齐的单在排序中优先立即出餐
+            boolean clipReady = OrderBridge.hasReadyFood(level, machine, nbt);
             String orderId = nbt.getString("OrderId");
+            long clipExpiry = nbt.contains("ExpiryTick") ? nbt.getLong("ExpiryTick") : Long.MAX_VALUE;
             list.add(new Candidate(true, -1, clipPos.asLong(), orderId, delivery,
-                    nbt.getInt("Prestige"), nbt.copy()));
+                    nbt.getInt("Prestige"), nbt.copy(), clipReady, clipExpiry));
         }
 
-        // 挂单夹（到店加急）优先；PRESTIGE 模式下同类再按声望降序，否则保持稳定的扫描顺序
+        // 排序：① 成品已齐、能立即出餐的单优先；② 同为就绪/未就绪，按到期 tick 升序（越快超时越先转台）；
+        // ③ PRESTIGE 模式下再按声望降序。
         list.sort((a, b) -> {
-            if (a.fromClip != b.fromClip) {
-                return a.fromClip ? -1 : 1;
+            if (a.ready != b.ready) {
+                return a.ready ? -1 : 1;
+            }
+            int byExpiry = Long.compare(a.expiry, b.expiry);
+            if (byExpiry != 0) {
+                return byExpiry;
             }
             if (BusinessConfig.priorityMode == BusinessConfig.PriorityMode.PRESTIGE) {
                 return Integer.compare(b.prestige, a.prestige);
@@ -358,7 +369,7 @@ public class OrderFetchBridge {
 
         // 阶段 1：走到操作台，把订单放入槽 0
         // 台失效 / 槽 0 被占：优先换一台空台
-        if (!isCounterFree(level, counter)) {
+        if (!OrderBridge.isCounterFree(level, counter, manager)) {
             BlockPos alt = OrderBridge.findNearestFreeCounter(
                     level, machine, OrderBridge.scanCountersAround(level, machine), manager);
             if (alt != null) {
@@ -410,8 +421,8 @@ public class OrderFetchBridge {
             return;
         }
 
-        // 放台前实时复核成品是否仍齐全
-        if (!OrderBridge.hasReadyFood(level, machine, nbt)) {
+        // 放台前实时复核成品：仅打单机单要求成品齐；挂单夹（到店）单有空台即放、占台等菜，不在此卡成品
+        if (!fromClip && !OrderBridge.hasReadyFood(level, machine, nbt)) {
             if (waitOrGiveUp(level, maid, data, "成品备齐")) {
                 return;
             }
@@ -431,7 +442,7 @@ public class OrderFetchBridge {
                 giveUp(level, maid, data, "挂单夹取单失败");
                 return;
             }
-            if (putOrderIntoSlot0(level, counter, moving)) {
+            if (OrderBridge.putOrderIntoSlot0(level, counter, moving)) {
                 moved = true;
             } else if (!clipBe.storeOne(moving)) {
                 // 放台失败且回滚原夹也失败，掉在夹的位置防止吞单
@@ -444,7 +455,7 @@ public class OrderFetchBridge {
                 finish(level, maid, true); // 玩家取走接手
                 return;
             }
-            if (putOrderIntoSlot0(level, counter, moving)) {
+            if (OrderBridge.putOrderIntoSlot0(level, counter, moving)) {
                 moved = true;
             } else {
                 // 回滚到女仆背包，放不下则掉在台上
@@ -563,41 +574,6 @@ public class OrderFetchBridge {
         if (!nbt.contains(ModConstants.NBT_ORDER_TYPE) || nbt.getInt(ModConstants.NBT_ORDER_TYPE) != 1) {
             nbt.putInt(ModConstants.NBT_ORDER_TYPE, 0);
         }
-    }
-
-    /** 反射操作台 inventory，把订单强制写入订单槽（槽 0）；槽 0 非空返回 false。 */
-    private static boolean putOrderIntoSlot0(ServerLevel level, BlockPos counter, ItemStack order) {
-        if (!(level.getBlockEntity(counter) instanceof TakeoutBoxBlockEntity)) {
-            return false;
-        }
-        try {
-            Field f = TakeoutBoxBlockEntity.class.getDeclaredField("inventory");
-            f.setAccessible(true);
-            Object invObj = f.get(level.getBlockEntity(counter));
-            if (invObj instanceof List<?> raw) {
-                @SuppressWarnings("unchecked")
-                List<ItemStack> items = (List<ItemStack>) raw;
-                if (!items.isEmpty() && items.get(0).isEmpty()) {
-                    items.set(0, order.copy());
-                    level.getBlockEntity(counter).setChanged();
-                    return true;
-                }
-            }
-        } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.warn("取单入台: 反射操作台 inventory 失败", t);
-        }
-        return false;
-    }
-
-    private static boolean isCounterFree(ServerLevel level, BlockPos counter) {
-        if (!(level.getBlockEntity(counter) instanceof TakeoutBoxBlockEntity counterBe)) {
-            return false;
-        }
-        IItemHandler inv = OrderBridge.getItemHandler(counterBe);
-        if (inv == null || !inv.getStackInSlot(0).isEmpty()) {
-            return false;
-        }
-        return level.getBlockState(counter.above()).isAir();
     }
 
     private static ItemStack findOrderInInventory(IItemHandler inv, String orderId) {

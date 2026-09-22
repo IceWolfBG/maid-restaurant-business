@@ -27,7 +27,6 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
@@ -37,18 +36,20 @@ import net.minecraftforge.items.ItemHandlerHelper;
  *
  * <p>侍者女仆在满足条件时，主动走到“随机刷在店里、需要交互才下单”的到店顾客身边，
  * 复刻下单了(OTC)玩家右键接待的完整流程（生成订单、给顾客打 otc_order 标记、切换队伍），
- * 随后走到归属打单机的操作台，交互时从自己背包取出订单夹进该机器的某个空挂单夹。</p>
+ * 随后走到归属打单机的操作台：<b>有空操作台就直接把订单放上操作台槽 0（占台等菜、走烹饪主链），
+ * 没有空台才把订单夹进该机器的某个空挂单夹暂存</b>（之后由取单入台桥在有空台时自动转台）。</p>
  *
  * <p><b>订单携带方式：</b>接待生成订单后直接放进女仆随身背包（不落到地上、不藏进不可见数据），
  * 这样即使女仆中途卡住 / 寻路失败，玩家也能从女仆背包里取出订单手动完成后续流程；
- * 只有真正夹进挂单夹时才从背包取出。</p>
+ * 只有真正放上操作台 / 夹进挂单夹时才从背包取出。</p>
  *
  * <p>门控：全局 BusinessConfig.autoAccept（在 BusinessManager 调度处判断）、排班表“自动接单”、
- * 进度解锁、绑定 / 员工上限、女仆背包至少有一个空槽；没有空挂单夹或没有操作台时不接待。</p>
+ * 进度解锁、绑定 / 员工上限、女仆背包至少有一个空槽；<b>有空操作台或空挂单夹其一</b>才接待，两者都没有则不接待。</p>
  *
- * <p>健壮性：锁定夹消失 / 被占用会自动改夹其它空夹；操作台消失会重新寻找；暂时没有空夹 / 操作台
- * 会在原地等待重试（{@link #WAIT_TIMEOUT_TICKS}）；总时长超过 {@link #TOTAL_TIMEOUT_TICKS} 保底放弃，
- * 此时订单仍留在女仆背包，绝不吞单。全部服务端权威，按激活打单机 + 维度隔离，局部扫描。</p>
+ * <p>健壮性：走到台边会二次判定，目标台被占就换另一台空台（够近直接放、较远改走过去），再没有才降级夹单；
+ * 操作台消失会重新寻找；暂时台夹都满会在原地等待重试（{@link #WAIT_TIMEOUT_TICKS}）；
+ * 总时长超过 {@link #TOTAL_TIMEOUT_TICKS} 保底放弃，此时订单仍留在女仆背包，绝不吞单。
+ * 全部服务端权威，按激活打单机 + 维度隔离，局部扫描。</p>
  */
 public class WalkInGreetBridge {
 
@@ -77,10 +78,12 @@ public class WalkInGreetBridge {
     // 整个接待任务的总时长保底（30s），超时放弃，订单留在女仆背包
     private static final long TOTAL_TIMEOUT_TICKS = 600L;
 
-    // 夹单结果
-    private static final int CLIP_OK = 0;
-    private static final int CLIP_WAIT = 1;
-    private static final int CLIP_NO_ORDER = 2;
+    // 落单结果
+    private static final int PLACE_ON_COUNTER = 0; // 已直接放上操作台槽0
+    private static final int PLACE_CLIPPED = 1;    // 没空台，已夹进空挂单夹
+    private static final int PLACE_NO_ORDER = 2;   // 背包里已没有订单（玩家接手）
+    private static final int PLACE_WAIT = 3;       // 台夹都满，订单已回背包，原地等待
+    private static final int PLACE_REPATH = 4;     // 找到另一台较远空台，已改走过去（订单回背包）
 
     // 我方在顾客实体上打的“已被某位侍者认领”占位标记，防止同一顾客被重复接待
     private static final String CLAIMED_TAG = "business_greet_claimed";
@@ -88,8 +91,6 @@ public class WalkInGreetBridge {
     private static final String OTC_NPC_TAG = "otc_npc";
     private static final String WALKIN_INTERACTED_TAG = "otc_walkin_interacted";
     private static final String OTC_LEVEL_PREFIX = "otc_level:";
-    // 临时调试计数器
-    private static long greetDebugCounter = 0L;
 
     public static void tickGreet(ServerLevel level, BusinessManager manager) {
         try {
@@ -186,27 +187,34 @@ public class WalkInGreetBridge {
             if (!MaidUtils.canAcceptWorker(level, machine)) {
                 continue;
             }
-            // 必须有空挂单夹
-            List<BlockPos> emptyClips = TaskManager.getInstance().getCachedEmptyClips(level, machine);
-            if (emptyClips.isEmpty()) {
-                continue;
+            // 该机器归属的操作台（按机器缓存、局部圆扫）
+            List<BlockPos> countersAll = OrderBridge.scanCountersAround(level, machine);
+            if (countersAll.isEmpty()) {
+                continue; // 连操作台都没有，订单无处可落
             }
-            // 必须有可达操作台（侍者走到操作台交互夹单）
-            BlockPos counter = findNearestCounter(level, machine);
+            // 空台优先：有空台就直接把订单放上台（占台等菜）；没有空台才退而求其次夹进空挂单夹暂存
+            BlockPos freeCounter = OrderBridge.findNearestFreeCounter(level, machine, countersAll, manager);
+            List<BlockPos> emptyClips = TaskManager.getInstance().getCachedEmptyClips(level, machine);
+            if (freeCounter == null && emptyClips.isEmpty()) {
+                continue; // 既没有空操作台、也没有空挂单夹，暂不接待
+            }
+            // 走到的目标台：有空台就走那台（直接放）；否则走到最近的操作台（到台边再夹单）
+            BlockPos counter = freeCounter != null ? freeCounter.immutable() : nearestCounter(countersAll, machine);
             if (counter == null) {
                 continue;
             }
+            // 锁定一个空挂单夹作为兜底（可能没有，此时不写 TAG_CLIP）
+            BlockPos clip = emptyClips.isEmpty() ? null : nearestTo(emptyClips, counter).immutable();
             // 该机器待接待的 walk-in 顾客
             List<LivingEntity> npcs = findWalkInNpcs(level, machine);
             if (npcs.isEmpty()) {
                 continue;
             }
-            BlockPos clip = nearestTo(emptyClips, counter);
             for (LivingEntity npc : npcs) {
                 double d = maid.distanceToSqr(npc);
                 if (d < bestDist) {
                     bestDist = d;
-                    best = new GreetCandidate(npc, machine.immutable(), counter, clip.immutable());
+                    best = new GreetCandidate(npc, machine.immutable(), counter, clip);
                 }
             }
         }
@@ -221,7 +229,11 @@ public class WalkInGreetBridge {
         CompoundTag data = maid.getPersistentData();
         data.putUUID(TAG_NPC, best.npc.getUUID());
         data.putLong(TAG_MACHINE, best.machine.asLong());
-        data.putLong(TAG_CLIP, best.clip.asLong());
+        if (best.clip != null) {
+            data.putLong(TAG_CLIP, best.clip.asLong());
+        } else {
+            data.remove(TAG_CLIP);
+        }
         data.putLong(TAG_COUNTER, best.counter.asLong());
         data.putInt(TAG_STAGE, STAGE_GO_TO_NPC);
         data.remove(TAG_ORDER_ID);
@@ -297,7 +309,7 @@ public class WalkInGreetBridge {
         // STAGE_GO_TO_COUNTER：此阶段不再依赖顾客实体（订单已在女仆背包）
         // 操作台消失则重新寻找，找不到进入等待
         if (!(level.getBlockEntity(counterPos) instanceof TakeoutBoxBlockEntity)) {
-            BlockPos alt = findNearestCounter(level, machine);
+            BlockPos alt = nearestCounter(OrderBridge.scanCountersAround(level, machine), machine);
             if (alt != null) {
                 counterPos = alt.immutable();
                 data.putLong(TAG_COUNTER, counterPos.asLong());
@@ -317,17 +329,20 @@ public class WalkInGreetBridge {
             return;
         }
 
-        int clipResult = clipOrder(level, maid, machine, counterPos, data);
-        if (clipResult == CLIP_OK) {
-            // 挂单夹新增了一张订单，立即令取单入台的成品候选缓存失效
+        int placeResult = placeOrder(level, maid, machine, counterPos, data, manager);
+        if (placeResult == PLACE_ON_COUNTER || placeResult == PLACE_CLIPPED) {
+            // 订单已放上操作台 / 夹进挂单夹，立即令取单入台的候选缓存失效
             OrderFetchBridge.invalidate(level, machine);
             finishGreet(level, maid, true);
-        } else if (clipResult == CLIP_NO_ORDER) {
+        } else if (placeResult == PLACE_NO_ORDER) {
             // 订单已不在背包（玩家取走接手），正常结束，不报错
             finishGreet(level, maid, true);
+        } else if (placeResult == PLACE_REPATH) {
+            // placeOrder 已把目标改到另一台空台并让女仆走过去，本轮不再处理
+            return;
         } else {
-            // 暂时没有空挂单夹，原地等待重试；超时则放弃（订单留在背包）
-            waitOrGiveUp(level, maid, data, "空挂单夹");
+            // 暂时既没有空操作台、也没有空挂单夹，原地等待重试；超时则放弃（订单留在背包）
+            waitOrGiveUp(level, maid, data, "空操作台或空挂单夹");
         }
     }
 
@@ -476,19 +491,19 @@ public class WalkInGreetBridge {
     }
 
     /**
-     * 走到操作台后，从女仆背包取出对应订单夹进挂单夹。
-     * 锁定夹被占 / 消失会改夹其它空夹；暂时没有空夹返回 {@link #CLIP_WAIT}；
-     * 订单已不在背包（玩家取走）返回 {@link #CLIP_NO_ORDER}。
+     * 走到操作台后落单：优先把订单直接放上空闲操作台槽 0（占台等菜、由烹饪主链做菜）；
+     * 当前台被占就找另一台空台（够近直接放、较远则改走过去下轮再放）；实在没有空台才夹进空挂单夹暂存；
+     * 台夹都满则订单放回背包、原地等待。订单一旦从背包取出，任何失败路径都保证回背包或掉落，绝不吞单。
      */
-    private static int clipOrder(ServerLevel level, EntityMaid maid, BlockPos machine,
-                                 BlockPos counterPos, CompoundTag data) {
+    private static int placeOrder(ServerLevel level, EntityMaid maid, BlockPos machine,
+                                  BlockPos counterPos, CompoundTag data, BusinessManager manager) {
         IItemHandler inv = MaidUtils.getInventory(maid);
         if (inv == null) {
-            return CLIP_WAIT;
+            return PLACE_WAIT;
         }
         String wantOrderId = data.contains(TAG_ORDER_ID) ? data.getString(TAG_ORDER_ID) : null;
 
-        // 从女仆背包找到并取出对应订单
+        // 1) 从女仆背包取出对应订单
         ItemStack order = ItemStack.EMPTY;
         for (int i = 0; i < inv.getSlots(); i++) {
             ItemStack stack = inv.getStackInSlot(i);
@@ -508,16 +523,64 @@ public class WalkInGreetBridge {
             }
         }
         if (order.isEmpty()) {
-            return CLIP_NO_ORDER;
+            return PLACE_NO_ORDER;
         }
 
-        // 选夹：优先锁定夹，否则改夹该机器任意空夹
+        // 2) 当前走到的操作台仍空闲：直接放上台
+        if (OrderBridge.isCounterFree(level, counterPos, manager)
+                && OrderBridge.putOrderIntoSlot0(level, counterPos, order)) {
+            afterPutOnCounter(level, maid, counterPos);
+            return PLACE_ON_COUNTER;
+        }
+
+        // 3) 当前台被占，找该机器另一台空台
+        BlockPos free = OrderBridge.findNearestFreeCounter(
+                level, machine, OrderBridge.scanCountersAround(level, machine), manager);
+        if (free != null) {
+            double d = maid.distanceToSqr(free.getX() + 0.5, free.getY(), free.getZ() + 0.5);
+            if (d <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+                if (OrderBridge.putOrderIntoSlot0(level, free, order)) {
+                    data.putLong(TAG_COUNTER, free.asLong());
+                    afterPutOnCounter(level, maid, free);
+                    return PLACE_ON_COUNTER;
+                }
+            } else {
+                // 空台较远：订单先回背包，走过去下一轮再放
+                returnOrderToBag(level, inv, order, counterPos);
+                data.putLong(TAG_COUNTER, free.asLong());
+                data.remove(TAG_WAIT_SINCE);
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(free, MOVEMENT_SPEED, 1));
+                return PLACE_REPATH;
+            }
+        }
+
+        // 4) 没有空台：降级夹进空挂单夹
+        if (clipGivenStack(level, machine, data, order)) {
+            maid.swing(InteractionHand.OFF_HAND);
+            return PLACE_CLIPPED;
+        }
+
+        // 5) 台夹都满：订单放回背包，等待下一轮重试
+        returnOrderToBag(level, inv, order, counterPos);
+        return PLACE_WAIT;
+    }
+
+    /** 直接放台成功后的反馈：放单音效 + 摆副手。walk-in 顾客在接待阶段已生成，这里不再生成顾客。 */
+    private static void afterPutOnCounter(ServerLevel level, EntityMaid maid, BlockPos counter) {
+        level.playSound(null, counter, SoundEvents.BOOK_PUT, SoundSource.BLOCKS, 0.8f, 1.0f);
+        maid.swing(InteractionHand.OFF_HAND);
+    }
+
+    /** 把已取出的订单夹进锁定空挂单夹（优先）或该机器任意空挂单夹；成功播放夹单音效。 */
+    private static boolean clipGivenStack(ServerLevel level, BlockPos machine, CompoundTag data, ItemStack order) {
         OrderClipBlockEntity target = null;
-        BlockPos lockedClip = BlockPos.of(data.getLong(TAG_CLIP));
-        BlockEntity lockedBe = level.getBlockEntity(lockedClip);
-        if (lockedBe instanceof OrderClipBlockEntity locked && locked.isEmpty()) {
-            target = locked;
-        } else {
+        if (data.contains(TAG_CLIP)) {
+            BlockPos lockedClip = BlockPos.of(data.getLong(TAG_CLIP));
+            if (level.getBlockEntity(lockedClip) instanceof OrderClipBlockEntity locked && locked.isEmpty()) {
+                target = locked;
+            }
+        }
+        if (target == null) {
             for (BlockPos cp : TaskManager.getInstance().getCachedEmptyClips(level, machine)) {
                 if (level.getBlockEntity(cp) instanceof OrderClipBlockEntity c && c.isEmpty()) {
                     target = c;
@@ -525,20 +588,19 @@ public class WalkInGreetBridge {
                 }
             }
         }
-
         if (target != null && target.storeOne(order)) {
-            BlockPos used = target.getBlockPos();
-            level.playSound(null, used, SoundEvents.ITEM_FRAME_ADD_ITEM, SoundSource.BLOCKS, 0.8f, 1.0f);
-            maid.swing(InteractionHand.OFF_HAND);
-            return CLIP_OK;
+            level.playSound(null, target.getBlockPos(), SoundEvents.ITEM_FRAME_ADD_ITEM, SoundSource.BLOCKS, 0.8f, 1.0f);
+            return true;
         }
+        return false;
+    }
 
-        // 没有空夹：订单放回背包，等待下一轮重试
+    /** 订单放回女仆背包；背包放不下则掉在指定位置，绝不吞单。 */
+    private static void returnOrderToBag(ServerLevel level, IItemHandler inv, ItemStack order, BlockPos dropPos) {
         ItemStack back = ItemHandlerHelper.insertItemStacked(inv, order, false);
         if (!back.isEmpty()) {
-            Block.popResource(level, counterPos, back);
+            Block.popResource(level, dropPos, back);
         }
-        return CLIP_WAIT;
     }
 
     private static void finishGreet(ServerLevel level, EntityMaid maid, boolean success) {
@@ -618,37 +680,21 @@ public class WalkInGreetBridge {
         return null;
     }
 
-    /** 以机器为中心局部扫描最近的操作台（TakeoutBox），复用已加载区块的方块实体集合，不做全局遍历。 */
-    private static BlockPos findNearestCounter(ServerLevel level, BlockPos machine) {
-        BlockPos nearest = null;
-        double best = Double.MAX_VALUE;
-        int chunkX = machine.getX() >> 4;
-        int chunkZ = machine.getZ() >> 4;
-        for (int cx = chunkX - 1; cx <= chunkX + 1; cx++) {
-            for (int cz = chunkZ - 1; cz <= chunkZ + 1; cz++) {
-                LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
-                if (chunk == null) {
-                    continue;
-                }
-                for (BlockPos pos : chunk.getBlockEntitiesPos()) {
-                    BlockEntity be = chunk.getBlockEntity(pos);
-                    if (!(be instanceof TakeoutBoxBlockEntity)) {
-                        continue;
-                    }
-                    if (Math.abs(pos.getX() - machine.getX()) > RANGE_H
-                            || Math.abs(pos.getZ() - machine.getZ()) > RANGE_H
-                            || Math.abs(pos.getY() - machine.getY()) > RANGE_V) {
-                        continue;
-                    }
-                    double d = machine.distSqr(pos);
-                    if (d < best) {
-                        best = d;
-                        nearest = pos.immutable();
-                    }
-                }
+    /** 从操作台位置列表里取离 center 最近的一台（列表为空返回 null）。 */
+    private static BlockPos nearestCounter(List<BlockPos> list, BlockPos center) {
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (BlockPos p : list) {
+            double d = center.distSqr(p);
+            if (d < bestDist) {
+                bestDist = d;
+                best = p;
             }
         }
-        return nearest;
+        return best == null ? null : best.immutable();
     }
 
     private static BlockPos nearestTo(List<BlockPos> list, BlockPos center) {

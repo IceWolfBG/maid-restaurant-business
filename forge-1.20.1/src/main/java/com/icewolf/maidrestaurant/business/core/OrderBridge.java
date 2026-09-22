@@ -357,6 +357,56 @@ public class OrderBridge {
         return nearest;
     }
 
+    /**
+     * 操作台当前是否空闲、可直接放入一张订单：是 TakeoutBox、订单槽（槽0）为空、
+     * 台上（above）是空气、且没有在制活跃订单。侍者直接放台与厨师取单入台共用同一判定口径。
+     */
+    public static boolean isCounterFree(ServerLevel level, BlockPos counter, BusinessManager manager) {
+        if (counter == null || !(level.getBlockEntity(counter) instanceof TakeoutBoxBlockEntity)) {
+            return false;
+        }
+        IItemHandler inv = OrderBridge.getItemHandler(level.getBlockEntity(counter));
+        if (inv == null || !inv.getStackInSlot(0).isEmpty()) {
+            return false;
+        }
+        if (!level.getBlockState(counter.above()).isAir()) {
+            return false;
+        }
+        return manager == null || !manager.getActiveOrders().containsKey(counter);
+    }
+
+    /**
+     * 反射操作台 inventory，把订单原子写入订单槽（槽0）；仅当槽0为空时写入成功。
+     * 侍者接待直接放台、厨师取单入台共用此入口。写入失败（非操作台 / 槽0已占 / 反射失败）返回 false，调用方负责回滚。
+     */
+    public static boolean putOrderIntoSlot0(ServerLevel level, BlockPos counter, ItemStack order) {
+        if (level == null || counter == null || order == null || order.isEmpty()) {
+            return false;
+        }
+        if (!(level.getBlockEntity(counter) instanceof TakeoutBoxBlockEntity)) {
+            return false;
+        }
+        try {
+            Field f = TakeoutBoxBlockEntity.class.getDeclaredField("inventory");
+            f.setAccessible(true);
+            Object invObj = f.get(level.getBlockEntity(counter));
+            if (invObj instanceof List<?> raw) {
+                @SuppressWarnings("unchecked")
+                List<ItemStack> items = (List<ItemStack>) raw;
+                if (!items.isEmpty() && items.get(0).isEmpty()) {
+                    items.set(0, order.copy());
+                    BlockEntity be = level.getBlockEntity(counter);
+                    be.setChanged();
+                    level.updateNeighbourForOutputSignal(counter, be.getBlockState().getBlock());
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.warn("OrderBridge: 写入操作台槽0失败 counter={}", counter, t);
+        }
+        return false;
+    }
+
     static void spawnCustomerForOrder(ServerLevel level, BlockPos machinePos, CompoundTag nbt) {
         try {
             long expirySys;
