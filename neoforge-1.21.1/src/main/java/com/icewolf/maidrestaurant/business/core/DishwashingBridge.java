@@ -550,9 +550,9 @@ public class DishwashingBridge {
         if (maidInv == null) {
             return false;
         }
-        if (!level.getBlockState(pos.above()).isAir()) {
-            return false;
-        }
+        // 不要求餐盘上方为空气：OTC 本体 FoodPlateBlock#useWithoutItem 恒可收取、不检查上方，
+        // 真实玩家右键也能收掉贴墙/位于吊柜下方的餐盘。旧逻辑在此处直接 return false 且不兜底，
+        // 会导致贴墙脏盘永远收不掉、任务反复超时。
         try {
             // 使用FakePlayer右键交互餐盘方块，触发FoodPlateBlock.use()收取盘子
             // 这样不会有破坏粒子，也不会生成掉落物
