@@ -1,7 +1,9 @@
 package com.icewolf.maidrestaurant.business.core;
 
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.mastermarisa.maid_restaurant.api.ICookTask;
 import com.mastermarisa.maid_restaurant.utils.CookTasks;
 import net.minecraft.core.BlockPos;
@@ -85,7 +87,7 @@ public class CookingDeviceStatsManager {
      * 更新指定打单机的厨具统计（每 10tick 一次），只扫描非空 BlockEntity 位置。
      */
     public void updateStation(ServerLevel level, BlockPos machinePos, long currentTick) {
-        int range = BusinessConfig.dishScanRange;
+        int range = PerformanceConfig.dishScanRange;
         long key = machinePos.asLong();
         StationStats stats = this.stationStatsMap.computeIfAbsent(key, k -> new StationStats(machinePos.immutable()));
         if (currentTick - stats.lastUpdateTick < 10L) {
@@ -146,7 +148,7 @@ public class CookingDeviceStatsManager {
      * 供选台在统计缓存尚未建立时兜底使用；判定口径与 {@link #updateStation} 完全一致。
      */
     public static List<BlockPos> enumerateAnchorsRealTime(ServerLevel level, BlockPos machinePos, ICookTask cookTask) {
-        int range = BusinessConfig.dishScanRange;
+        int range = PerformanceConfig.dishScanRange;
         List<BlockPos> raw = new ArrayList<>();
         for (BlockPos check : BlockPos.betweenClosed(machinePos.offset(-range, -4, -range), machinePos.offset(range, 4, range))) {
             if (level.getBlockEntity(check) == null) continue;

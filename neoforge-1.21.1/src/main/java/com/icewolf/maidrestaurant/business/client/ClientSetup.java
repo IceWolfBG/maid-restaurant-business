@@ -1,7 +1,9 @@
 package com.icewolf.maidrestaurant.business.client;
 
+import com.icewolf.maidrestaurant.business.client.render.JiuhuStationRenderer;
 import com.icewolf.maidrestaurant.business.client.screen.JiuhuStationScreen;
 import com.icewolf.maidrestaurant.business.client.screen.ScheduleBoardScreen;
+import com.icewolf.maidrestaurant.business.registry.ModBlockEntities;
 import com.icewolf.maidrestaurant.business.menu.JiuhuStationMenu;
 import com.icewolf.maidrestaurant.business.menu.ScheduleBoardMenu;
 import com.icewolf.maidrestaurant.business.registry.ModBlocks;
@@ -13,6 +15,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 
 import java.lang.reflect.Method;
@@ -41,5 +44,10 @@ public class ClientSetup {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    @SubscribeEvent
+    public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(ModBlockEntities.JIUHU_STATION.get(), JiuhuStationRenderer::new);
     }
 }

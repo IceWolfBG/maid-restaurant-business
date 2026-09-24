@@ -1,7 +1,9 @@
 package com.icewolf.maidrestaurant.business.core;
 
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -34,9 +36,9 @@ public class CommandHandler {
         try {
             var configDir = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().toFile();
             String[] configFiles = {
-                "maid_restaurant_business-common.toml",
-                "maid_restaurant_business-safety.toml", 
-                "maid_restaurant_business-takeout.toml"
+                "maid_restaurant_business/automation.toml",
+                "maid_restaurant_business/gameplay.toml", 
+                "maid_restaurant_business/performance.toml"
             };
             
             for (String configFileName : configFiles) {
@@ -44,19 +46,19 @@ public class CommandHandler {
                 if (configFile.exists()) {
                     String fileContent = new String(java.nio.file.Files.readAllBytes(configFile.toPath()), java.nio.charset.StandardCharsets.UTF_8);
                     
-                    fileContent = updateConfigValue(fileContent, "autoAccept", String.valueOf(BusinessConfig.autoAccept));
-                    fileContent = updateConfigValue(fileContent, "acceptDelivery", String.valueOf(BusinessConfig.acceptDelivery));
-                    fileContent = updateConfigValue(fileContent, "autoPack", String.valueOf(BusinessConfig.autoPack));
-                    fileContent = updateConfigValue(fileContent, "waiterDeliver", String.valueOf(BusinessConfig.waiterDeliver));
-                    fileContent = updateConfigValue(fileContent, "autoWash", String.valueOf(BusinessConfig.autoWash));
-                    fileContent = updateConfigValue(fileContent, "levelBasedProgression", String.valueOf(BusinessConfig.levelBasedProgression));
-                    fileContent = updateConfigValue(fileContent, "maxPendingOrders", String.valueOf(BusinessConfig.maxPendingOrders));
-                    fileContent = updateConfigValue(fileContent, "searchRange", String.valueOf(BusinessConfig.searchRange));
-                    fileContent = updateConfigValue(fileContent, "acceptDelay", String.valueOf(BusinessConfig.acceptDelay));
-                    fileContent = updateConfigValue(fileContent, "minPlatesToWash", String.valueOf(BusinessConfig.minPlatesToWash));
-                    fileContent = updateConfigValue(fileContent, "dishScanRange", String.valueOf(BusinessConfig.dishScanRange));
-                    fileContent = updateConfigValue(fileContent, "favorabilityBonus", String.valueOf(BusinessConfig.favorabilityBonus));
-                    fileContent = updateConfigValue(fileContent, "bubbleCooldown", String.valueOf(BusinessConfig.bubbleCooldown));
+                    fileContent = updateConfigValue(fileContent, "autoAccept", String.valueOf(AutomationConfig.autoAccept));
+                    fileContent = updateConfigValue(fileContent, "acceptDelivery", String.valueOf(AutomationConfig.acceptDelivery));
+                    fileContent = updateConfigValue(fileContent, "autoPack", String.valueOf(AutomationConfig.autoPack));
+                    fileContent = updateConfigValue(fileContent, "waiterDeliver", String.valueOf(AutomationConfig.waiterDeliver));
+                    fileContent = updateConfigValue(fileContent, "autoWash", String.valueOf(AutomationConfig.autoWash));
+                    fileContent = updateConfigValue(fileContent, "levelBasedProgression", String.valueOf(GameplayConfig.levelBasedProgression));
+                    fileContent = updateConfigValue(fileContent, "maxPendingOrders", String.valueOf(GameplayConfig.maxPendingOrders));
+                    fileContent = updateConfigValue(fileContent, "searchRange", String.valueOf(PerformanceConfig.searchRange));
+                    fileContent = updateConfigValue(fileContent, "acceptDelay", String.valueOf(GameplayConfig.acceptDelay));
+                    fileContent = updateConfigValue(fileContent, "minPlatesToWash", String.valueOf(GameplayConfig.minPlatesToWash));
+                    fileContent = updateConfigValue(fileContent, "dishScanRange", String.valueOf(PerformanceConfig.dishScanRange));
+                    fileContent = updateConfigValue(fileContent, "favorabilityBonus", String.valueOf(GameplayConfig.favorabilityBonus));
+                    fileContent = updateConfigValue(fileContent, "bubbleCooldown", String.valueOf(GameplayConfig.bubbleCooldown));
                     
                     java.nio.file.Files.write(configFile.toPath(), fileContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 }
@@ -95,8 +97,8 @@ public class CommandHandler {
                     .then(Commands.literal("waiterDeliver").then(Commands.argument("value", BoolArgumentType.bool()).executes(ctx -> setBool(ctx, "waiterDeliver"))))
                     .then(Commands.literal("autoWash").then(Commands.argument("value", BoolArgumentType.bool()).executes(ctx -> setBool(ctx, "autoWash"))))
                     .then(Commands.literal("priorityMode")
-                        .then(Commands.literal("PRESTIGE").executes(ctx -> setPriority(ctx, BusinessConfig.PriorityMode.PRESTIGE)))
-                        .then(Commands.literal("FIFO").executes(ctx -> setPriority(ctx, BusinessConfig.PriorityMode.FIFO))))
+                        .then(Commands.literal("PRESTIGE").executes(ctx -> setPriority(ctx, GameplayConfig.PriorityMode.PRESTIGE)))
+                        .then(Commands.literal("FIFO").executes(ctx -> setPriority(ctx, GameplayConfig.PriorityMode.FIFO))))
                     .then(Commands.literal("maxPendingOrders").then(Commands.argument("value", IntegerArgumentType.integer(1, 10)).executes(ctx -> setInt(ctx, "maxPendingOrders"))))
                     .then(Commands.literal("searchRange").then(Commands.argument("value", IntegerArgumentType.integer(4, 48)).executes(ctx -> setInt(ctx, "searchRange"))))
                     .then(Commands.literal("acceptDelay").then(Commands.argument("value", IntegerArgumentType.integer(0, 1200)).executes(ctx -> setInt(ctx, "acceptDelay"))))
@@ -112,17 +114,17 @@ public class CommandHandler {
         try {
             CommandSourceStack src = ctx.getSource();
             src.sendSuccess(() -> Component.literal("§6=== 女仆餐厅：经营 配置 ==="), false);
-            src.sendSuccess(() -> Component.literal("§e自动接单: §f" + BusinessConfig.autoAccept), false);
-            src.sendSuccess(() -> Component.literal("§e接外卖单: §f" + BusinessConfig.acceptDelivery), false);
-            src.sendSuccess(() -> Component.literal("§e自动装盘: §f" + BusinessConfig.autoPack), false);
-            src.sendSuccess(() -> Component.literal("§e侍者送餐: §f" + BusinessConfig.waiterDeliver), false);
-            src.sendSuccess(() -> Component.literal("§e自动洗碗: §f" + BusinessConfig.autoWash), false);
-            src.sendSuccess(() -> Component.literal("§e优先级: §f" + BusinessConfig.priorityMode), false);
-            src.sendSuccess(() -> Component.literal("§e最大订单数: §f" + BusinessConfig.maxPendingOrders), false);
-            src.sendSuccess(() -> Component.literal("§e搜索范围: §f" + BusinessConfig.searchRange), false);
-            src.sendSuccess(() -> Component.literal("§e自动接单延迟: §f" + BusinessConfig.acceptDelay + "tick (" + (BusinessConfig.acceptDelay / 20) + "秒)"), false);
-            src.sendSuccess(() -> Component.literal("§e洗碗阈值: §f" + BusinessConfig.minPlatesToWash + "个脏盘子"), false);
-            src.sendSuccess(() -> Component.literal("§e等级解锁: §f" + BusinessConfig.levelBasedProgression + " §7(false=全部功能直接开启)"), false);
+            src.sendSuccess(() -> Component.literal("§e自动接单: §f" + AutomationConfig.autoAccept), false);
+            src.sendSuccess(() -> Component.literal("§e接外卖单: §f" + AutomationConfig.acceptDelivery), false);
+            src.sendSuccess(() -> Component.literal("§e自动装盘: §f" + AutomationConfig.autoPack), false);
+            src.sendSuccess(() -> Component.literal("§e侍者送餐: §f" + AutomationConfig.waiterDeliver), false);
+            src.sendSuccess(() -> Component.literal("§e自动洗碗: §f" + AutomationConfig.autoWash), false);
+            src.sendSuccess(() -> Component.literal("§e优先级: §f" + GameplayConfig.priorityMode), false);
+            src.sendSuccess(() -> Component.literal("§e最大订单数: §f" + GameplayConfig.maxPendingOrders), false);
+            src.sendSuccess(() -> Component.literal("§e搜索范围: §f" + PerformanceConfig.searchRange), false);
+            src.sendSuccess(() -> Component.literal("§e自动接单延迟: §f" + GameplayConfig.acceptDelay + "tick (" + (GameplayConfig.acceptDelay / 20) + "秒)"), false);
+            src.sendSuccess(() -> Component.literal("§e洗碗阈值: §f" + GameplayConfig.minPlatesToWash + "个脏盘子"), false);
+            src.sendSuccess(() -> Component.literal("§e等级解锁: §f" + GameplayConfig.levelBasedProgression + " §7(false=全部功能直接开启)"), false);
             src.sendSuccess(() -> Component.literal("§7修改: /mrb set <选项> <值>"), false);
             return 1;
         } catch (Exception e) {
@@ -137,28 +139,28 @@ public class CommandHandler {
             boolean value = BoolArgumentType.getBool(ctx, "value");
             switch (key) {
                 case "autoAccept":
-                    BusinessConfig.autoAccept = value;
-                    safeSetBoolean(BusinessConfig.AUTO_ACCEPT, value);
+                    AutomationConfig.autoAccept = value;
+                    safeSetBoolean(AutomationConfig.AUTO_ACCEPT, value);
                     break;
                 case "acceptDelivery":
-                    BusinessConfig.acceptDelivery = value;
-                    safeSetBoolean(BusinessConfig.ACCEPT_DELIVERY, value);
+                    AutomationConfig.acceptDelivery = value;
+                    safeSetBoolean(AutomationConfig.ACCEPT_DELIVERY, value);
                     break;
                 case "autoPack":
-                    BusinessConfig.autoPack = value;
-                    safeSetBoolean(BusinessConfig.AUTO_PACK, value);
+                    AutomationConfig.autoPack = value;
+                    safeSetBoolean(AutomationConfig.AUTO_PACK, value);
                     break;
                 case "waiterDeliver":
-                    BusinessConfig.waiterDeliver = value;
-                    safeSetBoolean(BusinessConfig.WAITER_DELIVER, value);
+                    AutomationConfig.waiterDeliver = value;
+                    safeSetBoolean(AutomationConfig.WAITER_DELIVER, value);
                     break;
                 case "autoWash":
-                    BusinessConfig.autoWash = value;
-                    safeSetBoolean(BusinessConfig.AUTO_WASH, value);
+                    AutomationConfig.autoWash = value;
+                    safeSetBoolean(AutomationConfig.AUTO_WASH, value);
                     break;
                 case "levelBasedProgression":
-                    BusinessConfig.levelBasedProgression = value;
-                    safeSetBoolean(BusinessConfig.LEVEL_BASED_PROGRESSION, value);
+                    GameplayConfig.levelBasedProgression = value;
+                    safeSetBoolean(GameplayConfig.LEVEL_BASED_PROGRESSION, value);
                     break;
             }
             ctx.getSource().sendSuccess(() -> Component.literal("§a已设置 " + key + " = " + value), false);
@@ -170,9 +172,9 @@ public class CommandHandler {
         }
     }
 
-    private static int setPriority(CommandContext<CommandSourceStack> ctx, BusinessConfig.PriorityMode mode) {
+    private static int setPriority(CommandContext<CommandSourceStack> ctx, GameplayConfig.PriorityMode mode) {
         try {
-            BusinessConfig.priorityMode = mode;
+            GameplayConfig.priorityMode = mode;
             ctx.getSource().sendSuccess(() -> Component.literal("§a已设置优先级 = " + mode), false);
             return 1;
         } catch (Exception e) {
@@ -187,20 +189,20 @@ public class CommandHandler {
             int value = IntegerArgumentType.getInteger(ctx, "value");
             switch (key) {
                 case "maxPendingOrders":
-                    BusinessConfig.maxPendingOrders = value;
-                    safeSetInt(BusinessConfig.MAX_PENDING_ORDERS, value);
+                    GameplayConfig.maxPendingOrders = value;
+                    safeSetInt(GameplayConfig.MAX_PENDING_ORDERS, value);
                     break;
                 case "searchRange":
-                    BusinessConfig.searchRange = value;
-                    safeSetInt(BusinessConfig.SEARCH_RANGE, value);
+                    PerformanceConfig.searchRange = value;
+                    safeSetInt(PerformanceConfig.SEARCH_RANGE, value);
                     break;
                 case "acceptDelay":
-                    BusinessConfig.acceptDelay = value;
-                    safeSetInt(BusinessConfig.ACCEPT_DELAY, value);
+                    GameplayConfig.acceptDelay = value;
+                    safeSetInt(GameplayConfig.ACCEPT_DELAY, value);
                     break;
                 case "minPlatesToWash":
-                    BusinessConfig.minPlatesToWash = value;
-                    safeSetInt(BusinessConfig.MIN_PLATES_TO_WASH, value);
+                    GameplayConfig.minPlatesToWash = value;
+                    safeSetInt(GameplayConfig.MIN_PLATES_TO_WASH, value);
                     break;
             }
             ctx.getSource().sendSuccess(() -> Component.literal("§a已设置 " + key + " = " + value), false);
@@ -214,17 +216,17 @@ public class CommandHandler {
 
     private static int reloadConfig(CommandContext<CommandSourceStack> ctx) {
         try {
-            BusinessConfig.autoAccept = BusinessConfig.AUTO_ACCEPT.get();
-            BusinessConfig.acceptDelivery = BusinessConfig.ACCEPT_DELIVERY.get();
-            BusinessConfig.autoPack = BusinessConfig.AUTO_PACK.get();
-            BusinessConfig.waiterDeliver = BusinessConfig.WAITER_DELIVER.get();
-            BusinessConfig.autoWash = BusinessConfig.AUTO_WASH.get();
-            BusinessConfig.priorityMode = BusinessConfig.PRIORITY_MODE.get();
-            BusinessConfig.maxPendingOrders = BusinessConfig.MAX_PENDING_ORDERS.get();
-            BusinessConfig.searchRange = BusinessConfig.SEARCH_RANGE.get();
-            BusinessConfig.acceptDelay = BusinessConfig.ACCEPT_DELAY.get();
-            BusinessConfig.minPlatesToWash = BusinessConfig.MIN_PLATES_TO_WASH.get();
-            BusinessConfig.levelBasedProgression = BusinessConfig.LEVEL_BASED_PROGRESSION.get();
+            AutomationConfig.autoAccept = AutomationConfig.AUTO_ACCEPT.get();
+            AutomationConfig.acceptDelivery = AutomationConfig.ACCEPT_DELIVERY.get();
+            AutomationConfig.autoPack = AutomationConfig.AUTO_PACK.get();
+            AutomationConfig.waiterDeliver = AutomationConfig.WAITER_DELIVER.get();
+            AutomationConfig.autoWash = AutomationConfig.AUTO_WASH.get();
+            GameplayConfig.priorityMode = GameplayConfig.PRIORITY_MODE.get();
+            GameplayConfig.maxPendingOrders = GameplayConfig.MAX_PENDING_ORDERS.get();
+            PerformanceConfig.searchRange = PerformanceConfig.SEARCH_RANGE.get();
+            GameplayConfig.acceptDelay = GameplayConfig.ACCEPT_DELAY.get();
+            GameplayConfig.minPlatesToWash = GameplayConfig.MIN_PLATES_TO_WASH.get();
+            GameplayConfig.levelBasedProgression = GameplayConfig.LEVEL_BASED_PROGRESSION.get();
             ctx.getSource().sendSuccess(() -> Component.literal("§a配置已从文件重新加载"), false);
             return 1;
         } catch (Exception e) {

@@ -1,7 +1,10 @@
 package com.icewolf.maidrestaurant.business;
 
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.BatchCookingConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
@@ -46,12 +49,16 @@ public class MaidRestaurantBusiness {
         NeoForge.EVENT_BUS.register(this);
 
         // 注册配置文件 - NeoForge 1.21.1正确方式：通过ModContainer.registerConfig
-        modContainer.registerConfig(ModConfig.Type.COMMON, BusinessConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.COMMON, AutomationConfig.SPEC, "maid_restaurant_business/automation.toml");
+        modContainer.registerConfig(ModConfig.Type.COMMON, GameplayConfig.SPEC, "maid_restaurant_business/gameplay.toml");
+        modContainer.registerConfig(ModConfig.Type.COMMON, PerformanceConfig.SPEC, "maid_restaurant_business/performance.toml");
         // 注册任务安全与超时保护配置（单独的配置文件）
-        modContainer.registerConfig(ModConfig.Type.COMMON, TaskSafetyConfig.SPEC, "maid_restaurant_business-safety.toml");
+        modContainer.registerConfig(ModConfig.Type.COMMON, TaskSafetyConfig.SPEC, "maid_restaurant_business/safety.toml");
         TaskSafetyConfig.register(modEventBus);
         // 注册酒狐速递站外卖配送配置（单独的配置文件）
-        modContainer.registerConfig(ModConfig.Type.COMMON, com.icewolf.maidrestaurant.business.config.TakeoutConfig.SPEC, "maid_restaurant_business-takeout.toml");
+        modContainer.registerConfig(ModConfig.Type.COMMON, com.icewolf.maidrestaurant.business.config.TakeoutConfig.SPEC, "maid_restaurant_business/takeout.toml");
+        // 多槽厨具（蒸笼/烤箱/烤面包机/搅拌机）单任务批量烹饪配置
+        modContainer.registerConfig(ModConfig.Type.COMMON, BatchCookingConfig.SPEC, "maid_restaurant_business/batch_cooking.toml");
         modEventBus.addListener(this::registerCapabilities);
     }
 

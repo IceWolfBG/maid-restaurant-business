@@ -17,7 +17,7 @@ public class ModCreativeTabs {
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAID_RESTAURANT_BUSINESS_TAB = 
         CREATIVE_MODE_TABS.register("maid_restaurant_business", () -> 
             CreativeModeTab.builder()
-                .icon(() -> new ItemStack(ModItems.HEALTH_CERTIFICATE.get()))
+                .icon(() -> new ItemStack(ModItems.SCHEDULE_BOARD.get()))
                 .title(Component.translatable("itemGroup.maid_restaurant_business"))
                 .displayItems((parameters, output) -> {
                     output.accept(ModItems.HEALTH_CERTIFICATE.get());

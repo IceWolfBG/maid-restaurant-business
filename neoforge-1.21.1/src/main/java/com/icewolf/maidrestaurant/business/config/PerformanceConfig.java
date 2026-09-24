@@ -1,0 +1,62 @@
+package com.icewolf.maidrestaurant.business.config;
+
+import net.neoforged.neoforge.common.ModConfigSpec;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.event.config.ModConfigEvent;
+
+/**
+ * 扫描范围与性能调试配置（maid_restaurant_business/performance.toml）。
+ * 普通玩家一般无需改动；debugPerformance 仅在排查性能时临时开启。
+ */
+@net.neoforged.fml.common.EventBusSubscriber(modid = "maid_restaurant_business", bus = net.neoforged.fml.common.EventBusSubscriber.Bus.MOD)
+public class PerformanceConfig {
+    private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
+    public static final ModConfigSpec SPEC;
+
+    public static final ModConfigSpec.IntValue SEARCH_RANGE;
+    public static final ModConfigSpec.IntValue DISH_SCAN_RANGE;
+    public static final ModConfigSpec.BooleanValue DEBUG_PERFORMANCE;
+
+    public static int searchRange;
+    public static int dishScanRange;
+    public static boolean debugPerformance;
+
+    static {
+        BUILDER.push("performance");
+        SEARCH_RANGE = BUILDER.comment("女仆搜索范围（方块）").defineInRange("searchRange", 16, 4, 48);
+        DISH_SCAN_RANGE = BUILDER.comment("收盘子和洗碗的扫描范围（以打单机为中心，方块，默认24，最大48）").defineInRange("dishScanRange", 24, 4, 48);
+        DEBUG_PERFORMANCE = BUILDER.comment(
+                "性能调试日志开关（默认关闭）。",
+                "开启后定期在日志输出扫描/同步/缓存命中统计，排查性能时使用，正常游玩请保持false。").define("debugPerformance", false);
+        BUILDER.pop();
+        SPEC = BUILDER.build();
+
+        searchRange = 16;
+        dishScanRange = 24;
+        debugPerformance = false;
+    }
+
+    @SubscribeEvent
+    static void onLoad(ModConfigEvent.Loading event) {
+        if (event.getConfig().getModId().equals("maid_restaurant_business")) {
+            try {
+                loadConfigValues();
+            } catch (Exception ignored) {
+                // 配置尚未完全加载，等待 Reloading 事件
+            }
+        }
+    }
+
+    @SubscribeEvent
+    static void onReload(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getModId().equals("maid_restaurant_business")) {
+            loadConfigValues();
+        }
+    }
+
+    private static void loadConfigValues() {
+        searchRange = SEARCH_RANGE.get();
+        dishScanRange = DISH_SCAN_RANGE.get();
+        debugPerformance = DEBUG_PERFORMANCE.get();
+    }
+}

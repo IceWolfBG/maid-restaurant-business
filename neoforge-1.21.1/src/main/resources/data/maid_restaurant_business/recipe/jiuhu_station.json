@@ -1,14 +1,28 @@
 {
-  "type": "minecraft:crafting_shapeless",
+  "type": "minecraft:crafting_shaped",
   "category": "misc",
-  "ingredients": [
-    {
+  "pattern": [
+    "PXP",
+    "WWW",
+    "CEC"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:paper"
+    },
+    "X": {
       "item": "touhou_little_maid:wireless_io"
     },
-    {
+    "W": {
+      "tag": "minecraft:planks"
+    },
+    "C": {
       "item": "minecraft:chest"
+    },
+    "E": {
+      "item": "minecraft:ender_pearl"
     }
-  ],
+  },
   "result": {
     "id": "maid_restaurant_business:jiuhu_station",
     "count": 1

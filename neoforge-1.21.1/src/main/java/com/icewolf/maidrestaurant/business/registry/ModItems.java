@@ -1,6 +1,7 @@
 package com.icewolf.maidrestaurant.business.registry;
 
 import com.icewolf.maidrestaurant.business.item.HealthCertificateItem;
+import com.icewolf.maidrestaurant.business.item.TooltipBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -13,9 +14,10 @@ public class ModItems {
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(Registries.ITEM, "maid_restaurant_business");
     public static final DeferredHolder<Item, Item> HEALTH_CERTIFICATE = ITEMS.register("health_certificate", HealthCertificateItem::new);
     public static final DeferredHolder<Item, Item> PUBLIC_NOTICE_BOARD = ITEMS.register("public_notice_board", () -> new BlockItem(ModBlocks.PUBLIC_NOTICE_BOARD.get(), new Item.Properties()));
-    public static final DeferredHolder<Item, Item> SCHEDULE_BOARD = ITEMS.register("schedule_board", () -> new BlockItem(ModBlocks.SCHEDULE_BOARD.get(), new Item.Properties()));
-    public static final DeferredHolder<Item, Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new BlockItem(ModBlocks.JIUHU_STATION.get(), new Item.Properties()));
-    public static final DeferredHolder<Item, Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new BlockItem(ModBlocks.ORDER_CLIP.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, Item> SCHEDULE_BOARD = ITEMS.register("schedule_board", () -> new TooltipBlockItem(ModBlocks.SCHEDULE_BOARD.get(), new Item.Properties(), "tooltips.maid_restaurant_business.schedule_board"));
+    public static final DeferredHolder<Item, Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new TooltipBlockItem(ModBlocks.JIUHU_STATION.get(), new Item.Properties(), "tooltips.maid_restaurant_business.jiuhu_station"));
+    public static final DeferredHolder<Item, Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new TooltipBlockItem(ModBlocks.ORDER_CLIP.get(), new Item.Properties(), "tooltips.maid_restaurant_business.order_clip"));
+    public static final DeferredHolder<Item, Item> RENDER_PROXY = ITEMS.register("render_proxy", () -> new Item(new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);

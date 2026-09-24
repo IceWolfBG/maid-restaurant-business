@@ -30,30 +30,20 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 public class JiuhuStationBlock extends BaseEntityBlock {
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
-
-    // 碰撞箱：主体z=8-16(深8)，屋檐/托架z=6-7.9，总深度10
-    private static final VoxelShape NORTH = Block.box(0.0, 0.0, 6.0, 16.0, 16.0, 16.0);
-    private static final VoxelShape SOUTH = Block.box(0.0, 0.0, 0.0, 16.0, 16.0, 10.0);
-    private static final VoxelShape WEST = Block.box(6.0, 0.0, 0.0, 16.0, 16.0, 16.0);
-    private static final VoxelShape EAST = Block.box(0.0, 0.0, 0.0, 10.0, 16.0, 16.0);
 
     public JiuhuStationBlock() {
         super(BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.WOOD).noOcclusion());
         this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
     }
 
+    // 选中/碰撞箱直接用一整个方块（屋顶外沿也在整格内，避免判定与模型不符）
     public VoxelShape getShape(BlockState state, BlockGetter world, BlockPos pos, CollisionContext context) {
-        return switch ((Direction)state.getValue(FACING)) {
-            case NORTH -> NORTH;
-            case SOUTH -> SOUTH;
-            case WEST -> WEST;
-            case EAST -> EAST;
-            default -> NORTH;
-        };
+        return Shapes.block();
     }
 
     @Nullable
@@ -95,6 +85,16 @@ public class JiuhuStationBlock extends BaseEntityBlock {
         return RenderShape.MODEL;
     }
 
+    // OTC 升级装置（otc_upgrade_box）：手持右键速递站时消耗一个、升一级，不打开界面
+    private static net.minecraft.world.item.Item otcUpgradeBoxItem() {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                new net.minecraft.resources.ResourceLocation("ordertocook", "otc_upgrade_box"));
+    }
+
+    private static boolean isUpgradeBox(ItemStack stack) {
+        return !stack.isEmpty() && stack.is(otcUpgradeBoxItem());
+    }
+
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (level.isClientSide) {
             return InteractionResult.SUCCESS;
@@ -104,6 +104,13 @@ public class JiuhuStationBlock extends BaseEntityBlock {
             return InteractionResult.PASS;
         }
         JiuhuStationBlockEntity station = (JiuhuStationBlockEntity)be;
+
+        // 手持 OTC 升级装置：走升级流程（消耗/满级提示），不打开速递站界面
+        if (isUpgradeBox(player.getItemInHand(hand))) {
+            station.tryUpgrade(player, hand);
+            return InteractionResult.SUCCESS;
+        }
+
         if (player instanceof ServerPlayer serverPlayer) {
             net.minecraftforge.network.NetworkHooks.openScreen(serverPlayer, station.getMenuProvider(), buf -> buf.writeBlockPos(pos));
         }

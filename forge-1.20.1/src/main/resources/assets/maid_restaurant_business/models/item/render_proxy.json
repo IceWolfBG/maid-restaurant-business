@@ -1,0 +1,110 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "maid_restaurant_business:item/render_proxy"
+  },
+  "overrides": [
+    {
+      "predicate": {
+        "custom_model_data": 1
+      },
+      "model": "maid_restaurant_business:block/anim/void"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 2
+      },
+      "model": "maid_restaurant_business:block/anim/lidt"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3
+      },
+      "model": "maid_restaurant_business:block/anim/lidb"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 4
+      },
+      "model": "maid_restaurant_business:block/anim/s0"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 5
+      },
+      "model": "maid_restaurant_business:block/anim/s1"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 6
+      },
+      "model": "maid_restaurant_business:block/anim/s2"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 7
+      },
+      "model": "maid_restaurant_business:block/anim/shards"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 8
+      },
+      "model": "maid_restaurant_business:block/anim/dropbag"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 9
+      },
+      "model": "maid_restaurant_business:block/anim/fall0"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 10
+      },
+      "model": "maid_restaurant_business:block/anim/fall1"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 11
+      },
+      "model": "maid_restaurant_business:block/anim/fall2"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 12
+      },
+      "model": "maid_restaurant_business:block/anim/fall3"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 13
+      },
+      "model": "maid_restaurant_business:block/anim/bag1"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 14
+      },
+      "model": "maid_restaurant_business:block/anim/bag2"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 15
+      },
+      "model": "maid_restaurant_business:block/anim/bag3"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 16
+      },
+      "model": "maid_restaurant_business:block/anim/bag4"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 17
+      },
+      "model": "maid_restaurant_business:block/anim/bag5"
+    }
+  ]
+}

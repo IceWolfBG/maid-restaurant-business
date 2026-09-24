@@ -5,12 +5,12 @@ license = "MIT"
 [[mods]]
 modId = "maid_restaurant_business"
 version = "${mod_version}"
-displayName = "[女仆餐厅：营业中] Maid Restaurant: Now Open (1.21.1 NeoForge)"
+displayName = "[女仆餐厅：营业中] Maid Restaurant: Business (1.21.1 NeoForge)"
 authors = "IceWolf"
 logoFile = "maid_restaurant_business.png"
 iconFile = "maid_restaurant_business.png"
 description = '''
-Maid Restaurant Business - Maid Restaurant: Now Open
+Maid Restaurant Business
 
 Touhou Little Maid x Maid Restaurant x Order to Cook integration addon.
 

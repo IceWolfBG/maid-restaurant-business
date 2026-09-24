@@ -68,7 +68,10 @@ dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
 
     // 前置模组 - 从本地libs文件夹加载
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation fileTree(dir: 'libs', include: ['*.jar'], exclude: ['jade-neoforge-1.21.1.jar'])
+
+    // Jade（玉模组）为可选依赖，仅编译期使用，不打包进发布 jar
+    compileOnly files('libs/jade-neoforge-1.21.1.jar')
 }
 
 tasks.withType(JavaCompile).configureEach {

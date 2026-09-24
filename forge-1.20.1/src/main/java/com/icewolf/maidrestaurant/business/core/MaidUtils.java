@@ -55,7 +55,13 @@ public class MaidUtils {
     
     // 女仆任务跟踪（用于卡住自愈和员工人数统计）
     private static final Map<UUID, MaidTaskInfo> taskTracker = new HashMap<>();
-    
+
+    // 自愈去抖：女仆首次疑似"空闲卡住/幽灵忙碌"的 gameTime，必须连续无在制信号达到宽限才重置
+    // 10 秒宽限用于过滤烹饪在"两份请求之间 / 站定交互 / 坐凳前后"的合法瞬时空档，避免误打断做菜
+    private static final long SELF_HEAL_GRACE_TICKS = 200L;
+    private static final Map<UUID, Long> idleSuspectSince = new HashMap<>();
+    private static final Map<UUID, Long> ghostSuspectSince = new HashMap<>();
+
     // 女仆与打单机的绑定关系（通过健康证或公示栏绑定）
     private static final Map<UUID, BlockPos> maidBindings = new HashMap<>();
     // 绑定来源记录（用于调试和去重）
@@ -683,130 +689,125 @@ public class MaidUtils {
     /**
      * 检测被标记为不忙碌但AI状态卡住的女仆（任务清理不彻底导致的）
      * 这种女仆isOccupied=false，但isMaidBusy=true（大脑中还有WALK_TARGET或PATH记忆）
+     * 两类判定都加入连续 {@link #SELF_HEAL_GRACE_TICKS} 宽限期：
+     * 烹饪在"两份请求之间 / 站定交互 / 坐凳前后"会短暂没有请求和导航，属于合法空档，
+     * 必须连续约10秒查不到任何在制信号才重置，避免误打断正在做的菜。
      * @return 被重置的女仆数量
      */
     public static int checkAndResetIdleStuckMaids(ServerLevel level) {
         int resetCount = 0;
         try {
-            // 遍历所有女仆
             // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
             List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
-            
+            long now = level.getGameTime();
+
             for (EntityMaid maid : allMaids) {
                 if (maid == null || !maid.isAlive()) continue;
-                // 检测1：如果女仆被标记为不忙碌但AI状态卡住，重置她
+                UUID maidUUID = maid.getUUID();
+
+                // 检测1：被标记为不忙碌，但大脑残留行走/路径记忆
                 if (!isOccupied(maid)) {
-                    if (isMaidBusy(maid)) {
-                        // 重要：检查女仆是否有CookRequest（女仆餐厅的烹饪任务）
-                        // 因为MaidCookingTask可能被暂时停止（targetType=1的间隙），但烹饪任务还在
-                        // 如果女仆有CookRequest，说明她正在烹饪，不应该被重置
-                        boolean hasCookRequest = false;
-                        try {
-                            com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
-                                (com.mastermarisa.maid_restaurant.request.CookRequest)
-                                com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
-                            if (cookReq != null) {
-                                hasCookRequest = true;
-                            }
-                        } catch (Throwable t) {}
-                        
-                        // 检查女仆是否是乘客（坐在椅子上烹饪）
-                        if (!hasCookRequest && maid.isPassenger()) {
-                            hasCookRequest = true;
-                        }
-                        
-                        if (!hasCookRequest) {
-                            MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住，正在重置", maid.getName().getString());
+                    if (isMaidBusy(maid) && !isMaidActuallyWorking(maid, level)) {
+                        Long first = idleSuspectSince.get(maidUUID);
+                        if (first == null) {
+                            // 首次疑似，进入宽限，不立即重置
+                            idleSuspectSince.put(maidUUID, now);
+                        } else if (now - first >= SELF_HEAL_GRACE_TICKS) {
+                            MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住（持续{}tick），正在重置",
+                                maid.getName().getString(), now - first);
                             resetMaidState(level, maid);
+                            idleSuspectSince.remove(maidUUID);
+                            ghostSuspectSince.remove(maidUUID);
                             resetCount++;
                         }
+                    } else {
+                        idleSuspectSince.remove(maidUUID);
                     }
                     continue;
                 }
-                // 检测2：女仆被标记为忙碌，但没有正在执行的任务（任务异常结束）
-                // 检查女仆的持久化数据中是否有任务标记（送餐/打包/洗碗）
-                boolean hasActiveTask = false;
-                String activeTaskType = "none";
-                try {
-                    net.minecraft.nbt.CompoundTag data = maid.getPersistentData();
-                    if (data.contains("BusinessDeliverCounter")) {
-                        hasActiveTask = true;
-                        activeTaskType = "delivery";
-                    } else if (data.contains("BusinessPackCounter")) {
-                        hasActiveTask = true;
-                        activeTaskType = "pack";
-                    } else if (data.contains("BusinessWashCounter")) {
-                        hasActiveTask = true;
-                        activeTaskType = "wash";
-                    } else if (data.contains("BusinessCookCounter")) {
-                        hasActiveTask = true;
-                        activeTaskType = "cook";
-                    } else if (data.contains("BusinessCollectPlate")) {
-                        hasActiveTask = true;
-                        activeTaskType = "collect";
-                    } else if (data.contains("BusinessFetchMachine")) {
-                        hasActiveTask = true;
-                        activeTaskType = "fetch_order";
-                    } else if (data.contains("BusinessGreetNpc")) {
-                        hasActiveTask = true;
-                        activeTaskType = "greet";
-                    }
-                } catch (Throwable t) {}
-                
-                // 重要：检查女仆是否有CookRequest（女仆餐厅的烹饪任务）
-                // 因为我们的模组发布烹饪任务时可能没有设置BusinessCookCounter标记
-                // 如果女仆有CookRequest，说明她正在烹饪，不应该被重置
-                if (!hasActiveTask) {
-                    try {
-                        com.mastermarisa.maid_restaurant.request.CookRequest cookReq = 
-                            (com.mastermarisa.maid_restaurant.request.CookRequest)
-                            com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0);
-                        if (cookReq != null) {
-                            hasActiveTask = true;
-                            activeTaskType = "cook_request";
+
+                // 检测2：被标记为忙碌，但查不到任何在制任务/烹饪/导航信号（任务异常结束）
+                if (!isMaidActuallyWorking(maid, level)) {
+                    Long first = ghostSuspectSince.get(maidUUID);
+                    if (first == null) {
+                        // 首次疑似，进入宽限（烹饪阶段切换/请求间隙是合法瞬时状态）
+                        ghostSuspectSince.put(maidUUID, now);
+                    } else if (now - first >= SELF_HEAL_GRACE_TICKS) {
+                        MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但持续{}tick无任何任务/烹饪/导航信号，清理忙碌标记",
+                            maid.getName().getString(), now - first);
+                        setOccupied(maid, false);
+                        // 同时调用TaskSafetyUtils彻底重置女仆状态
+                        try {
+                            Class<?> safetyUtils = Class.forName("com.icewolf.maidrestaurant.business.core.TaskSafetyUtils");
+                            java.lang.reflect.Method resetMethod = safetyUtils.getMethod("resetMaidState", EntityMaid.class);
+                            resetMethod.invoke(null, maid);
+                        } catch (Throwable t) {
+                            MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 调用TaskSafetyUtils.resetMaidState失败", t);
                         }
-                    } catch (Throwable t) {}
-                }
-                
-                // 检查女仆是否是乘客（坐在椅子上烹饪）
-                // 如果女仆是乘客，说明她正在烹饪，不应该被重置
-                if (!hasActiveTask && maid.isPassenger()) {
-                    hasActiveTask = true;
-                    activeTaskType = "passenger";
-                }
-                // 检查taskTracker中是否有记录
-                boolean hasTaskTracker = taskTracker.containsKey(maid.getUUID());
-                
-                // 检查女仆是否在移动（如果导航在进行中，说明可能真的在工作）
-                boolean isNavigating = false;
-                try {
-                    isNavigating = maid.getNavigation().isInProgress();
-                } catch (Throwable t) {}
-                
-                if (!hasActiveTask && !hasTaskTracker && !isNavigating) {
-                    // 女仆被标记为忙碌，但没有任何任务记录，也没有在导航，说明任务异常结束，清理忙碌标记
-                    MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但没有任何任务记录也没有在导航，清理忙碌标记", 
-                        maid.getName().getString());
-                    setOccupied(maid, false);
-                    // 同时调用TaskSafetyUtils彻底重置女仆状态
-                    try {
-                        Class<?> safetyUtils = Class.forName("com.icewolf.maidrestaurant.business.core.TaskSafetyUtils");
-                        java.lang.reflect.Method resetMethod = safetyUtils.getMethod("resetMaidState", EntityMaid.class);
-                        resetMethod.invoke(null, maid);
-                    } catch (Throwable t) {
-                        MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 调用TaskSafetyUtils.resetMaidState失败", t);
+                        ghostSuspectSince.remove(maidUUID);
+                        idleSuspectSince.remove(maidUUID);
+                        resetCount++;
                     }
-                    resetCount++;
                 } else {
-                    // 女仆确实有任务在执行，输出调试信息
-                    if (maid.tickCount % 200 == 0) {
-                    }
+                    // 确实在工作，清除疑似记录
+                    ghostSuspectSince.remove(maidUUID);
                 }
             }
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("检测空闲卡住女仆时异常", t);
         }
         return resetCount;
+    }
+
+    /**
+     * 多信号判断女仆当前是否确实有任务/烹饪在身，供自愈判定使用。
+     * 覆盖烹饪在阶段切换、站定交互、坐凳前后等"导航与请求瞬时为空"的合法空档。
+     * 注意：不把大脑残留的 WALK_TARGET/PATH 记忆计入在制信号，否则空闲卡住检测会失效。
+     */
+    private static boolean isMaidActuallyWorking(EntityMaid maid, ServerLevel level) {
+        if (maid == null) return false;
+        UUID uuid = maid.getUUID();
+        // 1. TaskManager 活跃任务（营业中烹饪每 tick 心跳，最可靠）
+        try {
+            if (TaskManager.getInstance().hasMaidTask(uuid)) return true;
+        } catch (Throwable t) {}
+        // 2. 旧任务跟踪记录
+        if (taskTracker.containsKey(uuid)) return true;
+        // 3. 持久化的营业任务标记（送餐/打包/洗碗/收盘/取单/接待/烹饪）
+        try {
+            net.minecraft.nbt.CompoundTag data = maid.getPersistentData();
+            if (data.contains("BusinessDeliverCounter") || data.contains("BusinessPackCounter")
+                || data.contains("BusinessWashCounter") || data.contains("BusinessCookCounter")
+                || data.contains("BusinessCollectPlate") || data.contains("BusinessFetchMachine")
+                || data.contains("BusinessGreetNpc")) {
+                return true;
+            }
+        } catch (Throwable t) {}
+        // 4. 女仆餐厅烹饪请求（peek 类型 0 = CookRequest）
+        try {
+            if (com.mastermarisa.maid_restaurant.utils.RequestManager.peek(maid, 0) != null) return true;
+        } catch (Throwable t) {}
+        // 5. 骑乘 / 坐在厨凳上
+        try {
+            if (maid.isPassenger()) return true;
+        } catch (Throwable t) {}
+        // 6. 导航正在执行（真在走路，区别于大脑残留记忆）
+        try {
+            if (maid.getNavigation().isInProgress()) return true;
+        } catch (Throwable t) {}
+        // 7. 女仆餐厅烹饪大脑信号：目标厨具位 / 餐椅位 / 烹饪状态 COOK
+        try {
+            Brain<?> brain = maid.getBrain();
+            if (brain.hasMemoryValue(com.mastermarisa.maid_restaurant.init.ModEntities.TARGET_POS.get())
+                || brain.hasMemoryValue(com.mastermarisa.maid_restaurant.init.ModEntities.CHAIR_POS.get())) {
+                return true;
+            }
+            if (com.mastermarisa.maid_restaurant.utils.MaidStateManager.cookState(maid, level)
+                    == com.mastermarisa.maid_restaurant.utils.MaidStateManager.CookState.COOK) {
+                return true;
+            }
+        } catch (Throwable t) {}
+        return false;
     }
 
     public static boolean isMaidBusy(EntityMaid maid) {

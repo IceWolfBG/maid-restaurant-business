@@ -45,7 +45,7 @@ import net.neoforged.neoforge.items.ItemHandlerHelper;
  * 这样即使女仆中途卡住 / 寻路失败，玩家也能从女仆背包里取出订单手动完成后续流程；
  * 只有真正放上操作台 / 夹进挂单夹时才从背包取出。</p>
  *
- * <p>门控：全局 BusinessConfig.autoAccept（在 BusinessManager 调度处判断）、排班表“自动接单”、
+ * <p>门控：全局 AutomationConfig.autoAccept（在 BusinessManager 调度处判断）、排班表“自动接单”、
  * 进度解锁、绑定 / 员工上限、女仆背包至少有一个空槽；<b>有空操作台或空挂单夹其一</b>才接待，两者都没有则不接待。</p>
  *
  * <p>健壮性：走到台边会二次判定，目标台被占就换另一台空台（够近直接放、较远改走过去），再没有才降级夹单；

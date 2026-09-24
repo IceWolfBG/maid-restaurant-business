@@ -33,7 +33,9 @@ import cn.breezeth.ordertocook.block.entity.DishwasherBlockEntity;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
 import com.icewolf.maidrestaurant.business.core.MaidUtils;
 import com.icewolf.maidrestaurant.business.core.ProgressionManager;
@@ -97,7 +99,7 @@ public class DishwashingBridge {
                 return scheduleVal;
             }
         }
-        return BusinessConfig.minPlatesToWash;
+        return GameplayConfig.minPlatesToWash;
     }
 
     private static void initReflection() {
@@ -409,6 +411,21 @@ public class DishwashingBridge {
     }
 
     private static BlockPos findNearestDirtyPlate(ServerLevel level, EntityMaid maid) {
+        // 优先走 TaskManager 中心化缓存（10tick更新、按激活打单机隔离），避免每个女仆各自±12/y±4立方扫描
+        try {
+            BlockPos cached = TaskManager.getInstance().getNearestCachedDirtyPlate(level, maid);
+            if (cached != null) {
+                if (PerformanceConfig.debugPerformance) TaskManager.perfDishCacheHit++;
+                return cached;
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("[洗碗] 脏盘缓存查询异常，回退立方扫描", t);
+        }
+        if (PerformanceConfig.debugPerformance) TaskManager.perfDishFallback++;
+        return scanNearestDirtyPlate(level, maid);
+    }
+
+    private static BlockPos scanNearestDirtyPlate(ServerLevel level, EntityMaid maid) {
         double mx = MaidUtils.getX((Entity)maid);
         double my = MaidUtils.getY((Entity)maid);
         double mz = MaidUtils.getZ((Entity)maid);
@@ -429,6 +446,21 @@ public class DishwashingBridge {
     }
 
     private static BlockPos findNearestPlateRack(ServerLevel level, EntityMaid maid) {
+        // 优先走 TaskManager 中心化缓存，避免每个女仆各自±12/y±4立方扫描
+        try {
+            BlockPos cached = TaskManager.getInstance().getNearestCachedPlateRack(level, maid);
+            if (cached != null) {
+                if (PerformanceConfig.debugPerformance) TaskManager.perfDishCacheHit++;
+                return cached;
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("[洗碗] 盘子架缓存查询异常，回退立方扫描", t);
+        }
+        if (PerformanceConfig.debugPerformance) TaskManager.perfDishFallback++;
+        return scanNearestPlateRack(level, maid);
+    }
+
+    private static BlockPos scanNearestPlateRack(ServerLevel level, EntityMaid maid) {
         double mx = MaidUtils.getX((Entity)maid);
         double my = MaidUtils.getY((Entity)maid);
         double mz = MaidUtils.getZ((Entity)maid);
@@ -661,7 +693,7 @@ public class DishwashingBridge {
      * 以打单机为中心扫描，不依赖玩家位置
      */
     private static void scanAndStartCollectTasks(ServerLevel level, BusinessManager manager) {
-        int scanRange = BusinessConfig.dishScanRange;
+        int scanRange = PerformanceConfig.dishScanRange;
         ArrayList<BlockPos> dirtyPlates = new ArrayList<BlockPos>();
         
         // 以所有已激活打单机为中心扫描
@@ -712,7 +744,7 @@ public class DishwashingBridge {
      * 以打单机为中心扫描，不依赖玩家位置
      */
     private static void scanMaidBackpacksAndStartWashing(ServerLevel level, BusinessManager manager) {
-        int scanRange = BusinessConfig.dishScanRange;
+        int scanRange = PerformanceConfig.dishScanRange;
         
         // 遍历所有已激活打单机
         for (BlockPos machinePos : ActivationCache.getActivatedMachines(level)) {

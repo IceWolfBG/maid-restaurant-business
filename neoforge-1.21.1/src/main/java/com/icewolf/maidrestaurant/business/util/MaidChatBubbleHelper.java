@@ -530,7 +530,7 @@ public class MaidChatBubbleHelper {
     private static long getBubbleCooldown() {
         try {
             // 从配置读取，默认200tick（10秒）
-            return com.icewolf.maidrestaurant.business.config.BusinessConfig.getBubbleCooldown();
+            return com.icewolf.maidrestaurant.business.config.GameplayConfig.getBubbleCooldown();
         } catch (Exception e) {
             return 200L;
         }

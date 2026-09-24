@@ -11,7 +11,7 @@ package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
 import java.lang.reflect.Field;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -21,7 +21,10 @@ public final class ProgressionManager {
     public static final int LEVEL_DELIVERY = 0;
     public static final int LEVEL_COOK_AND_PREP = 1;
     public static final int LEVEL_DISHWASHING = 2;
-    public static final int LEVEL_AUTO_ORDER = 4;
+    /** 自动接单（含到店顾客接待、打单机订单自动入台）：3级解锁。 */
+    public static final int LEVEL_AUTO_ORDER = 3;
+    /** 自动预烹饪（挂单夹订单在入台前提前备菜，成品优先入冰箱）：4级解锁。 */
+    public static final int LEVEL_AUTO_PRE_COOK = 4;
 
     private ProgressionManager() {
     }
@@ -51,7 +54,7 @@ public final class ProgressionManager {
     }
 
     public static boolean isUnlocked(ServerLevel level, BlockPos machinePos, int requiredLevel) {
-        if (!BusinessConfig.levelBasedProgression) {
+        if (!GameplayConfig.levelBasedProgression) {
             return true;
         }
         return ProgressionManager.getRestaurantLevel(level, machinePos) >= requiredLevel;
@@ -70,7 +73,11 @@ public final class ProgressionManager {
     }
 
     public static boolean isAutoOrderUnlocked(ServerLevel level, BlockPos machinePos) {
-        return ProgressionManager.isUnlocked(level, machinePos, 4);
+        return ProgressionManager.isUnlocked(level, machinePos, LEVEL_AUTO_ORDER);
+    }
+
+    public static boolean isAutoPreCookingUnlocked(ServerLevel level, BlockPos machinePos) {
+        return ProgressionManager.isUnlocked(level, machinePos, LEVEL_AUTO_PRE_COOK);
     }
 
     public static int getMaxWorkers(ServerLevel level, BlockPos machinePos) {

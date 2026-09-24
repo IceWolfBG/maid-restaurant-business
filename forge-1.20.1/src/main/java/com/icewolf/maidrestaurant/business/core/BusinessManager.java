@@ -9,7 +9,9 @@
 package com.icewolf.maidrestaurant.business.core;
 
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.ActiveOrder;
 import com.icewolf.maidrestaurant.business.core.CookingBridge;
 import com.icewolf.maidrestaurant.business.core.DeliveryBridge;
@@ -89,23 +91,23 @@ public class BusinessManager {
                     CookingBridge.tickCooking(level, this);
                     this.lastCookingTick = this.tickCounter;
                 }
-                if (BusinessConfig.autoPack && this.tickCounter - this.lastPackagingTick >= 10L) {
+                if (AutomationConfig.autoPack && this.tickCounter - this.lastPackagingTick >= 10L) {
                     PackagingBridge.tickPackaging(level, this);
                     this.lastPackagingTick = this.tickCounter;
                 }
-                if (BusinessConfig.waiterDeliver && this.tickCounter - this.lastDeliveryTick >= 10L) {
+                if (AutomationConfig.waiterDeliver && this.tickCounter - this.lastDeliveryTick >= 10L) {
                     DeliveryBridge.tickDelivery(level, this);
                     this.lastDeliveryTick = this.tickCounter;
                 }
-                if (BusinessConfig.autoAccept && this.tickCounter - this.lastGreetTick >= 10L) {
+                if (AutomationConfig.autoAccept && this.tickCounter - this.lastGreetTick >= 10L) {
                     WalkInGreetBridge.tickGreet(level, this);
                     this.lastGreetTick = this.tickCounter;
                 }
-                if (BusinessConfig.autoAccept && this.tickCounter - this.lastFetchTick >= 10L) {
+                if (AutomationConfig.autoAccept && this.tickCounter - this.lastFetchTick >= 10L) {
                     OrderFetchBridge.tickFetch(level, this);
                     this.lastFetchTick = this.tickCounter;
                 }
-                if (!BusinessConfig.autoWash || this.tickCounter - this.lastDishwashTick < 10L) continue;
+                if (!AutomationConfig.autoWash || this.tickCounter - this.lastDishwashTick < 10L) continue;
                 DishwashingBridge.tickDishwashing(level, this);
                 RestockBridge.tickRestock(level, this);
                 this.lastDishwashTick = this.tickCounter;

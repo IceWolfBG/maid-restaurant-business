@@ -6,13 +6,14 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.util.ItemStackUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -116,8 +117,11 @@ public class OrderFetchBridge {
     // key = dim@machineLong
     private static final Map<String, List<Candidate>> readyCache = new HashMap<>();
     private static final Map<String, Long> readyCacheTick = new HashMap<>();
-    // 全局进行中的订单锁定，防多女仆 / 多轮重复
-    private static final Set<String> lockedKeys = ConcurrentHashMap.newKeySet();
+    // 全局进行中的订单锁定（lockKey -> 加锁时游戏 tick），防多女仆 / 多轮重复。
+    // 锁带 TTL：持锁女仆若死亡 / 被遣散 / 被外部重置而没走到 finish，锁会在 LOCK_TTL_TICKS 后自动过期，避免挂单夹订单永久卡死。
+    private static final Map<String, Long> lockedAt = new ConcurrentHashMap<>();
+    // 锁过期阈值，略大于取单任务总时长保底 TOTAL_TIMEOUT_TICKS(600)，正常流程内绝不过期
+    private static final long LOCK_TTL_TICKS = 700L;
 
     /** 打单机订单刷新 / 挂单夹变化 / 取单成功时调用，令该机器的成品候选缓存立即失效。 */
     public static void invalidate(ServerLevel level, BlockPos machine) {
@@ -185,7 +189,7 @@ public class OrderFetchBridge {
         // 同时处理订单上限：台里在制订单 + 在途取单
         long activeCount = manager.getActiveOrders().values().stream()
                 .filter(o -> o.machinePos.equals(machine)).count();
-        if (activeCount + inFlight >= BusinessConfig.maxPendingOrders) {
+        if (activeCount + inFlight >= GameplayConfig.maxPendingOrders) {
             return;
         }
 
@@ -197,8 +201,15 @@ public class OrderFetchBridge {
 
         for (Candidate cand : candidates) {
             String lockKey = cand.lockKey(dim);
-            if (lockedKeys.contains(lockKey)) {
-                continue;
+            Long lockedTick = lockedAt.get(lockKey);
+            if (lockedTick != null) {
+                long lockAge = level.getGameTime() - lockedTick;
+                if (lockAge <= LOCK_TTL_TICKS) {
+                    continue; // 仍在正常处理窗口内，等持锁女仆完成
+                }
+                // 僵尸锁：持锁女仆已消失 / 被外部重置且未走 finish，过期释放，允许重新派单
+                lockedAt.remove(lockKey);
+                MaidRestaurantBusiness.LOGGER.warn("取单入台: 订单锁 {}tick 未释放，判定僵尸锁并重新派单: {}", lockAge, lockKey);
             }
             // 派单前实时复核：打单机来源仍要求成品齐；挂单夹来源不再卡成品（有空台即可转台占台等菜）
             if (!cand.fromClip && !OrderBridge.hasReadyFood(level, machine, cand.nbt)) {
@@ -215,7 +226,7 @@ public class OrderFetchBridge {
             }
 
             // 锁定 + 派单
-            lockedKeys.add(lockKey);
+            lockedAt.put(lockKey, level.getGameTime());
             BlockPos sourcePos = cand.fromClip ? counter : machine;
             CompoundTag data = cook.getPersistentData();
             data.putLong(F_MACHINE, machine.asLong());
@@ -271,7 +282,7 @@ public class OrderFetchBridge {
                         continue;
                     }
                     boolean delivery = nbt.getBoolean("Delivery");
-                    if (delivery && !BusinessConfig.acceptDelivery) {
+                    if (delivery && !AutomationConfig.acceptDelivery) {
                         continue;
                     }
                     if (!OrderBridge.hasReadyFood(level, machine, nbt)) {
@@ -299,7 +310,7 @@ public class OrderFetchBridge {
                 continue;
             }
             boolean delivery = nbt.getBoolean("Delivery");
-            if (delivery && !BusinessConfig.acceptDelivery) {
+            if (delivery && !AutomationConfig.acceptDelivery) {
                 continue;
             }
             // 夹单不再要求成品齐：有空台即可转台占台等菜；记录当前是否已齐，用于排序（已齐优先）
@@ -320,7 +331,7 @@ public class OrderFetchBridge {
             if (byExpiry != 0) {
                 return byExpiry;
             }
-            if (BusinessConfig.priorityMode == BusinessConfig.PriorityMode.PRESTIGE) {
+            if (GameplayConfig.priorityMode == GameplayConfig.PriorityMode.PRESTIGE) {
                 return Integer.compare(b.prestige, a.prestige);
             }
             return 0;
@@ -705,7 +716,7 @@ public class OrderFetchBridge {
     private static void finish(ServerLevel level, EntityMaid maid, boolean success) {
         CompoundTag data = maid.getPersistentData();
         if (data.contains(F_LOCK)) {
-            lockedKeys.remove(data.getString(F_LOCK));
+            lockedAt.remove(data.getString(F_LOCK));
         }
         if (success) {
             TaskManager.getInstance().completeTask(maid.getUUID());

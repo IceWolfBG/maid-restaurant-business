@@ -39,8 +39,13 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     private final int[] baseProfits = new int[SLOT_COUNT]; // 基础收益
     // 每个槽位独立的归属信息：避免多个外卖袋先后放入时互相覆盖，
     // 导致所有配送都把收益算给最后一个放入袋子的女仆主人
-    private final BlockPos[] machinePositions = new BlockPos[SLOT_COUNT]; // 各槽关联打单机（初始化算等级用）
+    private final BlockPos[] machinePositions = new BlockPos[SLOT_COUNT]; // 各槽关联打单机（仅用于补皮革货架）
     private final java.util.UUID[] ownerUuids = new java.util.UUID[SLOT_COUNT]; // 各槽女仆主人UUID（结算收益用）
+
+    // 速递站自身等级：手持 OTC 升级装置右键速递站升级，持久化，决定配送速度与手续费。
+    // 不再反射关联打单机取等级（速递站并未绑定打单机，旧逻辑永远取到 0 级）。
+    private int upgradeLevel = 0;
+    public static final String TAG_UPGRADE_LEVEL = "UpgradeLevel";
 
     public static final String TAG_OWNER_UUIDS = "OwnerUUIDs";
     public static final String TAG_MACHINE_POSITIONS = "MachinePositions";
@@ -140,6 +145,11 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                     }
                 } catch (Throwable t) {}
                 setChanged();
+                // 立即向客户端同步一次，让外卖袋放入即时显示（不必等配送计时的5tick同步节奏）
+                if (level != null && !level.isClientSide) {
+                    BlockState cur = getBlockState();
+                    level.sendBlockUpdated(worldPosition, cur, cur, 3);
+                }
                 return true;
             }
         }
@@ -154,6 +164,51 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
             if (stack.isEmpty()) return true;
         }
         return false;
+    }
+
+    public int getUpgradeLevel() { return upgradeLevel; }
+
+    /**
+     * 手持 OTC 升级装置右键速递站：消耗 1 个升级装置，速递站等级 +1。
+     * 满级时不消耗、仅提示。等级决定配送速度与手续费。
+     * @return true 表示本次右键被升级流程处理（调用方应返回成功、不再打开界面）
+     */
+    public boolean tryUpgrade(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {
+        if (level == null || level.isClientSide) return false;
+        ItemStack box = player.getItemInHand(hand);
+
+        if (upgradeLevel >= TakeoutConfig.maxUpgradeLevel) {
+            player.displayClientMessage(Component.literal("酒狐速递站已经是最高等级啦（" + TakeoutConfig.maxUpgradeLevel + "级）")
+                    .withStyle(net.minecraft.ChatFormatting.YELLOW), true);
+            return true; // 拦截右键，不打开界面、不消耗
+        }
+
+        upgradeLevel++;
+
+        // 升级反馈：云屑粒子 + 锻造台/经验音效（与 OTC 升级装置 finishUpgrade 风格一致）
+        double x = this.worldPosition.getX() + 0.5;
+        double y = this.worldPosition.getY() + 0.75;
+        double z = this.worldPosition.getZ() + 0.5;
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            serverLevel.sendParticles(net.minecraft.core.particles.ParticleTypes.CLOUD, x, y, z, 28, 0.35, 0.35, 0.35, 0.025);
+        }
+        level.playSound(null, this.worldPosition, net.minecraft.sounds.SoundEvents.ANVIL_USE,
+                net.minecraft.sounds.SoundSource.BLOCKS, 0.55f, 1.45f);
+        level.playSound(null, this.worldPosition, net.minecraft.sounds.SoundEvents.EXPERIENCE_ORB_PICKUP,
+                net.minecraft.sounds.SoundSource.BLOCKS, 0.45f, 1.8f);
+
+        // 创造模式不消耗，生存消耗 1 个升级装置
+        if (!player.getAbilities().instabuild) {
+            box.shrink(1);
+        }
+
+        player.displayClientMessage(Component.literal("酒狐速递站升级！当前等级 " + upgradeLevel + " 级")
+                .withStyle(net.minecraft.ChatFormatting.GOLD), true);
+
+        setChanged();
+        BlockState curState = getBlockState();
+        level.sendBlockUpdated(this.worldPosition, curState, curState, 3);
+        return true;
     }
 
     /**
@@ -205,31 +260,17 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
                 }
             }
 
-            // 获取打单机等级
-            int machineLevel = 0;
-            if (machinePos != null && level != null) {
-                BlockEntity machineBe = level.getBlockEntity(machinePos);
-                if (machineBe != null) {
-                    try {
-                        java.lang.reflect.Method getLevelMethod = machineBe.getClass().getMethod("getRestaurantLevel");
-                        Object result = getLevelMethod.invoke(machineBe);
-                        if (result instanceof Integer) {
-                            machineLevel = (Integer) result;
-                        }
-                    } catch (Exception e) {
-                        // 忽略，使用默认0级
-                    }
-                }
-            }
+            // 速递站自身等级（用 OTC 升级装置右键升级，持久化），不再反射关联打单机取等级。
+            int levelForStats = this.upgradeLevel;
 
             // 计算配送时间：距离 / 速度（使用外卖配置文件中的值）
-            int speed = TakeoutConfig.baseDeliverySpeed + machineLevel * TakeoutConfig.speedPerLevel;
+            int speed = TakeoutConfig.baseDeliverySpeed + levelForStats * TakeoutConfig.speedPerLevel;
             int deliverySeconds = Math.max(TakeoutConfig.minDeliverySeconds, Math.min(TakeoutConfig.maxDeliverySeconds, deliveryDist / speed));
             deliveryTimes[slot] = deliverySeconds * 20;
             totalDeliveryTimes[slot] = deliverySeconds * 20;
 
             // 计算手续费和实际收益（使用外卖配置文件中的值）
-            double fee = Math.max(TakeoutConfig.minFee, TakeoutConfig.baseFee - machineLevel * TakeoutConfig.feePerLevel);
+            double fee = Math.max(TakeoutConfig.minFee, TakeoutConfig.baseFee - levelForStats * TakeoutConfig.feePerLevel);
             baseProfits[slot] = Math.max(1, (int)Math.floor(profit * (1.0 - fee)));
 
         } catch (Exception e) {
@@ -328,24 +369,42 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     }
 
     // ========== Tick ==========
+    // 配送进度向客户端同步的间隔（tick）。配送计时每tick推进，但整格NBT同步从每tick降到每5tick（4Hz）：
+    // 进度条按整数秒显示，0.25秒一跳视觉无差异，却把同步包与getUpdateTag序列化开销降到约1/5。
+    private static final long SYNC_INTERVAL = 5L;
+
     public static <T extends BlockEntity> void tick(Level level, BlockPos pos, BlockState state, T blockEntity) {
         if (!(blockEntity instanceof JiuhuStationBlockEntity station)) return;
         if (level.isClientSide) return;
 
-        boolean changed = false;
+        boolean debug = false;
+        try { debug = com.icewolf.maidrestaurant.business.config.PerformanceConfig.debugPerformance; } catch (Throwable ignored) {}
+        long gt = level.getGameTime();
+
+        boolean delivering = false; // 本tick是否有外卖袋正在配送（旧逻辑此刻本应发一个同步包）
+        boolean completed = false;  // 本tick是否有订单刚好结算（结算当刻必须立即同步一次）
         for (int i = 0; i < SLOT_COUNT; i++) {
             if (!station.items[i].isEmpty() && station.deliveryTimes[i] > 0) {
                 station.deliveryTimes[i]--;
-                changed = true;
+                delivering = true;
                 if (station.deliveryTimes[i] <= 0) {
-                    station.completeDelivery(i);
+                    station.completeDelivery(i); // 内部已 setChanged()
+                    completed = true;
                 }
             }
         }
-        if (changed) {
+
+        if (debug && delivering) com.icewolf.maidrestaurant.business.core.TaskManager.perfSyncWould++;
+
+        // 计时推进期间落盘标记也降到每5tick一次（结算当刻 completeDelivery 已自行 setChanged）
+        if (delivering && gt % SYNC_INTERVAL == 0L) {
             station.setChanged();
-            // 发送更新包到客户端，让进度条能显示
+        }
+        // 向客户端同步：结算当刻强制一次，其余配送中按5tick节奏；保证结算/放入不丢包
+        boolean shouldSync = completed || (delivering && gt % SYNC_INTERVAL == 0L);
+        if (shouldSync) {
             level.sendBlockUpdated(pos, state, state, 3);
+            if (debug) com.icewolf.maidrestaurant.business.core.TaskManager.perfSyncSent++;
         }
     }
 
@@ -353,6 +412,7 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
+        this.upgradeLevel = tag.contains(TAG_UPGRADE_LEVEL) ? tag.getInt(TAG_UPGRADE_LEVEL) : 0;
         ListTag itemsList = tag.getList(TAG_ITEMS, Tag.TAG_COMPOUND);
         for (int i = 0; i < SLOT_COUNT; i++) {
             items[i] = ItemStack.EMPTY;
@@ -434,6 +494,7 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
+        tag.putInt(TAG_UPGRADE_LEVEL, upgradeLevel);
         ListTag itemsList = new ListTag();
         for (int i = 0; i < SLOT_COUNT; i++) {
             if (!items[i].isEmpty()) {
@@ -490,19 +551,67 @@ public class JiuhuStationBlockEntity extends BlockEntity implements Container {
     @Nullable
     public static JiuhuStationBlockEntity findNearbyStation(Level level, BlockPos centerPos, int range) {
         if (level == null || centerPos == null) return null;
+
+        boolean debug = false;
+        try { debug = com.icewolf.maidrestaurant.business.config.PerformanceConfig.debugPerformance; } catch (Throwable ignored) {}
+        long startNanos = debug ? System.nanoTime() : 0L;
+        if (debug) com.icewolf.maidrestaurant.business.core.TaskManager.perfStationScans++;
+
         BlockPos nearest = null;
         double nearestDist = Double.MAX_VALUE;
-        for (BlockPos pos : BlockPos.betweenClosed(centerPos.offset(-range, -range / 2, -range), centerPos.offset(range, range / 2, range))) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof JiuhuStationBlockEntity station) {
-                if (!station.hasEmptySlot()) continue;
-                double dist = pos.distSqr(centerPos);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    nearest = pos.immutable();
+        int yHalf = range / 2;
+
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            // 区块级遍历：只扫描与搜索立方相交的已加载chunk（getChunkNow不强制加载），
+            // 从原先逐坐标 getBlockEntity（range=24时约49*25*49≈6万次）降到只检查几十个方块实体，结果完全等价。
+            int minCX = (centerPos.getX() - range) >> 4;
+            int maxCX = (centerPos.getX() + range) >> 4;
+            int minCZ = (centerPos.getZ() - range) >> 4;
+            int maxCZ = (centerPos.getZ() + range) >> 4;
+            int chunkCount = 0;
+            int beCount = 0;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    net.minecraft.world.level.chunk.LevelChunk chunk = serverLevel.getChunkSource().getChunkNow(cx, cz);
+                    if (chunk == null) continue; // 未加载，跳过，与原立方扫描在未加载区取不到BE一致
+                    chunkCount++;
+                    for (BlockEntity be : chunk.getBlockEntities().values()) {
+                        beCount++;
+                        if (!(be instanceof JiuhuStationBlockEntity station)) continue;
+                        BlockPos p = be.getBlockPos();
+                        int dx = Math.abs(p.getX() - centerPos.getX());
+                        int dy = Math.abs(p.getY() - centerPos.getY());
+                        int dz = Math.abs(p.getZ() - centerPos.getZ());
+                        if (dx > range || dz > range || dy > yHalf) continue;
+                        if (!station.hasEmptySlot()) continue;
+                        double dist = p.distSqr(centerPos);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = p.immutable();
+                        }
+                    }
+                }
+            }
+            if (debug) {
+                com.icewolf.maidrestaurant.business.core.TaskManager.perfStationChunks += chunkCount;
+                com.icewolf.maidrestaurant.business.core.TaskManager.perfStationBEs += beCount;
+                com.icewolf.maidrestaurant.business.core.TaskManager.perfStationScanNanos += System.nanoTime() - startNanos;
+            }
+        } else {
+            // 客户端或非ServerLevel兜底：保留原逐坐标立方扫描
+            for (BlockPos pos : BlockPos.betweenClosed(centerPos.offset(-range, -yHalf, -range), centerPos.offset(range, yHalf, range))) {
+                BlockEntity be = level.getBlockEntity(pos);
+                if (be instanceof JiuhuStationBlockEntity station) {
+                    if (!station.hasEmptySlot()) continue;
+                    double dist = pos.distSqr(centerPos);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = pos.immutable();
+                    }
                 }
             }
         }
+
         if (nearest != null) {
             BlockEntity be = level.getBlockEntity(nearest);
             if (be instanceof JiuhuStationBlockEntity station) {

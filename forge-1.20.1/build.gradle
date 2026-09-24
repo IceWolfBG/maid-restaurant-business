@@ -58,6 +58,7 @@ dependencies {
     compileOnly files('libs/maid_restaurant_storage.jar')
     compileOnly files('libs/maid_restaurant_fix.jar')
     compileOnly files('libs/geckolib.jar')
+    compileOnly files('libs/jade.jar')
 }
 
 tasks.named('processResources', ProcessResources) {

@@ -25,6 +25,9 @@ public class TakeoutConfig {
     public static final ForgeConfigSpec.DoubleValue FEE_PER_LEVEL;
     public static final ForgeConfigSpec.DoubleValue MIN_FEE;
 
+    // 速递站自身升级相关（用 OTC 升级装置右键升级，不再关联打单机）
+    public static final ForgeConfigSpec.IntValue MAX_UPGRADE_LEVEL;
+
     // 运行时缓存值
     public static int baseDeliverySpeed;
     public static int speedPerLevel;
@@ -33,6 +36,7 @@ public class TakeoutConfig {
     public static double baseFee;
     public static double feePerLevel;
     public static double minFee;
+    public static int maxUpgradeLevel;
 
     @SubscribeEvent
     static void onLoad(ModConfigEvent event) {
@@ -44,6 +48,7 @@ public class TakeoutConfig {
             baseFee = BASE_FEE.get();
             feePerLevel = FEE_PER_LEVEL.get();
             minFee = MIN_FEE.get();
+            maxUpgradeLevel = MAX_UPGRADE_LEVEL.get();
         }
     }
 
@@ -55,7 +60,7 @@ public class TakeoutConfig {
             .comment("基础配送速度（格/秒，默认2）")
             .defineInRange("baseDeliverySpeed", 2, 1, 20);
         SPEED_PER_LEVEL = BUILDER
-            .comment("打单机每升一级增加的配送速度（格/秒，默认2）")
+            .comment("速递站每升一级增加的配送速度（格/秒，默认2）")
             .defineInRange("speedPerLevel", 2, 0, 10);
         MIN_DELIVERY_SECONDS = BUILDER
             .comment("最小配送时间（秒，默认10）")
@@ -70,11 +75,17 @@ public class TakeoutConfig {
             .comment("基础手续费比例（0-1.0，默认0.4=40%）")
             .defineInRange("baseFee", 0.4, 0.0, 1.0);
         FEE_PER_LEVEL = BUILDER
-            .comment("打单机每升一级减免的手续费比例（0-1.0，默认0.05=5%）")
+            .comment("速递站每升一级减免的手续费比例（0-1.0，默认0.05=5%）")
             .defineInRange("feePerLevel", 0.05, 0.0, 0.5);
         MIN_FEE = BUILDER
             .comment("手续费下限比例（0-1.0，默认0.2=20%，再低就没人自己配送了）")
             .defineInRange("minFee", 0.2, 0.0, 1.0);
+        BUILDER.pop();
+
+        BUILDER.push("upgrade");
+        MAX_UPGRADE_LEVEL = BUILDER
+            .comment("速递站可升到的最高等级（手持 OTC 升级装置右键速递站升一级，默认5）")
+            .defineInRange("maxUpgradeLevel", 5, 0, 20);
         BUILDER.pop();
 
         BUILDER.pop();
@@ -88,5 +99,6 @@ public class TakeoutConfig {
         baseFee = 0.4;
         feePerLevel = 0.05;
         minFee = 0.2;
+        maxUpgradeLevel = 5;
     }
 }

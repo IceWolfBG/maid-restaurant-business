@@ -12,7 +12,9 @@ import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager;
 import com.mastermarisa.maid_restaurant.request.CookRequest;
 import com.mastermarisa.maid_restaurant.utils.RequestManager;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -88,6 +90,18 @@ public class TaskManager {
     // 检测频率（每10tick=0.5秒检测一次）
     private static final long CHECK_INTERVAL = 10L;
 
+    // ========== 性能调试计数器（仅 PerformanceConfig.debugPerformance=true 时累加，每100tick汇总后清零） ==========
+    public static long perfStationScans = 0;      // 速递站找站扫描次数
+    public static long perfStationChunks = 0;     // 找站扫描遍历的chunk数
+    public static long perfStationBEs = 0;        // 找站扫描检查的BlockEntity数
+    public static long perfStationScanNanos = 0;  // 找站扫描总耗时（纳秒）
+    public static long perfSyncWould = 0;         // 旧逻辑（配送中每tick）本应发送的同步包数
+    public static long perfSyncSent = 0;          // 降频后实际发送的同步包数
+    public static long perfDishCacheHit = 0;      // 脏盘/盘子架走中心化缓存命中次数
+    public static long perfDishFallback = 0;      // 脏盘/盘子架缓存未命中、回退立方扫描次数
+    // tick 每个维度各调一次，而 static 计数器是全局合计；用该字段保证同一 gameTime 只汇总一次，避免三维度重复打印
+    private static long lastPerfSummaryTick = -1L;
+
     // 任务信息
     public static class TaskInfo {
         public final String taskId;
@@ -157,6 +171,8 @@ public class TaskManager {
     private final Map<Long, List<BlockPos>> cachedDirtyPlates = new HashMap<>();
     // 洗碗机位置：machinePos.asLong() -> 该机器周围的洗碗机位置
     private final Map<Long, List<BlockPos>> cachedDishwashers = new HashMap<>();
+    // 可放干净盘子的盘子架位置（未满）：machinePos.asLong() -> 架子位置，替代女仆各自立方扫描
+    private final Map<Long, List<BlockPos>> cachedPlateRacks = new HashMap<>();
     private long lastDishCacheTick = 0;
     private static final long DISH_CACHE_INTERVAL = 10L;
     private static final long PLATE_CACHE_INTERVAL = 10L; // 每10tick更新一次餐盘缓存
@@ -788,23 +804,21 @@ public class TaskManager {
     public void tick(long currentTick, ServerLevel level) {
         this.currentTick = currentTick;
         this.serverLevel = level;
+
+        // 性能调试：每100tick（5秒）汇总一次扫描/同步/缓存统计（默认关闭，正常游玩零刷屏）。
+        // tick 每个维度都会调用，static 计数器为全局合计，同一 gameTime 只汇总一次，避免三维度重复打印。
+        if (PerformanceConfig.debugPerformance && currentTick > 0L && currentTick % 100L == 0L
+                && lastPerfSummaryTick != currentTick) {
+            lastPerfSummaryTick = currentTick;
+            MaidRestaurantBusiness.LOGGER.info("[性能调试] 近5秒: 速递站找站扫描{}次(遍历{}chunk/{}个BE/{}μs), 进度同步实际{}/理论{}包, 洗碗脏盘/架子缓存命中{}次/立方回退{}次",
+                perfStationScans, perfStationChunks, perfStationBEs, perfStationScanNanos / 1000L,
+                perfSyncSent, perfSyncWould, perfDishCacheHit, perfDishFallback);
+            perfStationScans = 0; perfStationChunks = 0; perfStationBEs = 0; perfStationScanNanos = 0;
+            perfSyncSent = 0; perfSyncWould = 0; perfDishCacheHit = 0; perfDishFallback = 0;
+        }
+
         if (currentTick - lastCheckTick < CHECK_INTERVAL) return;
         lastCheckTick = currentTick;
-
-        // 每200tick（10秒）输出一次所有烹饪任务的状态，方便排查卡住问题
-        if (currentTick % 200L == 0L) {
-            int cookingCount = 0;
-            for (TaskInfo task : tasks.values()) {
-                if (task.taskType.equals(TYPE_COOKING) && 
-                    (task.status == TaskStatus.PENDING || task.status == TaskStatus.ASSIGNED || task.status == TaskStatus.IN_PROGRESS)) {
-                    cookingCount++;
-                    long age = currentTick - task.createTime;
-                    long sinceHeartbeat = currentTick - task.lastHeartbeat;
-                }
-            }
-            if (cookingCount > 0) {
-            }
-        }
 
         // 自动接单：集成到TaskManager中，每10tick检查一次，少一次监测
         if (businessManager != null) {
@@ -834,13 +848,6 @@ public class TaskManager {
             ensureClipCaches(level);
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.error("TaskManager: 挂单夹缓存更新异常", e);
-        }
-
-        // 每200tick（10秒）输出一次任务统计信息
-        if (currentTick % 200L == 0L) {
-            int pending = getPendingTaskCount();
-            int active = getActiveTaskCount();
-            int total = tasks.size();
         }
 
         // 清理ASSIGNED状态超时的任务（女仆未开始交互，自动失败重新分配）
@@ -977,7 +984,7 @@ public class TaskManager {
             Set<BlockPos> activatedMachines = ActivationCache.getActivatedMachines(level);
             Set<UUID> maidUUIDs = new HashSet<>();
             List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> result = new ArrayList<>();
-            int range = BusinessConfig.dishScanRange;
+            int range = PerformanceConfig.dishScanRange;
             int yRange = 32;
             
             if (activatedMachines.isEmpty()) {
@@ -1015,7 +1022,7 @@ public class TaskManager {
     public List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> getCachedMaidsForMachine(ServerLevel level, BlockPos machinePos) {
         List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> allMaids = getCachedMaids(level);
         List<com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid> result = new ArrayList<>();
-        int range = BusinessConfig.dishScanRange;
+        int range = PerformanceConfig.dishScanRange;
         int rangeSqr = range * range;
         for (com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid : allMaids) {
             if (maid == null || !maid.isAlive()) continue;
@@ -1109,24 +1116,31 @@ public class TaskManager {
         if (currentTick - lastDishCacheTick < DISH_CACHE_INTERVAL) return;
         lastDishCacheTick = currentTick;
         try {
-            int scanRange = BusinessConfig.dishScanRange;
+            int scanRange = PerformanceConfig.dishScanRange;
             Set<BlockPos> active = ActivationCache.getActivatedMachines(level);
             Set<Long> activeKeys = new HashSet<>();
             for (BlockPos m : active) activeKeys.add(m.asLong());
             cachedDirtyPlates.keySet().retainAll(activeKeys);
             cachedDishwashers.keySet().retainAll(activeKeys);
+            cachedPlateRacks.keySet().retainAll(activeKeys);
             for (BlockPos machinePos : active) {
                 long key = machinePos.asLong();
                 List<BlockPos> dirty = new ArrayList<>();
                 List<BlockPos> washers = new ArrayList<>();
+                List<BlockPos> racks = new ArrayList<>();
                 for (BlockPos pos : BlockPos.betweenClosed(
                         machinePos.offset(-scanRange, -4, -scanRange),
                         machinePos.offset(scanRange, 4, scanRange))) {
                     try {
                         BlockState state = level.getBlockState(pos);
-                        if (state.getBlock().getClass().getName().contains("FoodPlateBlock")
+                        String blockClass = state.getBlock().getClass().getName();
+                        if (blockClass.contains("FoodPlateBlock")
                                 && DishwashingBridge.isDirtyStage(state)) {
                             dirty.add(pos.immutable());
+                        }
+                        // 顺带收集可放干净盘子的盘子架（未满），替代女仆各自±12立方扫描
+                        if (blockClass.contains("PlateShelf") && isPlateRackAvailable(state)) {
+                            racks.add(pos.immutable());
                         }
                     } catch (Exception ignore) {}
                     try {
@@ -1137,6 +1151,7 @@ public class TaskManager {
                 }
                 cachedDirtyPlates.put(key, dirty);
                 cachedDishwashers.put(key, washers);
+                cachedPlateRacks.put(key, racks);
             }
         } catch (Exception e) {
             MaidRestaurantBusiness.LOGGER.error("TaskManager: 洗碗缓存更新异常", e);
@@ -1157,6 +1172,77 @@ public class TaskManager {
         return r != null ? r : java.util.Collections.emptyList();
     }
 
+    /** 获取指定打单机周围缓存的、可放干净盘子的架子位置（中心化检索，10tick更新） */
+    public List<BlockPos> getCachedPlateRacks(ServerLevel level, BlockPos machinePos) {
+        ensureDishCaches(level);
+        List<BlockPos> r = cachedPlateRacks.get(machinePos.asLong());
+        return r != null ? r : java.util.Collections.emptyList();
+    }
+
+    /** 判断盘子架是否还能放干净盘子（plates 属性<18；无该属性视为可放），与原实时扫描判定一致 */
+    private static boolean isPlateRackAvailable(BlockState state) {
+        try {
+            net.minecraft.world.level.block.state.properties.Property<?> prop =
+                state.getProperties().stream().filter(p -> p.getName().equals("plates")).findFirst().orElse(null);
+            if (prop instanceof net.minecraft.world.level.block.state.properties.IntegerProperty ip) {
+                return state.getValue(ip) < 18;
+            }
+            return true;
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /**
+     * 从中心化洗碗缓存求离女仆最近的脏盘，替代每个女仆各自±12/y±4立方扫描。
+     * 范围与原 DishwashingBridge.findNearestDirtyPlate 完全一致；缓存未覆盖返回null，由调用方回退原扫描兜底。
+     */
+    public BlockPos getNearestCachedDirtyPlate(ServerLevel level, EntityMaid maid) {
+        ensureDishCaches(level);
+        BlockPos center = maid.blockPosition();
+        double mx = maid.getX(), my = maid.getY(), mz = maid.getZ();
+        BlockPos nearest = null;
+        double minDist = Double.MAX_VALUE;
+        for (List<BlockPos> list : cachedDirtyPlates.values()) {
+            for (BlockPos pos : list) {
+                if (pos.getX() < center.getX() - 12 || pos.getX() > center.getX() + 12) continue;
+                if (pos.getY() < center.getY() - 4 || pos.getY() > center.getY() + 4) continue;
+                if (pos.getZ() < center.getZ() - 12 || pos.getZ() > center.getZ() + 12) continue;
+                double dx = pos.getX() + 0.5 - mx;
+                double dy = pos.getY() + 0.5 - my;
+                double dz = pos.getZ() + 0.5 - mz;
+                double d = dx * dx + dy * dy + dz * dz;
+                if (d < minDist) { minDist = d; nearest = pos.immutable(); }
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * 从中心化缓存求离女仆最近、仍可放盘子的架子，替代每个女仆各自±12/y±4立方扫描。
+     * 范围与原 DishwashingBridge.findNearestPlateRack 一致；缓存未覆盖返回null，由调用方回退原扫描兜底。
+     */
+    public BlockPos getNearestCachedPlateRack(ServerLevel level, EntityMaid maid) {
+        ensureDishCaches(level);
+        BlockPos center = maid.blockPosition();
+        double mx = maid.getX(), my = maid.getY(), mz = maid.getZ();
+        BlockPos nearest = null;
+        double minDist = Double.MAX_VALUE;
+        for (List<BlockPos> list : cachedPlateRacks.values()) {
+            for (BlockPos pos : list) {
+                if (pos.getX() < center.getX() - 12 || pos.getX() > center.getX() + 12) continue;
+                if (pos.getY() < center.getY() - 4 || pos.getY() > center.getY() + 4) continue;
+                if (pos.getZ() < center.getZ() - 12 || pos.getZ() > center.getZ() + 12) continue;
+                double dx = pos.getX() + 0.5 - mx;
+                double dy = pos.getY() + 0.5 - my;
+                double dz = pos.getZ() + 0.5 - mz;
+                double d = dx * dx + dy * dy + dz * dz;
+                if (d < minDist) { minDist = d; nearest = pos.immutable(); }
+            }
+        }
+        return nearest;
+    }
+
     /**
      * 重建挂单夹缓存（空夹 / 有单夹），每 10tick 一次、按本维度激活打单机隔离。
      * 先按各机器范围立方扫描收集候选夹（去重），再把每个夹归给水平距离最近、
@@ -1167,7 +1253,7 @@ public class TaskManager {
         if (currentTick - lastClipCacheTick < CLIP_CACHE_INTERVAL) return;
         lastClipCacheTick = currentTick;
         try {
-            int range = BusinessConfig.dishScanRange;
+            int range = PerformanceConfig.dishScanRange;
             Set<BlockPos> active = ActivationCache.getActivatedMachines(level);
             Set<Long> activeKeys = new HashSet<>();
             for (BlockPos m : active) activeKeys.add(m.asLong());
@@ -1257,6 +1343,7 @@ public class TaskManager {
         cachedCountersWithTakeoutBags.clear();
         cachedDirtyPlates.clear();
         cachedDishwashers.clear();
+        cachedPlateRacks.clear();
         cachedEmptyClips.clear();
         cachedClipsWithOrder.clear();
     }

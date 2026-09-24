@@ -3,7 +3,9 @@ package com.icewolf.maidrestaurant.business.core;
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.mojang.authlib.GameProfile;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -131,7 +133,7 @@ public class OrderBridge {
         if (refreshTime == null) {
             return false;
         }
-        return level.getGameTime() - refreshTime >= (long) BusinessConfig.acceptDelay;
+        return level.getGameTime() - refreshTime >= (long) GameplayConfig.acceptDelay;
     }
 
     /**
@@ -216,7 +218,7 @@ public class OrderBridge {
     }
 
     private static String getUnlockedFeatures(ServerLevel level, BlockPos pos) {
-        if (!BusinessConfig.levelBasedProgression) {
+        if (!GameplayConfig.levelBasedProgression) {
             return "全部功能已开启";
         }
         StringBuilder sb = new StringBuilder("已解锁: ");

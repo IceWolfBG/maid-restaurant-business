@@ -19,9 +19,11 @@
  */
 package com.icewolf.maidrestaurant.business;
 
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.BatchCookingConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
-import com.icewolf.maidrestaurant.business.config.TakeoutConfig;
 import com.icewolf.maidrestaurant.business.config.TakeoutConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
@@ -63,11 +65,19 @@ public class MaidRestaurantBusiness {
         ModCreativeTabs.register(modEventBus);
         ModSounds.register(modEventBus);
         ModMessages.register();
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)BusinessConfig.SPEC, "maid_restaurant_business-common.toml");
-        // 注册任务安全与超时保护配置（单独的配置文件）
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)TaskSafetyConfig.SPEC, "maid_restaurant_business-safety.toml");
-        // 注册酒狐速递站（外卖配送）配置（单独的配置文件）
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)TakeoutConfig.SPEC, "maid_restaurant_business-takeout.toml");
+        // 营业中的所有配置统一收纳到 config/maid_restaurant_business/ 子文件夹，避免 config 根目录杂乱
+        // 自动化功能开关
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)AutomationConfig.SPEC, "maid_restaurant_business/automation.toml");
+        // 玩法与成长（等级解锁/订单调度/收益加成/洗碗阈值/气泡冷却）
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)GameplayConfig.SPEC, "maid_restaurant_business/gameplay.toml");
+        // 扫描范围与性能调试
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)PerformanceConfig.SPEC, "maid_restaurant_business/performance.toml");
+        // 任务安全与超时保护配置
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)TaskSafetyConfig.SPEC, "maid_restaurant_business/safety.toml");
+        // 酒狐速递站（外卖配送）配置
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)TakeoutConfig.SPEC, "maid_restaurant_business/takeout.toml");
+        // 多槽厨具（蒸笼/烤箱/烤面包机/搅拌机）单任务批量烹饪配置
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, (IConfigSpec)BatchCookingConfig.SPEC, "maid_restaurant_business/batch_cooking.toml");
         MinecraftForge.EVENT_BUS.register(this);
     }
 

@@ -39,7 +39,9 @@ import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
 import cn.breezeth.ordertocook.registry.ModItems;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
 import com.icewolf.maidrestaurant.business.core.ProgressionManager;
 import com.icewolf.maidrestaurant.business.core.WorldScanner;
@@ -173,7 +175,7 @@ public class OrderBridge {
         if (refreshTime == null) {
             return false;
         }
-        return level.getGameTime() - refreshTime >= (long) BusinessConfig.acceptDelay;
+        return level.getGameTime() - refreshTime >= (long) GameplayConfig.acceptDelay;
     }
 
     /**
@@ -185,7 +187,7 @@ public class OrderBridge {
             return false;
         }
         CompoundTag foodList = orderNbt.getCompound("FoodList");
-        int range = BusinessConfig.searchRange;
+        int range = PerformanceConfig.searchRange;
         HashMap<String, Integer> available = new HashMap<String, Integer>();
         int containerCount = 0;
         
@@ -268,7 +270,7 @@ public class OrderBridge {
     }
 
     private static String getUnlockedFeatures(ServerLevel level, BlockPos pos) {
-        if (!BusinessConfig.levelBasedProgression) {
+        if (!GameplayConfig.levelBasedProgression) {
             return "\u5168\u90e8\u529f\u80fd\u5df2\u5f00\u542f";
         }
         StringBuilder sb = new StringBuilder("\u5df2\u89e3\u9501: ");

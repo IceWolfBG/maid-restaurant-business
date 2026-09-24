@@ -1,0 +1,77 @@
+{
+  "ambientocclusion": false,
+  "textures": {
+    "0": "maid_restaurant_business:block/sakefox_station",
+    "particle": "maid_restaurant_business:block/sakefox_station"
+  },
+  "elements": [
+    {
+      "from": [
+        4.55,
+        17.75,
+        7.86
+      ],
+      "to": [
+        5.25,
+        18.45,
+        8.36
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            2.625,
+            2.125,
+            3,
+            2.5
+          ],
+          "texture": "#0"
+        }
+      }
+    }
+  ]
+}

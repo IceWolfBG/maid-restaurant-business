@@ -2,7 +2,9 @@ package com.icewolf.maidrestaurant.business.core;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
 import com.mastermarisa.maid_restaurant.utils.MaidStorages;
 import java.lang.ref.WeakReference;
@@ -94,7 +96,7 @@ public class RestockBridge {
         // 绑定排班表"自动洗碗"开关（没有排班表默认开）
         if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_WASH)) return;
 
-        int range = BusinessConfig.dishScanRange;
+        int range = PerformanceConfig.dishScanRange;
 
         // ① 枚举打单机范围内的包装货架（OTC ShelfBlock，papers 属性；排除盘子架 PlateShelfBlock）
         List<BlockPos> shelves = new ArrayList<>();
@@ -123,7 +125,7 @@ public class RestockBridge {
 
         // ② 总池缺额 = 10*货架数 - Σpapers；缺额 > 洗碗阈值才补
         int threshold = MaidUtils.getScheduleBoardMinPlates(level, machinePos);
-        if (threshold <= 0) threshold = BusinessConfig.minPlatesToWash;
+        if (threshold <= 0) threshold = GameplayConfig.minPlatesToWash;
         int totalCapacity = MAX_SHELF_PAPERS * shelves.size();
         int deficit = totalCapacity - totalPapers;
         if (deficit <= threshold) {

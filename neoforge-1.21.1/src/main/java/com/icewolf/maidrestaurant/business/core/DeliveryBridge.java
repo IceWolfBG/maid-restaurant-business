@@ -9,7 +9,9 @@ import com.github.tartaricacid.touhoulittlemaid.api.task.IMaidTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.CustomerCompat;
 import com.mastermarisa.maid_restaurant.maid.TaskWaiter;
 import com.mastermarisa.maid_restaurant.utils.BehaviorUtils;
@@ -59,7 +61,7 @@ public class DeliveryBridge {
 
     
     public static void tickDelivery(ServerLevel level, BusinessManager manager) {
-        if (!BusinessConfig.waiterDeliver) {
+        if (!AutomationConfig.waiterDeliver) {
             return;
         }
         try {
@@ -722,7 +724,7 @@ public class DeliveryBridge {
      */
     public static void applyFavorabilityBonus(ServerLevel level, EntityMaid maid, ItemStack plateStack, Player deliverPlayer) {
         try {
-            double bonusPerLevel = BusinessConfig.favorabilityBonus;
+            double bonusPerLevel = GameplayConfig.favorabilityBonus;
             // 确定给哪个玩家发额外金币：优先女仆主人，其次deliverPlayer（如果是真实玩家）
             Player bonusPlayer = getMaidOwner(level, maid);
             if (bonusPlayer == null && deliverPlayer instanceof ServerPlayer) {

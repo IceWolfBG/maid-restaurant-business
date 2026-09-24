@@ -30,7 +30,7 @@ public class JiuhuStationMenu extends AbstractContainerMenu {
         // 背景图坐标：x=26+i*26, y=28，格子大小20x20，间距6
         for (int i = 0; i < JiuhuStationBlockEntity.SLOT_COUNT; i++) {
             final int slotIndex = i;
-            this.addSlot(new Slot(blockEntity, i, 31 + i * 26, 37) {
+            this.addSlot(new Slot(blockEntity, i, 20 + i * 30, 19) {
                 @Override
                 public boolean mayPlace(ItemStack stack) {
                     return false;
@@ -76,7 +76,7 @@ public class JiuhuStationMenu extends AbstractContainerMenu {
         // 速递站的5个格子（只读）
         for (int i = 0; i < JiuhuStationBlockEntity.SLOT_COUNT; i++) {
             final int slotIndex = i;
-            this.addSlot(new Slot(blockEntity != null ? blockEntity : new net.minecraft.world.SimpleContainer(JiuhuStationBlockEntity.SLOT_COUNT), i, 31 + i * 26, 37) {
+            this.addSlot(new Slot(blockEntity != null ? blockEntity : new net.minecraft.world.SimpleContainer(JiuhuStationBlockEntity.SLOT_COUNT), i, 20 + i * 30, 19) {
                 @Override
                 public boolean mayPlace(ItemStack stack) { return false; }
                 @Override
@@ -126,5 +126,10 @@ public class JiuhuStationMenu extends AbstractContainerMenu {
     // 获取实际收益
     public int getActualProfit(int slot) {
         return blockEntity != null ? blockEntity.getActualProfit(slot) : 0;
+    }
+
+    // 速递站自身等级（用于 GUI 显示升级后的实际速度/手续费）
+    public int getUpgradeLevel() {
+        return blockEntity != null ? blockEntity.getUpgradeLevel() : 0;
     }
 }

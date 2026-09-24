@@ -35,7 +35,10 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
-import com.icewolf.maidrestaurant.business.config.BusinessConfig;
+import com.icewolf.maidrestaurant.business.config.BatchCookingConfig;
+import com.icewolf.maidrestaurant.business.config.AutomationConfig;
+import com.icewolf.maidrestaurant.business.config.GameplayConfig;
+import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.CookingDeviceStatsManager;
 import com.icewolf.maidrestaurant.business.core.ActiveOrder;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
@@ -1030,7 +1033,9 @@ public class CookingBridge {
                 // ===== ③ 食材检查 =====
                 java.util.LinkedHashMap<java.util.UUID, Integer> perMaid;
                 try {
-                    perMaid = CookingBridge.getCookCountByMaid(level, counterPos, match.recipeId, 1, idleCooks);
+                    // 多槽批量厨具（蒸笼/烤箱/烤面包机/搅拌机）放开单任务份数上限，其余厨具恒为 1（逐份发布）
+                    int ingredientMaxCount = BatchCookingConfig.getBatchCap(deviceUid);
+                    perMaid = CookingBridge.getCookCountByMaid(level, counterPos, match.recipeId, ingredientMaxCount, idleCooks);
                 } catch (Throwable t) {
                     MaidRestaurantBusiness.LOGGER.warn("烹饪食材检查: getCookCountByMaid抛出异常，配方={}", match.recipeId, t);
                     perMaid = new java.util.LinkedHashMap<>();
@@ -1376,9 +1381,10 @@ public class CookingBridge {
      */
     private static void processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
         try {
-            if (!BusinessConfig.clipPreCooking) return;
+            if (!AutomationConfig.autoPreCooking) return;
             if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return;
             if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return;
+            if (!ProgressionManager.isAutoPreCookingUnlocked(level, machinePos)) return;
             if (!OrderBridge.isActivated(level, machinePos)) return;
             Long cd = insufficientIngredientsCooldown.get(machinePos.asLong());
             if (cd != null && currentTick < cd) return;
@@ -1397,7 +1403,7 @@ public class CookingBridge {
                 if (stack.isEmpty() || !OrderClipBlock.isOrderItem(stack) || stack.getTag() == null) continue;
                 CompoundTag nbt = stack.getTag();
                 if (!nbt.contains("FoodList")) continue;
-                if (nbt.getBoolean("Delivery") && !BusinessConfig.acceptDelivery) continue;
+                if (nbt.getBoolean("Delivery") && !AutomationConfig.acceptDelivery) continue;
                 long expiry = nbt.contains("ExpiryTick") ? nbt.getLong("ExpiryTick") : Long.MAX_VALUE;
                 if (expiry >= 0L && expiry <= currentTick) continue; // 已过期，交给 OTC 自身处理
                 orders.add(new ClipOrder(clipPos.immutable(), nbt, expiry));
@@ -1513,7 +1519,9 @@ public class CookingBridge {
                     // ===== 食材检查（按厨师粒度）=====
                     java.util.LinkedHashMap<UUID, Integer> perMaid;
                     try {
-                        perMaid = getCookCountByMaid(level, interactionCounter, match.recipeId(), 1, idleCooks);
+                        // 多槽批量厨具放开单任务份数上限，其余厨具恒为 1
+                        int clipIngredientMaxCount = BatchCookingConfig.getBatchCap(deviceUid);
+                        perMaid = getCookCountByMaid(level, interactionCounter, match.recipeId(), clipIngredientMaxCount, idleCooks);
                     } catch (Throwable t) {
                         perMaid = new java.util.LinkedHashMap<UUID, Integer>();
                     }
@@ -2117,7 +2125,7 @@ public class CookingBridge {
                 return Boolean.TRUE.equals(fluidAvailableCache.get(key));
             }
             boolean found = false;
-            int range = BusinessConfig.dishScanRange;
+            int range = PerformanceConfig.dishScanRange;
             net.minecraftforge.fluids.FluidStack probe = new net.minecraftforge.fluids.FluidStack(fluid, amount);
             for (BlockPos check : BlockPos.betweenClosed(center.offset(-range, -4, -range), center.offset(range, 4, range))) {
                 Object ok = rsHasEnoughFluidMethod.invoke(null, level, check.immutable(), probe, amount);
@@ -2294,7 +2302,7 @@ public class CookingBridge {
         }
 
         // 无 BlockEntity 设备（饮品杯等）：全坐标扫描，本体 BE 候选优先于空气位候选
-        int range = BusinessConfig.dishScanRange;
+        int range = PerformanceConfig.dishScanRange;
         BlockPos beFree = null, beNearest = null, airFree = null, airNearest = null;
         double beFreeD = Double.MAX_VALUE, beNearD = Double.MAX_VALUE;
         double airFreeD = Double.MAX_VALUE, airNearD = Double.MAX_VALUE;
@@ -2335,7 +2343,7 @@ public class CookingBridge {
             try {
                 int h = (int) maid.getRestrictRadius();
                 if (h <= 0) {
-                    h = BusinessConfig.dishScanRange;
+                    h = PerformanceConfig.dishScanRange;
                 }
                 BlockPos pos = cookTask.searchWorkBlock(level, maid, h, 2);
                 if (pos != null && isWithinMachineRange(machinePos, pos)
@@ -2351,7 +2359,7 @@ public class CookingBridge {
 
     /** 工作位（厨凳格等）相对设备本体可能偏移 1~2 格，故在打单机扫描半径上留容差，防止选到隔壁打单机的厨具。 */
     private static boolean isWithinMachineRange(BlockPos machine, BlockPos work) {
-        int r = BusinessConfig.dishScanRange + 2;
+        int r = PerformanceConfig.dishScanRange + 2;
         return Math.abs(work.getX() - machine.getX()) <= r
                 && Math.abs(work.getZ() - machine.getZ()) <= r
                 && Math.abs(work.getY() - machine.getY()) <= 6;
