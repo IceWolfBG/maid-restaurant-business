@@ -29,7 +29,6 @@ public class PackagingCompat {
     static {
         try {
             Class<?> apiClass = Class.forName("cn.breezeth.ordertocook.api.CountertopAutomationApi");
-            LOGGER.info("PackagingCompat: 找到 CountertopAutomationApi 类");
             actionClass = Class.forName("cn.breezeth.ordertocook.api.CountertopAutomationApi$Action");
             Object[] actions = actionClass.getEnumConstants();
             for (Object a : actions) {
@@ -40,14 +39,12 @@ public class PackagingCompat {
 
             executeMethod = apiClass.getMethod("execute", Level.class, BlockPos.class, actionClass, Player.class, boolean.class);
             hasAutomationApi = true;
-            LOGGER.info("PackagingCompat: CountertopAutomationApi 初始化成功，使用API模式");
         } catch (Throwable e) {
             hasAutomationApi = false;
             LOGGER.warn("PackagingCompat: CountertopAutomationApi 初始化失败，使用直接调用模式", e);
             try {
                 tryPackOrderMethod = TakeoutBoxBlockEntity.class.getMethod("tryPackOrder", Player.class);
                 tryPlateOrderMethod = TakeoutBoxBlockEntity.class.getMethod("tryPlateOrder", Player.class);
-                LOGGER.info("PackagingCompat: tryPackOrder/tryPlateOrder 方法获取成功");
             } catch (NoSuchMethodException ex) {
                 LOGGER.error("PackagingCompat: 无法获取 tryPackOrder/tryPlateOrder 方法", ex);
             }

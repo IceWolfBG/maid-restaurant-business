@@ -243,9 +243,22 @@ public class OrderFetchBridge {
             MaidUtils.startTask(cook, machine, "fetch_order", manager.getTickCounter());
             String taskId = TaskManager.getInstance()
                     .createTask(TaskManager.TYPE_FETCH_ORDER, sourcePos, machine);
-            if (taskId != null) {
-                TaskManager.getInstance().assignTask(cook.getUUID(), TaskManager.TYPE_FETCH_ORDER, level);
+            if (taskId == null) {
+                // 失败退避/无任务：完整回滚取单状态，不启动行走，避免失败紧循环
+                data.remove(F_MACHINE);
+                data.remove(F_COUNTER);
+                data.remove(F_SOURCE);
+                data.remove(F_STAGE);
+                data.remove(F_SLOT);
+                data.remove(F_CLIP);
+                data.remove(F_ORDER_ID);
+                data.remove(F_DELIVERY);
+                data.remove(F_START);
+                data.remove(F_LOCK);
+                MaidUtils.setOccupied(cook, false);
+                return;
             }
+            TaskManager.getInstance().assignTask(cook.getUUID(), TaskManager.TYPE_FETCH_ORDER, level);
             MaidUtils.moveToSide(cook, sourcePos, MOVEMENT_SPEED);
 
             return; // 每机器每轮一单

@@ -241,11 +241,11 @@ public class PackagingBridge {
             return;
         }
 
-        packTasks.put(counterPos, new PackTask(maid, machinePos, manager.getTickCounter()));
 
         // TaskManager集成：创建打包任务并分配给女仆
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_PACKAGING, counterPos, machinePos);
         if (taskId != null) {
+            packTasks.put(counterPos, new PackTask(maid, machinePos, manager.getTickCounter()));
             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_PACKAGING, level);
         }
     }

@@ -246,9 +246,15 @@ public class WalkInGreetBridge {
         MaidUtils.startTask(maid, best.machine, "greet", manager.getTickCounter());
 
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_GREET, best.npc.blockPosition(), best.machine);
-        if (taskId != null) {
-            TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_GREET, level);
+        if (taskId == null) {
+            // 失败退避/无任务：回滚接待状态，不启动行走与气泡，避免失败紧循环
+            data.remove(TAG_COUNTER);
+            data.remove(TAG_STAGE);
+            data.remove(TAG_START);
+            MaidUtils.setOccupied(maid, false);
+            return;
         }
+        TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_GREET, level);
 
         BlockPos greetPos = greetStandPos(level, best.npc.blockPosition());
         maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(greetPos, MOVEMENT_SPEED, 1));

@@ -187,9 +187,9 @@ public class RestockBridge {
         }
 
         // ⑥ 建任务（状态机会先用她背包皮革，不足再去容器取）
-        tasks.put(targetShelf, new RestockTask(targetShelf, machinePos, maid, need, leatherContainers));
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_RESTOCK, targetShelf, machinePos);
         if (taskId != null) {
+            tasks.put(targetShelf, new RestockTask(targetShelf, machinePos, maid, need, leatherContainers));
             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_RESTOCK, level);
         }
         try {

@@ -107,7 +107,6 @@ public class CommandHandler {
                 )
                 .then(Commands.literal("reload").executes(CommandHandler::reloadConfig))
         );
-        MaidRestaurantBusiness.LOGGER.info("CommandHandler: /mrb 命令注册成功");
     }
 
     private static int showStatus(CommandContext<CommandSourceStack> ctx) {

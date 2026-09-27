@@ -728,11 +728,11 @@ public class DishwashingBridge {
                 continue;
             }
             
-            collectTasks.put(platePos, new CollectPlateTask(platePos, maid, nearestMachine));
             
             // TaskManager集成
             String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_COLLECT_PLATE, platePos, nearestMachine);
             if (taskId != null) {
+                collectTasks.put(platePos, new CollectPlateTask(platePos, maid, nearestMachine));
                 TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_COLLECT_PLATE, level);
             }
             break; // 每次只分配一个收盘子任务，避免多个女仆抢
@@ -798,11 +798,11 @@ public class DishwashingBridge {
                     }
                     
                     if (nearestDw != null && !dishTasks.containsKey(nearestDw)) {
-                        dishTasks.put(nearestDw, new DishTask(nearestDw, maid, machinePos));
                         
                         // TaskManager集成
                         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_DISHWASHING, nearestDw, machinePos);
                         if (taskId != null) {
+                            dishTasks.put(nearestDw, new DishTask(nearestDw, maid, machinePos));
                             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_DISHWASHING, level);
                         }
                     }

@@ -1859,7 +1859,7 @@ public class CookingBridge {
                 }
                 // 存储附属在场时：仅当"该厨师"背包有空桶、附近流体存储有足量水/岩浆，才为她虚拟汤底桶
                 // （未安装存储附属时该方法什么都不做，维持必须已有现成桶的原版行为）
-                applyStorageFluidBonus(level, counterPos, required, maidInv, maidAvailable);
+                applyStorageFluidBonus(level, counterPos, required, maidInv, maidAvailable, maid.getUUID());
                 int canMake = countCooksByGreedy(required, maidAvailable, maxCount);
                 result.put(maid.getUUID(), Math.max(0, canMake));
             }
@@ -2013,7 +2013,7 @@ public class CookingBridge {
 
     // ====== 存储附属(maid_restaurant_storage)流体兜底：空桶 + 附近流体存储 即视为汤底桶可满足 ======
     private static Boolean storageModLoadedCache = null;
-    private static java.lang.reflect.Method rsHasEnoughFluidMethod = null;
+    private static java.lang.reflect.Method rsAvailableOrFillableMethod = null;
     private static boolean rsReflectionResolved = false;
     private static final Map<String, Boolean> fluidAvailableCache = new HashMap<>();
     private static final Map<String, Long> fluidAvailableTick = new HashMap<>();
@@ -2024,7 +2024,7 @@ public class CookingBridge {
      * 未安装存储附属时本方法什么都不做（维持原版必须已有现成桶的行为）。奶等生物制品不是流体，不在此处理。
      */
     private static void applyStorageFluidBonus(ServerLevel level, BlockPos center, List<StackPredicate> required,
-                                               IItemHandler maidInv, Map<Item, Integer> available) {
+                                               IItemHandler maidInv, Map<Item, Integer> available, java.util.UUID self) {
         try {
             if (storageModLoadedCache == null) {
                 storageModLoadedCache = net.neoforged.fml.ModList.get().isLoaded("maid_restaurant_storage");
@@ -2034,15 +2034,16 @@ public class CookingBridge {
             if (!rsReflectionResolved) {
                 rsReflectionResolved = true;
                 try {
-                    // 直接复用存储附属的 public static hasEnoughFluid(Level,BlockPos,FluidStack,int)
+                    // 复用存储附属发现期 public static isAvailableOrFillable(Level,BlockPos,FluidStack,int,UUID)，
+                    // 与执行期流体搜索走同一个判定（黑名单/他人预留/现有或可注满空水槽完全同源）
                     Class<?> storages = Class.forName("com.example.maidrestaurant.rscompat.fluid.MaidFluidStorages");
-                    rsHasEnoughFluidMethod = storages.getMethod("hasEnoughFluid",
-                            Level.class, BlockPos.class, net.neoforged.neoforge.fluids.FluidStack.class, int.class);
+                    rsAvailableOrFillableMethod = storages.getMethod("isAvailableOrFillable",
+                            Level.class, BlockPos.class, net.neoforged.neoforge.fluids.FluidStack.class, int.class, java.util.UUID.class);
                 } catch (Throwable t) {
                     MaidRestaurantBusiness.LOGGER.warn("烹饪食材检测: 存储附属流体API不可用", t);
                 }
             }
-            if (rsHasEnoughFluidMethod == null) return;
+            if (rsAvailableOrFillableMethod == null) return;
 
             ItemStack waterBucket = new ItemStack(net.minecraft.world.item.Items.WATER_BUCKET);
             ItemStack lavaBucket = new ItemStack(net.minecraft.world.item.Items.LAVA_BUCKET);
@@ -2066,9 +2067,11 @@ public class CookingBridge {
                 int amount = net.neoforged.neoforge.fluids.FluidType.BUCKET_VOLUME;
 
                 // 厨师背包必须有空桶（她要拿去流体存储接）
-                if (!maidHasItem(maidInv, net.minecraft.world.item.Items.BUCKET)) continue;
+                boolean hasEmptyBucket = maidHasItem(maidInv, net.minecraft.world.item.Items.BUCKET);
+                if (!hasEmptyBucket) continue;
                 // 操作台附近流体存储必须有足量对应流体
-                if (!nearbyFluidAvailable(level, center, fluid, amount)) continue;
+                boolean fluidNear = nearbyFluidAvailable(level, center, fluid, amount, self);
+                if (!fluidNear) continue;
 
                 // 虚拟计入1个满桶（一口锅一个汤底；空桶接完会返还，可反复使用）
                 available.merge(filled, 1, Integer::sum);
@@ -2095,11 +2098,15 @@ public class CookingBridge {
         return false;
     }
 
-    /** 附近是否有流体存储含足量指定流体；结果按(维度,中心,流体)缓存20tick，避免每个食物重复扫描。 */
+    /**
+     * 附近是否有流体存储“现有足量”或“空但可直接注满”指定流体；与存储附属执行期发现判定同源。
+     * 结果按(维度,中心,流体,女仆)缓存20tick，避免每个食物重复扫描；女仆入键以正确处理他人预留。
+     */
     private static boolean nearbyFluidAvailable(ServerLevel level, BlockPos center,
-                                                net.minecraft.world.level.material.Fluid fluid, int amount) {
+                                                net.minecraft.world.level.material.Fluid fluid, int amount, java.util.UUID self) {
         try {
-            String key = level.dimension().location() + "|" + center.asLong() + "|" + (fluid == net.minecraft.world.level.material.Fluids.WATER ? "w" : "l");
+            String key = level.dimension().location() + "|" + center.asLong() + "|"
+                    + (fluid == net.minecraft.world.level.material.Fluids.WATER ? "w" : "l") + "|" + self;
             long now = level.getGameTime();
             Long cachedTick = fluidAvailableTick.get(key);
             if (cachedTick != null && now - cachedTick < 20L) {
@@ -2109,7 +2116,7 @@ public class CookingBridge {
             int range = PerformanceConfig.dishScanRange;
             net.neoforged.neoforge.fluids.FluidStack probe = new net.neoforged.neoforge.fluids.FluidStack(fluid, amount);
             for (BlockPos check : BlockPos.betweenClosed(center.offset(-range, -4, -range), center.offset(range, 4, range))) {
-                Object ok = rsHasEnoughFluidMethod.invoke(null, level, check.immutable(), probe, amount);
+                Object ok = rsAvailableOrFillableMethod.invoke(null, level, check.immutable(), probe, amount, self);
                 if (Boolean.TRUE.equals(ok)) {
                     found = true;
                     break;

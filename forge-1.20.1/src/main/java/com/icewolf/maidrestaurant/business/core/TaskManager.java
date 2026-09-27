@@ -190,6 +190,10 @@ public class TaskManager {
     // 正在被使用的厨具（位置 -> 占用信息）
     private final Map<BlockPos, DeviceOccupancyInfo> occupiedDevices = new HashMap<>();
 
+    // ========== 任务失败退避（同一目标失败后 200tick 内不再重建同类任务，防止失败紧循环刷屏） ==========
+    private final Map<String, Long> failureBackoffUntil = new HashMap<>();
+    private static final long FAILURE_BACKOFF_TICKS = 200L; // 10秒
+
     // 厨具占用超时时间（tick，20tick=1秒）
     // 如果一个厨具被占用超过这个时间且没有对应任务在执行，强制释放
     private static final long DEVICE_OCCUPY_TIMEOUT = 200L; // 10秒
@@ -225,6 +229,25 @@ public class TaskManager {
         this.businessManager = businessManager;
     }
 
+    // ========== 任务失败退避方法 ==========
+
+    private static String backoffKey(String taskType, BlockPos targetPos) {
+        return taskType + "@" + targetPos.asLong();
+    }
+
+    /** 登记一次失败退避：该目标在接下来 {@link #FAILURE_BACKOFF_TICKS} 内不再重建同类任务 */
+    private void registerFailureBackoff(String taskType, BlockPos targetPos) {
+        if (taskType == null || targetPos == null) return;
+        failureBackoffUntil.put(backoffKey(taskType, targetPos), currentTick + FAILURE_BACKOFF_TICKS);
+    }
+
+    /** 判断该目标的同类任务是否仍处于失败退避冷却中 */
+    private boolean isFailureBackoffActive(String taskType, BlockPos targetPos) {
+        if (taskType == null || targetPos == null) return false;
+        Long until = failureBackoffUntil.get(backoffKey(taskType, targetPos));
+        return until != null && currentTick < until;
+    }
+
     /**
      * 创建新任务
      * @return 任务ID，如果该位置已有同类型任务则返回null
@@ -253,6 +276,11 @@ public class TaskManager {
                     return null;
                 }
             }
+        }
+
+        // 失败退避：该目标刚失败过，冷却期内不再创建同类任务，避免失败紧循环刷屏
+        if (isFailureBackoffActive(taskType, targetPos)) {
+            return null;
         }
 
         String taskId = UUID.randomUUID().toString();
@@ -412,6 +440,8 @@ public class TaskManager {
                 }
             }
             task.status = TaskStatus.FAILED;
+            // 登记失败退避：同一目标 200tick 内不再重建同类任务
+            registerFailureBackoff(task.taskType, task.targetPos);
             long duration = currentTick - task.createTime;
             long sinceHeartbeat = currentTick - task.lastHeartbeat;
             MaidRestaurantBusiness.LOGGER.warn("任务失败: id={} 类型={} 状态={} 女仆={} 目标={} 原因={} 已运行={}tick 最后心跳={}tick前", 
@@ -819,6 +849,9 @@ public class TaskManager {
 
         if (currentTick - lastCheckTick < CHECK_INTERVAL) return;
         lastCheckTick = currentTick;
+
+        // 清理已过期的失败退避记录
+        failureBackoffUntil.values().removeIf(until -> until <= currentTick);
 
         // 自动接单：集成到TaskManager中，每10tick检查一次，少一次监测
         if (businessManager != null) {
@@ -1346,5 +1379,6 @@ public class TaskManager {
         cachedPlateRacks.clear();
         cachedEmptyClips.clear();
         cachedClipsWithOrder.clear();
+        failureBackoffUntil.clear();
     }
 }
