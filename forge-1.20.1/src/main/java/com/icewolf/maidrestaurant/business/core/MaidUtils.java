@@ -1,22 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  net.minecraft.core.BlockPos
- *  net.minecraft.resources.ResourceLocation
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.entity.Entity
- *  net.minecraft.world.entity.Mob
- *  net.minecraft.world.entity.ai.Brain
- *  net.minecraft.world.entity.ai.memory.MemoryModuleType
- *  net.minecraft.world.entity.ai.navigation.PathNavigation
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.phys.AABB
- *  net.minecraftforge.items.IItemHandler
- *  net.minecraftforge.items.ItemHandlerHelper
- *  net.minecraftforge.registries.ForgeRegistries
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -31,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -41,6 +23,7 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -181,32 +164,42 @@ public class MaidUtils {
     }
 
     public static boolean moveToSide(EntityMaid maid, BlockPos target, double speed) {
-        double sx = 0;
-        double sz = 0;
         try {
-            double mx = maid.getX();
-            double mz = maid.getZ();
-            double tx = (double)target.getX() + 0.5;
-            double tz = (double)target.getZ() + 0.5;
-            double dx = mx - tx;
-            double dz = mz - tz;
-            if (Math.abs(dx) > Math.abs(dz)) {
-                sx = dx > 0.0 ? (double)target.getX() + 1.5 : (double)target.getX() - 0.5;
-                sz = tz;
-            } else {
-                sx = tx;
-                sz = dz > 0.0 ? (double)target.getZ() + 1.5 : (double)target.getZ() - 0.5;
+            var level = maid.level();
+            // 枚举目标四周水平相邻格，挑"放得下女仆、脚下有支撑"且离女仆最近的一格；
+            // 每拍重新枚举，原选侧途中被占会自动换到别的可站侧
+            BlockPos bestSide = null;
+            double bestDistSqr = Double.MAX_VALUE;
+            for (Direction dir : Direction.Plane.HORIZONTAL) {
+                BlockPos side = target.relative(dir);
+                AABB boxAt = maid.getDimensions(maid.getPose())
+                        .makeBoundingBox(Vec3.atBottomCenterOf(side));
+                if (!level.noCollision(maid, boxAt)) {
+                    continue; // 该格被方块/生物占据，放不下女仆
+                }
+                boolean supported = !level.getBlockState(side.below())
+                        .getCollisionShape(level, side.below()).isEmpty();
+                if (!supported) {
+                    continue; // 脚下悬空，避免走过去掉落或寻路不可达
+                }
+                double distSqr = maid.distanceToSqr(side.getX() + 0.5, side.getY(), side.getZ() + 0.5);
+                if (distSqr < bestDistSqr) {
+                    bestDistSqr = distSqr;
+                    bestSide = side;
+                }
             }
-            // 使用 Brain Memory 系统寻路，到达距离为 1 格
-            BlockPos sidePos = new BlockPos((int)Math.floor(sx), target.getY(), (int)Math.floor(sz));
-            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(sidePos, (float)speed, 1));
-            return true;
+            if (bestSide != null) {
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(bestSide, (float)speed, 1));
+                return true;
+            }
+            // 四周都不可站（被顾客围住）：不设无效目标，返回 false，调用方下拍再试（等待顾客走开）
+            return false;
         }
         catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("MaidUtils: moveToSide failed to {}", target, t);
             // 回退到原版寻路
             try {
-                return maid.getNavigation().moveTo(sx, target.getY(), sz, speed);
+                return maid.getNavigation().moveTo((double)target.getX() + 0.5, target.getY(), (double)target.getZ() + 0.5, speed);
             } catch (Throwable t2) {
                 return false;
             }

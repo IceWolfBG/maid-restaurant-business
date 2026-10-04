@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "L",
+    "M",
+    "L"
+  ],
+  "key": {
+    "L": {
+      "item": "minecraft:leather"
+    },
+    "M": {
+      "item": "maid_restaurant:order_menu"
+    }
+  },
+  "result": {
+    "item": "maid_restaurant_business:restaurant_menu",
+    "count": 1
+  }
+}

@@ -13,7 +13,9 @@ import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.util.ItemStackUtils;
 import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -97,6 +99,8 @@ public class WalkInGreetBridge {
     public static void tickGreet(ServerLevel level, BusinessManager manager) {
         try {
             List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
+            // 名额预留：按机器统计「在途接待数」，防止侍者在他人落单前重复判断空位而超发
+            Map<Long, Integer> inFlightByMachine = new HashMap<>();
 
             // 1. 先推进正在接待途中的侍者
             for (EntityMaid maid : allMaids) {
@@ -107,13 +111,18 @@ public class WalkInGreetBridge {
                 if (!data.contains(TAG_NPC)) {
                     continue;
                 }
+                if (data.contains(TAG_MACHINE)) {
+                    inFlightByMachine.merge(data.getLong(TAG_MACHINE), 1, Integer::sum);
+                }
                 if (!MaidUtils.isOccupied(maid)) {
                     MaidUtils.setOccupied(maid, true);
                 }
                 processGreetingMaid(level, maid, manager);
             }
 
-            // 2. 再为空闲侍者分配接待任务
+            // 2. 再为空闲侍者分配接待任务（本tick已派数 + 容量缓存，配合在途数做名额预留）
+            Map<Long, Integer> assignedByMachine = new HashMap<>();
+            Map<Long, Integer> capacityCache = new HashMap<>();
             for (EntityMaid maid : allMaids) {
                 if (!MaidUtils.isWaiterMaid(maid)) {
                     continue;
@@ -125,7 +134,7 @@ public class WalkInGreetBridge {
                 if (TaskManager.getInstance().hasMaidTask(maid.getUUID())) {
                     continue;
                 }
-                assignGreetTask(level, maid, manager);
+                assignGreetTask(level, maid, manager, inFlightByMachine, assignedByMachine, capacityCache);
             }
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("到店接待 tick 出错", t);
@@ -147,7 +156,23 @@ public class WalkInGreetBridge {
         }
     }
 
-    private static void assignGreetTask(ServerLevel level, EntityMaid maid, BusinessManager manager) {
+    /** 该机器当前可落单容量 = 空闲操作台数 + 空闲挂单夹数。 */
+    private static int countCapacity(ServerLevel level, BlockPos machine, List<BlockPos> countersAll, BusinessManager manager) {
+        int freeCounters = 0;
+        for (BlockPos c : countersAll) {
+            if (OrderBridge.isCounterFree(level, c, manager)) {
+                freeCounters++;
+            }
+        }
+        List<BlockPos> emptyClips = TaskManager.getInstance().getCachedEmptyClips(level, machine);
+        int freeClips = emptyClips == null ? 0 : emptyClips.size();
+        return freeCounters + freeClips;
+    }
+
+    private static void assignGreetTask(ServerLevel level, EntityMaid maid, BusinessManager manager,
+                                        Map<Long, Integer> inFlightByMachine,
+                                        Map<Long, Integer> assignedByMachine,
+                                        Map<Long, Integer> capacityCache) {
         // 幽灵忙碌检测：被标记忙碌但没有任何实际任务时立即清理，否则跳过本轮
         if (MaidUtils.isOccupied(maid)) {
             if (!MaidUtils.hasTaskTracker(maid.getUUID())) {
@@ -194,19 +219,24 @@ public class WalkInGreetBridge {
             if (countersAll.isEmpty()) {
                 continue; // 连操作台都没有，订单无处可落
             }
+            // 名额预留：可落单总数 = 空台 + 空夹，扣除在途接待与本tick已派；名额已满暂不接待
+            int capacity = capacityCache.computeIfAbsent(machine.asLong(),
+                    k -> countCapacity(level, machine, countersAll, manager));
+            int used = inFlightByMachine.getOrDefault(machine.asLong(), 0)
+                    + assignedByMachine.getOrDefault(machine.asLong(), 0);
+            if (used >= capacity) {
+                continue;
+            }
             // 空台优先：有空台就直接把订单放上台（占台等菜）；没有空台才退而求其次夹进空挂单夹暂存
             BlockPos freeCounter = OrderBridge.findNearestFreeCounter(level, machine, countersAll, manager);
             List<BlockPos> emptyClips = TaskManager.getInstance().getCachedEmptyClips(level, machine);
-            if (freeCounter == null && emptyClips.isEmpty()) {
-                continue; // 既没有空操作台、也没有空挂单夹，暂不接待
-            }
             // 走到的目标台：有空台就走那台（直接放）；否则走到最近的操作台（到台边再夹单）
             BlockPos counter = freeCounter != null ? freeCounter.immutable() : nearestCounter(countersAll, machine);
             if (counter == null) {
                 continue;
             }
             // 锁定一个空挂单夹作为兜底（可能没有，此时不写 TAG_CLIP）
-            BlockPos clip = emptyClips.isEmpty() ? null : nearestTo(emptyClips, counter).immutable();
+            BlockPos clip = (emptyClips == null || emptyClips.isEmpty()) ? null : nearestTo(emptyClips, counter).immutable();
             // 该机器待接待的 walk-in 顾客
             List<LivingEntity> npcs = findWalkInNpcs(level, machine);
             if (npcs.isEmpty()) {
@@ -255,6 +285,8 @@ public class WalkInGreetBridge {
             return;
         }
         TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_GREET, level);
+        // 名额预留：成功派发，本tick该机器占用名额 +1
+        assignedByMachine.merge(best.machine.asLong(), 1, Integer::sum);
 
         BlockPos greetPos = greetStandPos(level, best.npc.blockPosition());
         maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(greetPos, MOVEMENT_SPEED, 1));

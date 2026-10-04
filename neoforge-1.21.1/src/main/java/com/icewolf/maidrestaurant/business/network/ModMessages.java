@@ -25,6 +25,27 @@ public class ModMessages {
                 });
             }
         );
-        System.out.println("[ModMessages] 网络包注册成功");
+        registrar.playToServer(
+            PlayerOrderSubmitPacket.TYPE,
+            PlayerOrderSubmitPacket.STREAM_CODEC,
+            (payload, context) -> {
+                context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                        payload.handle(serverPlayer);
+                    }
+                });
+            }
+        );
+        registrar.playToServer(
+            MenuRenamePacket.TYPE,
+            MenuRenamePacket.STREAM_CODEC,
+            (payload, context) -> {
+                context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                        payload.handle(serverPlayer);
+                    }
+                });
+            }
+        );
     }
 }

@@ -21,5 +21,13 @@ public class ModMessages {
             ScheduleBoardUpdatePacket::encode,
             ScheduleBoardUpdatePacket::decode,
             ScheduleBoardUpdatePacket::handle);
+        INSTANCE.registerMessage(id++, PlayerOrderSubmitPacket.class,
+            PlayerOrderSubmitPacket::encode,
+            PlayerOrderSubmitPacket::decode,
+            PlayerOrderSubmitPacket::handle);
+        INSTANCE.registerMessage(id++, MenuRenamePacket.class,
+            MenuRenamePacket::encode,
+            MenuRenamePacket::decode,
+            MenuRenamePacket::handle);
     }
 }

@@ -1,22 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraftforge.common.MinecraftForge
- *  net.minecraftforge.event.TickEvent$Phase
- *  net.minecraftforge.event.TickEvent$ServerTickEvent
- *  net.minecraftforge.event.server.ServerStartingEvent
- *  net.minecraftforge.event.server.ServerStoppingEvent
- *  net.minecraftforge.eventbus.api.IEventBus
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.ModLoadingContext
- *  net.minecraftforge.fml.common.Mod
- *  net.minecraftforge.fml.config.IConfigSpec
- *  net.minecraftforge.fml.config.ModConfig$Type
- *  net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
- *  org.apache.logging.log4j.LogManager
- *  org.apache.logging.log4j.Logger
- */
 package com.icewolf.maidrestaurant.business;
 
 import com.icewolf.maidrestaurant.business.config.BatchCookingConfig;

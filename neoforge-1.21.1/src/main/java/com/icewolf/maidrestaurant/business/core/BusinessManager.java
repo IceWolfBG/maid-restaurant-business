@@ -1,11 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraft.core.BlockPos
- *  net.minecraft.server.MinecraftServer
- *  net.minecraft.server.level.ServerLevel
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
@@ -120,6 +112,14 @@ public class BusinessManager {
             catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.error("Business tick error in dimension {}", level.dimension().location(), t);
             }
+        }
+
+        // 玩家订单托管：仅在主世界统一扫描超时、退款（全局唯一，不按维度重复）
+        try {
+            ServerLevel ow = server.overworld();
+            PlayerOrderEscrow.get(server).tick(server, ow);
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("Escrow tick error", t);
         }
     }
 

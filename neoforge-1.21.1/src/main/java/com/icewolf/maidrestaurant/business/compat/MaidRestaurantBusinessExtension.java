@@ -1,13 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.api.ILittleMaid
- *  com.github.tartaricacid.touhoulittlemaid.api.LittleMaidExtension
- *  com.github.tartaricacid.touhoulittlemaid.api.bauble.IMaidBauble
- *  com.github.tartaricacid.touhoulittlemaid.item.bauble.BaubleManager
- *  net.minecraft.world.item.Item
- */
 package com.icewolf.maidrestaurant.business.compat;
 
 import com.github.tartaricacid.touhoulittlemaid.api.ILittleMaid;

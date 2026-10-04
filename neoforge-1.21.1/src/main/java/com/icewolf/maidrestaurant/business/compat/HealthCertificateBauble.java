@@ -1,12 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.api.bauble.IMaidBauble
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  net.minecraft.world.entity.Entity
- *  net.minecraft.world.item.ItemStack
- */
 package com.icewolf.maidrestaurant.business.compat;
 
 import com.github.tartaricacid.touhoulittlemaid.api.bauble.IMaidBauble;

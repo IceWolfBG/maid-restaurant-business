@@ -1,20 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraft.core.BlockPos
- *  net.minecraft.server.level.ServerChunkCache
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.level.ChunkPos
- *  net.minecraft.world.level.LevelAccessor
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraft.world.level.chunk.ChunkAccess
- *  net.minecraft.world.level.chunk.LevelChunk
- *  net.neoforged.neoforge.event.level.ChunkEvent$Load
- *  net.neoforged.neoforge.event.level.ChunkEvent$Unload
- *  net.neoforged.bus.api.SubscribeEvent
- *  net.neoforged.fml.common.Mod$EventBusSubscriber
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import java.lang.reflect.Field;

@@ -1,19 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  com.mastermarisa.maid_restaurant.api.request.IRequest
- *  com.mastermarisa.maid_restaurant.maid.task.cook.MaidCookingTask
- *  com.mastermarisa.maid_restaurant.request.CookRequest
- *  com.mastermarisa.maid_restaurant.request.ServeRequest
- *  com.mastermarisa.maid_restaurant.utils.RequestManager
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.entity.Entity
- *  org.spongepowered.asm.mixin.Mixin
- *  org.spongepowered.asm.mixin.injection.At
- *  org.spongepowered.asm.mixin.injection.Redirect
- */
 package com.icewolf.maidrestaurant.business.mixin;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;

@@ -1,20 +1,7 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraft.world.item.BlockItem
- *  net.minecraft.world.item.Item
- *  net.minecraft.world.item.Item$Properties
- *  net.minecraft.world.level.block.Block
- *  net.minecraftforge.eventbus.api.IEventBus
- *  net.minecraftforge.registries.DeferredRegister
- *  net.minecraftforge.registries.ForgeRegistries
- *  net.minecraftforge.registries.IForgeRegistry
- *  net.minecraftforge.registries.RegistryObject
- */
 package com.icewolf.maidrestaurant.business.registry;
 
 import com.icewolf.maidrestaurant.business.item.HealthCertificateItem;
+import com.icewolf.maidrestaurant.business.item.RestaurantMenuItem;
 import com.icewolf.maidrestaurant.business.item.TooltipBlockItem;
 import com.icewolf.maidrestaurant.business.registry.ModBlocks;
 import net.minecraft.world.item.BlockItem;
@@ -34,6 +21,7 @@ public class ModItems {
     public static final RegistryObject<Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new TooltipBlockItem((Block)ModBlocks.JIUHU_STATION.get(), new Item.Properties(), "tooltips.maid_restaurant_business.jiuhu_station"));
     public static final RegistryObject<Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new TooltipBlockItem((Block)ModBlocks.ORDER_CLIP.get(), new Item.Properties(), "tooltips.maid_restaurant_business.order_clip"));
     public static final RegistryObject<Item> RENDER_PROXY = ITEMS.register("render_proxy", () -> new Item(new Item.Properties()));
+    public static final RegistryObject<Item> RESTAURANT_MENU = ITEMS.register("restaurant_menu", () -> new RestaurantMenuItem(new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);

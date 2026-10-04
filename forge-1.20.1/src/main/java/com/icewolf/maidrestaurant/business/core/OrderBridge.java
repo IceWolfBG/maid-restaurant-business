@@ -1,38 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity
- *  cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity
- *  cn.breezeth.ordertocook.registry.ModItems
- *  com.mastermarisa.maid_restaurant.utils.MaidStorages
- *  com.mojang.authlib.GameProfile
- *  net.minecraft.ChatFormatting
- *  net.minecraft.core.BlockPos
- *  net.minecraft.core.NonNullList
- *  net.minecraft.core.Vec3i
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.network.chat.Component
- *  net.minecraft.network.chat.MutableComponent
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.server.level.ServerPlayer
- *  net.minecraft.sounds.SoundEvents
- *  net.minecraft.sounds.SoundSource
- *  net.minecraft.world.entity.decoration.ItemFrame
- *  net.minecraft.world.entity.player.Player
- *  net.minecraft.world.item.Item
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.level.Level
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraft.world.phys.AABB
- *  net.minecraftforge.common.capabilities.ForgeCapabilities
- *  net.minecraftforge.common.util.FakePlayer
- *  net.minecraftforge.common.util.FakePlayerFactory
- *  net.minecraftforge.common.util.LazyOptional
- *  net.minecraftforge.items.IItemHandler
- *  net.minecraftforge.items.ItemHandlerHelper
- *  net.minecraftforge.registries.ForgeRegistries
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;

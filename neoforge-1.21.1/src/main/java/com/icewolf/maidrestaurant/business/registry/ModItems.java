@@ -1,6 +1,7 @@
 package com.icewolf.maidrestaurant.business.registry;
 
 import com.icewolf.maidrestaurant.business.item.HealthCertificateItem;
+import com.icewolf.maidrestaurant.business.item.RestaurantMenuItem;
 import com.icewolf.maidrestaurant.business.item.TooltipBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -18,6 +19,7 @@ public class ModItems {
     public static final DeferredHolder<Item, Item> JIUHU_STATION = ITEMS.register("jiuhu_station", () -> new TooltipBlockItem(ModBlocks.JIUHU_STATION.get(), new Item.Properties(), "tooltips.maid_restaurant_business.jiuhu_station"));
     public static final DeferredHolder<Item, Item> ORDER_CLIP = ITEMS.register("order_clip", () -> new TooltipBlockItem(ModBlocks.ORDER_CLIP.get(), new Item.Properties(), "tooltips.maid_restaurant_business.order_clip"));
     public static final DeferredHolder<Item, Item> RENDER_PROXY = ITEMS.register("render_proxy", () -> new Item(new Item.Properties()));
+    public static final DeferredHolder<Item, Item> RESTAURANT_MENU = ITEMS.register("restaurant_menu", () -> new RestaurantMenuItem(new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);

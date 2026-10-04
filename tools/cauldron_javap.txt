@@ -1,0 +1,857 @@
+﻿Compiled from "CauldronInteraction.java"
+public interface net.minecraft.core.cauldron.CauldronInteraction {
+  public static final java.util.Map<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction> f_175606_;
+
+  public static final java.util.Map<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction> f_175607_;
+
+  public static final java.util.Map<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction> f_175608_;
+
+  public static final java.util.Map<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction> f_175609_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175610_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175611_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175612_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175613_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175614_;
+
+  public static final net.minecraft.core.cauldron.CauldronInteraction f_175615_;
+
+  public static it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction> m_175617_();
+    Code:
+       0: new           #27                 // class it/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap
+       3: dup
+       4: invokespecial #31                 // Method it/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap."<init>":()V
+       7: invokedynamic #619,  0            // InvokeDynamic #17:accept:()Ljava/util/function/Consumer;
+      12: invokestatic  #624                // Method net/minecraft/Util.m_137469_:(Ljava/lang/Object;Ljava/util/function/Consumer;)Ljava/lang/Object;
+      15: checkcast     #27                 // class it/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap
+      18: areturn
+
+  public abstract net.minecraft.world.InteractionResult m_175710_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+
+  public static void m_175649_();
+    Code:
+       0: getstatic     #629                // Field f_175606_:Ljava/util/Map;
+       3: invokestatic  #632                // InterfaceMethod m_175647_:(Ljava/util/Map;)V
+       6: getstatic     #629                // Field f_175606_:Ljava/util/Map;
+       9: getstatic     #638                // Field net/minecraft/world/item/Items.f_42589_:Lnet/minecraft/world/item/Item;
+      12: invokedynamic #646,  0            // InvokeDynamic #18:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      17: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      22: pop
+      23: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      26: invokestatic  #632                // InterfaceMethod m_175647_:(Ljava/util/Map;)V
+      29: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      32: getstatic     #651                // Field net/minecraft/world/item/Items.f_42446_:Lnet/minecraft/world/item/Item;
+      35: invokedynamic #656,  0            // InvokeDynamic #19:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      40: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      45: pop
+      46: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      49: getstatic     #659                // Field net/minecraft/world/item/Items.f_42590_:Lnet/minecraft/world/item/Item;
+      52: invokedynamic #664,  0            // InvokeDynamic #20:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      57: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      62: pop
+      63: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      66: getstatic     #638                // Field net/minecraft/world/item/Items.f_42589_:Lnet/minecraft/world/item/Item;
+      69: invokedynamic #669,  0            // InvokeDynamic #21:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      74: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      79: pop
+      80: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      83: getstatic     #672                // Field net/minecraft/world/item/Items.f_42463_:Lnet/minecraft/world/item/Item;
+      86: getstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      89: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      94: pop
+      95: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+      98: getstatic     #677                // Field net/minecraft/world/item/Items.f_42462_:Lnet/minecraft/world/item/Item;
+     101: getstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     104: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     109: pop
+     110: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     113: getstatic     #680                // Field net/minecraft/world/item/Items.f_42408_:Lnet/minecraft/world/item/Item;
+     116: getstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     119: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     124: pop
+     125: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     128: getstatic     #683                // Field net/minecraft/world/item/Items.f_42407_:Lnet/minecraft/world/item/Item;
+     131: getstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     134: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     139: pop
+     140: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     143: getstatic     #686                // Field net/minecraft/world/item/Items.f_42654_:Lnet/minecraft/world/item/Item;
+     146: getstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     149: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     154: pop
+     155: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     158: getstatic     #689                // Field net/minecraft/world/item/Items.f_42660_:Lnet/minecraft/world/item/Item;
+     161: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     164: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     169: pop
+     170: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     173: getstatic     #694                // Field net/minecraft/world/item/Items.f_42667_:Lnet/minecraft/world/item/Item;
+     176: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     179: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     184: pop
+     185: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     188: getstatic     #697                // Field net/minecraft/world/item/Items.f_42728_:Lnet/minecraft/world/item/Item;
+     191: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     194: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     199: pop
+     200: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     203: getstatic     #700                // Field net/minecraft/world/item/Items.f_42671_:Lnet/minecraft/world/item/Item;
+     206: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     209: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     214: pop
+     215: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     218: getstatic     #703                // Field net/minecraft/world/item/Items.f_42672_:Lnet/minecraft/world/item/Item;
+     221: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     224: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     229: pop
+     230: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     233: getstatic     #706                // Field net/minecraft/world/item/Items.f_42669_:Lnet/minecraft/world/item/Item;
+     236: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     239: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     244: pop
+     245: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     248: getstatic     #709                // Field net/minecraft/world/item/Items.f_42673_:Lnet/minecraft/world/item/Item;
+     251: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     254: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     259: pop
+     260: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     263: getstatic     #712                // Field net/minecraft/world/item/Items.f_42663_:Lnet/minecraft/world/item/Item;
+     266: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     269: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     274: pop
+     275: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     278: getstatic     #715                // Field net/minecraft/world/item/Items.f_42668_:Lnet/minecraft/world/item/Item;
+     281: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     284: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     289: pop
+     290: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     293: getstatic     #718                // Field net/minecraft/world/item/Items.f_42665_:Lnet/minecraft/world/item/Item;
+     296: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     299: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     304: pop
+     305: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     308: getstatic     #721                // Field net/minecraft/world/item/Items.f_42662_:Lnet/minecraft/world/item/Item;
+     311: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     314: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     319: pop
+     320: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     323: getstatic     #724                // Field net/minecraft/world/item/Items.f_42661_:Lnet/minecraft/world/item/Item;
+     326: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     329: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     334: pop
+     335: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     338: getstatic     #727                // Field net/minecraft/world/item/Items.f_42666_:Lnet/minecraft/world/item/Item;
+     341: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     344: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     349: pop
+     350: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     353: getstatic     #730                // Field net/minecraft/world/item/Items.f_42670_:Lnet/minecraft/world/item/Item;
+     356: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     359: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     364: pop
+     365: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     368: getstatic     #733                // Field net/minecraft/world/item/Items.f_42727_:Lnet/minecraft/world/item/Item;
+     371: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     374: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     379: pop
+     380: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     383: getstatic     #736                // Field net/minecraft/world/item/Items.f_42664_:Lnet/minecraft/world/item/Item;
+     386: getstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     389: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     394: pop
+     395: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     398: getstatic     #739                // Field net/minecraft/world/item/Items.f_42266_:Lnet/minecraft/world/item/Item;
+     401: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     404: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     409: pop
+     410: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     413: getstatic     #744                // Field net/minecraft/world/item/Items.f_42273_:Lnet/minecraft/world/item/Item;
+     416: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     419: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     424: pop
+     425: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     428: getstatic     #747                // Field net/minecraft/world/item/Items.f_42229_:Lnet/minecraft/world/item/Item;
+     431: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     434: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     439: pop
+     440: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     443: getstatic     #750                // Field net/minecraft/world/item/Items.f_42225_:Lnet/minecraft/world/item/Item;
+     446: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     449: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     454: pop
+     455: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     458: getstatic     #753                // Field net/minecraft/world/item/Items.f_42226_:Lnet/minecraft/world/item/Item;
+     461: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     464: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     469: pop
+     470: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     473: getstatic     #756                // Field net/minecraft/world/item/Items.f_42275_:Lnet/minecraft/world/item/Item;
+     476: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     479: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     484: pop
+     485: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     488: getstatic     #759                // Field net/minecraft/world/item/Items.f_42227_:Lnet/minecraft/world/item/Item;
+     491: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     494: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     499: pop
+     500: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     503: getstatic     #762                // Field net/minecraft/world/item/Items.f_42269_:Lnet/minecraft/world/item/Item;
+     506: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     509: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     514: pop
+     515: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     518: getstatic     #765                // Field net/minecraft/world/item/Items.f_42274_:Lnet/minecraft/world/item/Item;
+     521: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     524: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     529: pop
+     530: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     533: getstatic     #768                // Field net/minecraft/world/item/Items.f_42271_:Lnet/minecraft/world/item/Item;
+     536: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     539: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     544: pop
+     545: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     548: getstatic     #771                // Field net/minecraft/world/item/Items.f_42268_:Lnet/minecraft/world/item/Item;
+     551: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     554: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     559: pop
+     560: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     563: getstatic     #774                // Field net/minecraft/world/item/Items.f_42267_:Lnet/minecraft/world/item/Item;
+     566: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     569: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     574: pop
+     575: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     578: getstatic     #777                // Field net/minecraft/world/item/Items.f_42272_:Lnet/minecraft/world/item/Item;
+     581: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     584: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     589: pop
+     590: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     593: getstatic     #780                // Field net/minecraft/world/item/Items.f_42224_:Lnet/minecraft/world/item/Item;
+     596: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     599: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     604: pop
+     605: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     608: getstatic     #783                // Field net/minecraft/world/item/Items.f_42228_:Lnet/minecraft/world/item/Item;
+     611: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     614: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     619: pop
+     620: getstatic     #648                // Field f_175607_:Ljava/util/Map;
+     623: getstatic     #786                // Field net/minecraft/world/item/Items.f_42270_:Lnet/minecraft/world/item/Item;
+     626: getstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+     629: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     634: pop
+     635: getstatic     #788                // Field f_175608_:Ljava/util/Map;
+     638: getstatic     #651                // Field net/minecraft/world/item/Items.f_42446_:Lnet/minecraft/world/item/Item;
+     641: invokedynamic #793,  0            // InvokeDynamic #22:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+     646: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     651: pop
+     652: getstatic     #788                // Field f_175608_:Ljava/util/Map;
+     655: invokestatic  #632                // InterfaceMethod m_175647_:(Ljava/util/Map;)V
+     658: getstatic     #795                // Field f_175609_:Ljava/util/Map;
+     661: getstatic     #651                // Field net/minecraft/world/item/Items.f_42446_:Lnet/minecraft/world/item/Item;
+     664: invokedynamic #800,  0            // InvokeDynamic #23:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+     669: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     674: pop
+     675: getstatic     #795                // Field f_175609_:Ljava/util/Map;
+     678: invokestatic  #632                // InterfaceMethod m_175647_:(Ljava/util/Map;)V
+     681: return
+
+  public static void m_175647_(java.util.Map<net.minecraft.world.item.Item, net.minecraft.core.cauldron.CauldronInteraction>);
+    Code:
+       0: aload_0
+       1: getstatic     #804                // Field net/minecraft/world/item/Items.f_42448_:Lnet/minecraft/world/item/Item;
+       4: getstatic     #806                // Field f_175611_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+       7: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      12: pop
+      13: aload_0
+      14: getstatic     #809                // Field net/minecraft/world/item/Items.f_42447_:Lnet/minecraft/world/item/Item;
+      17: getstatic     #811                // Field f_175610_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      20: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      25: pop
+      26: aload_0
+      27: getstatic     #814                // Field net/minecraft/world/item/Items.f_151055_:Lnet/minecraft/world/item/Item;
+      30: getstatic     #816                // Field f_175612_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      33: invokeinterface #81,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      38: pop
+      39: return
+
+  public static net.minecraft.world.InteractionResult m_175635_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack, net.minecraft.world.item.ItemStack, java.util.function.Predicate<net.minecraft.world.level.block.state.BlockState>, net.minecraft.sounds.SoundEvent);
+    Code:
+       0: aload         7
+       2: aload_0
+       3: invokeinterface #256,  2          // InterfaceMethod java/util/function/Predicate.test:(Ljava/lang/Object;)Z
+       8: ifne          15
+      11: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      14: areturn
+      15: aload_1
+      16: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      19: ifne          96
+      22: aload         5
+      24: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+      27: astore        9
+      29: aload_3
+      30: aload         4
+      32: aload         5
+      34: aload_3
+      35: aload         6
+      37: invokestatic  #851                // Method net/minecraft/world/item/ItemUtils.m_41813_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/ItemStack;
+      40: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      43: aload_3
+      44: getstatic     #861                // Field net/minecraft/stats/Stats.f_12944_:Lnet/minecraft/resources/ResourceLocation;
+      47: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      50: aload_3
+      51: getstatic     #869                // Field net/minecraft/stats/Stats.f_12982_:Lnet/minecraft/stats/StatType;
+      54: aload         9
+      56: invokevirtual #875                // Method net/minecraft/stats/StatType.m_12902_:(Ljava/lang/Object;)Lnet/minecraft/stats/Stat;
+      59: invokevirtual #879                // Method net/minecraft/world/entity/player/Player.m_36246_:(Lnet/minecraft/stats/Stat;)V
+      62: aload_1
+      63: aload_2
+      64: getstatic     #885                // Field net/minecraft/world/level/block/Blocks.f_50256_:Lnet/minecraft/world/level/block/Block;
+      67: invokevirtual #891                // Method net/minecraft/world/level/block/Block.m_49966_:()Lnet/minecraft/world/level/block/state/BlockState;
+      70: invokevirtual #895                // Method net/minecraft/world/level/Level.m_46597_:(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z
+      73: pop
+      74: aload_1
+      75: aconst_null
+      76: aload_2
+      77: aload         8
+      79: getstatic     #901                // Field net/minecraft/sounds/SoundSource.BLOCKS:Lnet/minecraft/sounds/SoundSource;
+      82: fconst_1
+      83: fconst_1
+      84: invokevirtual #905                // Method net/minecraft/world/level/Level.m_5594_:(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V
+      87: aload_1
+      88: aconst_null
+      89: getstatic     #911                // Field net/minecraft/world/level/gameevent/GameEvent.f_157816_:Lnet/minecraft/world/level/gameevent/GameEvent;
+      92: aload_2
+      93: invokevirtual #915                // Method net/minecraft/world/level/Level.m_142346_:(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/gameevent/GameEvent;Lnet/minecraft/core/BlockPos;)V
+      96: aload_1
+      97: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+     100: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+     103: areturn
+
+  public static net.minecraft.world.InteractionResult m_175618_(net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack, net.minecraft.world.level.block.state.BlockState, net.minecraft.sounds.SoundEvent);
+    Code:
+       0: aload_0
+       1: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+       4: ifne          84
+       7: aload         4
+       9: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+      12: astore        7
+      14: aload_2
+      15: aload_3
+      16: aload         4
+      18: aload_2
+      19: new           #836                // class net/minecraft/world/item/ItemStack
+      22: dup
+      23: getstatic     #651                // Field net/minecraft/world/item/Items.f_42446_:Lnet/minecraft/world/item/Item;
+      26: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      29: invokestatic  #851                // Method net/minecraft/world/item/ItemUtils.m_41813_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/ItemStack;
+      32: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      35: aload_2
+      36: getstatic     #944                // Field net/minecraft/stats/Stats.f_12943_:Lnet/minecraft/resources/ResourceLocation;
+      39: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      42: aload_2
+      43: getstatic     #869                // Field net/minecraft/stats/Stats.f_12982_:Lnet/minecraft/stats/StatType;
+      46: aload         7
+      48: invokevirtual #875                // Method net/minecraft/stats/StatType.m_12902_:(Ljava/lang/Object;)Lnet/minecraft/stats/Stat;
+      51: invokevirtual #879                // Method net/minecraft/world/entity/player/Player.m_36246_:(Lnet/minecraft/stats/Stat;)V
+      54: aload_0
+      55: aload_1
+      56: aload         5
+      58: invokevirtual #895                // Method net/minecraft/world/level/Level.m_46597_:(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z
+      61: pop
+      62: aload_0
+      63: aconst_null
+      64: aload_1
+      65: aload         6
+      67: getstatic     #901                // Field net/minecraft/sounds/SoundSource.BLOCKS:Lnet/minecraft/sounds/SoundSource;
+      70: fconst_1
+      71: fconst_1
+      72: invokevirtual #905                // Method net/minecraft/world/level/Level.m_5594_:(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V
+      75: aload_0
+      76: aconst_null
+      77: getstatic     #947                // Field net/minecraft/world/level/gameevent/GameEvent.f_157769_:Lnet/minecraft/world/level/gameevent/GameEvent;
+      80: aload_1
+      81: invokevirtual #915                // Method net/minecraft/world/level/Level.m_142346_:(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/gameevent/GameEvent;Lnet/minecraft/core/BlockPos;)V
+      84: aload_0
+      85: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      88: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+      91: areturn
+
+  private static net.minecraft.world.InteractionResult m_175628_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload         5
+       2: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+       5: astore        6
+       7: aload         6
+       9: instanceof    #957                // class net/minecraft/world/item/DyeableLeatherItem
+      12: ifne          19
+      15: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      18: areturn
+      19: aload         6
+      21: checkcast     #957                // class net/minecraft/world/item/DyeableLeatherItem
+      24: astore        7
+      26: aload         7
+      28: aload         5
+      30: invokeinterface #965,  2          // InterfaceMethod net/minecraft/world/item/DyeableLeatherItem.m_41113_:(Lnet/minecraft/world/item/ItemStack;)Z
+      35: ifne          42
+      38: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      41: areturn
+      42: aload_1
+      43: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      46: ifne          71
+      49: aload         7
+      51: aload         5
+      53: invokeinterface #969,  2          // InterfaceMethod net/minecraft/world/item/DyeableLeatherItem.m_41123_:(Lnet/minecraft/world/item/ItemStack;)V
+      58: aload_3
+      59: getstatic     #972                // Field net/minecraft/stats/Stats.f_12945_:Lnet/minecraft/resources/ResourceLocation;
+      62: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      65: aload_0
+      66: aload_1
+      67: aload_2
+      68: invokestatic  #978                // Method net/minecraft/world/level/block/LayeredCauldronBlock.m_153559_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V
+      71: aload_1
+      72: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      75: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+      78: areturn
+
+  private static net.minecraft.world.InteractionResult m_278529_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload         5
+       2: invokestatic  #992                // Method net/minecraft/world/level/block/entity/BannerBlockEntity.m_58504_:(Lnet/minecraft/world/item/ItemStack;)I
+       5: ifgt          12
+       8: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      11: areturn
+      12: aload_1
+      13: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      16: ifne          110
+      19: aload         5
+      21: iconst_1
+      22: invokevirtual #996                // Method net/minecraft/world/item/ItemStack.m_255036_:(I)Lnet/minecraft/world/item/ItemStack;
+      25: astore        6
+      27: aload         6
+      29: invokestatic  #999                // Method net/minecraft/world/level/block/entity/BannerBlockEntity.m_58509_:(Lnet/minecraft/world/item/ItemStack;)V
+      32: aload_3
+      33: invokevirtual #1003               // Method net/minecraft/world/entity/player/Player.m_150110_:()Lnet/minecraft/world/entity/player/Abilities;
+      36: getfield      #1008               // Field net/minecraft/world/entity/player/Abilities.f_35937_:Z
+      39: ifne          48
+      42: aload         5
+      44: iconst_1
+      45: invokevirtual #1011               // Method net/minecraft/world/item/ItemStack.m_41774_:(I)V
+      48: aload         5
+      50: invokevirtual #1014               // Method net/minecraft/world/item/ItemStack.m_41619_:()Z
+      53: ifeq          67
+      56: aload_3
+      57: aload         4
+      59: aload         6
+      61: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      64: goto          97
+      67: aload_3
+      68: invokevirtual #1018               // Method net/minecraft/world/entity/player/Player.m_150109_:()Lnet/minecraft/world/entity/player/Inventory;
+      71: aload         6
+      73: invokevirtual #1023               // Method net/minecraft/world/entity/player/Inventory.m_36054_:(Lnet/minecraft/world/item/ItemStack;)Z
+      76: ifeq          89
+      79: aload_3
+      80: getfield      #1027               // Field net/minecraft/world/entity/player/Player.f_36095_:Lnet/minecraft/world/inventory/InventoryMenu;
+      83: invokevirtual #1032               // Method net/minecraft/world/inventory/InventoryMenu.m_150429_:()V
+      86: goto          97
+      89: aload_3
+      90: aload         6
+      92: iconst_0
+      93: invokevirtual #1036               // Method net/minecraft/world/entity/player/Player.m_36176_:(Lnet/minecraft/world/item/ItemStack;Z)Lnet/minecraft/world/entity/item/ItemEntity;
+      96: pop
+      97: aload_3
+      98: getstatic     #1039               // Field net/minecraft/stats/Stats.f_12946_:Lnet/minecraft/resources/ResourceLocation;
+     101: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+     104: aload_0
+     105: aload_1
+     106: aload_2
+     107: invokestatic  #978                // Method net/minecraft/world/level/block/LayeredCauldronBlock.m_153559_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V
+     110: aload_1
+     111: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+     114: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+     117: areturn
+
+  private static net.minecraft.world.InteractionResult m_175661_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload         5
+       2: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+       5: invokestatic  #1050               // Method net/minecraft/world/level/block/Block.m_49814_:(Lnet/minecraft/world/item/Item;)Lnet/minecraft/world/level/block/Block;
+       8: astore        6
+      10: aload         6
+      12: instanceof    #1052               // class net/minecraft/world/level/block/ShulkerBoxBlock
+      15: ifne          22
+      18: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      21: areturn
+      22: aload_1
+      23: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      26: ifne          83
+      29: new           #836                // class net/minecraft/world/item/ItemStack
+      32: dup
+      33: getstatic     #1055               // Field net/minecraft/world/level/block/Blocks.f_50456_:Lnet/minecraft/world/level/block/Block;
+      36: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      39: astore        7
+      41: aload         5
+      43: invokevirtual #1058               // Method net/minecraft/world/item/ItemStack.m_41782_:()Z
+      46: ifeq          62
+      49: aload         7
+      51: aload         5
+      53: invokevirtual #1062               // Method net/minecraft/world/item/ItemStack.m_41783_:()Lnet/minecraft/nbt/CompoundTag;
+      56: invokevirtual #1067               // Method net/minecraft/nbt/CompoundTag.m_6426_:()Lnet/minecraft/nbt/CompoundTag;
+      59: invokevirtual #1071               // Method net/minecraft/world/item/ItemStack.m_41751_:(Lnet/minecraft/nbt/CompoundTag;)V
+      62: aload_3
+      63: aload         4
+      65: aload         7
+      67: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      70: aload_3
+      71: getstatic     #1074               // Field net/minecraft/stats/Stats.f_12947_:Lnet/minecraft/resources/ResourceLocation;
+      74: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      77: aload_0
+      78: aload_1
+      79: aload_2
+      80: invokestatic  #978                // Method net/minecraft/world/level/block/LayeredCauldronBlock.m_153559_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V
+      83: aload_1
+      84: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      87: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+      90: areturn
+
+  private static net.minecraft.world.InteractionResult m_175668_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_1
+       1: aload_2
+       2: aload_3
+       3: aload         4
+       5: aload         5
+       7: getstatic     #1084               // Field net/minecraft/world/level/block/Blocks.f_152478_:Lnet/minecraft/world/level/block/Block;
+      10: invokevirtual #891                // Method net/minecraft/world/level/block/Block.m_49966_:()Lnet/minecraft/world/level/block/state/BlockState;
+      13: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+      16: iconst_3
+      17: invokestatic  #475                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      20: invokevirtual #1092               // Method net/minecraft/world/level/block/state/BlockState.m_61124_:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/lang/Comparable;)Ljava/lang/Object;
+      23: checkcast     #959                // class net/minecraft/world/level/block/state/BlockState
+      26: getstatic     #1097               // Field net/minecraft/sounds/SoundEvents.f_144076_:Lnet/minecraft/sounds/SoundEvent;
+      29: invokestatic  #1099               // InterfaceMethod m_175618_:(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      32: areturn
+
+  private static net.minecraft.world.InteractionResult m_175675_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_1
+       1: aload_2
+       2: aload_3
+       3: aload         4
+       5: aload         5
+       7: getstatic     #1109               // Field net/minecraft/world/level/block/Blocks.f_152477_:Lnet/minecraft/world/level/block/Block;
+      10: invokevirtual #891                // Method net/minecraft/world/level/block/Block.m_49966_:()Lnet/minecraft/world/level/block/state/BlockState;
+      13: getstatic     #1112               // Field net/minecraft/sounds/SoundEvents.f_11780_:Lnet/minecraft/sounds/SoundEvent;
+      16: invokestatic  #1099               // InterfaceMethod m_175618_:(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      19: areturn
+
+  private static net.minecraft.world.InteractionResult m_175682_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_1
+       1: aload_2
+       2: aload_3
+       3: aload         4
+       5: aload         5
+       7: getstatic     #1122               // Field net/minecraft/world/level/block/Blocks.f_152476_:Lnet/minecraft/world/level/block/Block;
+      10: invokevirtual #891                // Method net/minecraft/world/level/block/Block.m_49966_:()Lnet/minecraft/world/level/block/state/BlockState;
+      13: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+      16: iconst_3
+      17: invokestatic  #475                // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      20: invokevirtual #1092               // Method net/minecraft/world/level/block/state/BlockState.m_61124_:(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/lang/Comparable;)Ljava/lang/Object;
+      23: checkcast     #959                // class net/minecraft/world/level/block/state/BlockState
+      26: getstatic     #1125               // Field net/minecraft/sounds/SoundEvents.f_11778_:Lnet/minecraft/sounds/SoundEvent;
+      29: invokestatic  #1099               // InterfaceMethod m_175618_:(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      32: areturn
+
+  private static net.minecraft.world.InteractionResult m_175689_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: aload_2
+       3: aload_3
+       4: aload         4
+       6: aload         5
+       8: new           #836                // class net/minecraft/world/item/ItemStack
+      11: dup
+      12: getstatic     #814                // Field net/minecraft/world/item/Items.f_151055_:Lnet/minecraft/world/item/Item;
+      15: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      18: invokedynamic #1138,  0           // InvokeDynamic #24:test:()Ljava/util/function/Predicate;
+      23: getstatic     #1141               // Field net/minecraft/sounds/SoundEvents.f_144089_:Lnet/minecraft/sounds/SoundEvent;
+      26: invokestatic  #1143               // InterfaceMethod m_175635_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;Ljava/util/function/Predicate;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      29: areturn
+
+  private static boolean m_175626_(net.minecraft.world.level.block.state.BlockState);
+    Code:
+       0: aload_0
+       1: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+       4: invokevirtual #1153               // Method net/minecraft/world/level/block/state/BlockState.m_61143_:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+       7: checkcast     #471                // class java/lang/Integer
+      10: invokevirtual #518                // Method java/lang/Integer.intValue:()I
+      13: iconst_3
+      14: if_icmpne     21
+      17: iconst_1
+      18: goto          22
+      21: iconst_0
+      22: ireturn
+
+  private static net.minecraft.world.InteractionResult m_175696_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: aload_2
+       3: aload_3
+       4: aload         4
+       6: aload         5
+       8: new           #836                // class net/minecraft/world/item/ItemStack
+      11: dup
+      12: getstatic     #804                // Field net/minecraft/world/item/Items.f_42448_:Lnet/minecraft/world/item/Item;
+      15: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      18: invokedynamic #1159,  0           // InvokeDynamic #25:test:()Ljava/util/function/Predicate;
+      23: getstatic     #1162               // Field net/minecraft/sounds/SoundEvents.f_11783_:Lnet/minecraft/sounds/SoundEvent;
+      26: invokestatic  #1143               // InterfaceMethod m_175635_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;Ljava/util/function/Predicate;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      29: areturn
+
+  private static boolean m_175650_(net.minecraft.world.level.block.state.BlockState);
+    Code:
+       0: iconst_1
+       1: ireturn
+
+  private static net.minecraft.world.InteractionResult m_175703_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_0
+       1: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+       4: invokevirtual #1153               // Method net/minecraft/world/level/block/state/BlockState.m_61143_:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+       7: checkcast     #471                // class java/lang/Integer
+      10: invokevirtual #518                // Method java/lang/Integer.intValue:()I
+      13: iconst_3
+      14: if_icmpeq     28
+      17: aload         5
+      19: invokestatic  #1175               // Method net/minecraft/world/item/alchemy/PotionUtils.m_43579_:(Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/alchemy/Potion;
+      22: getstatic     #1181               // Field net/minecraft/world/item/alchemy/Potions.f_43599_:Lnet/minecraft/world/item/alchemy/Potion;
+      25: if_acmpeq     32
+      28: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      31: areturn
+      32: aload_1
+      33: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      36: ifne          122
+      39: aload_3
+      40: aload         4
+      42: aload         5
+      44: aload_3
+      45: new           #836                // class net/minecraft/world/item/ItemStack
+      48: dup
+      49: getstatic     #659                // Field net/minecraft/world/item/Items.f_42590_:Lnet/minecraft/world/item/Item;
+      52: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      55: invokestatic  #851                // Method net/minecraft/world/item/ItemUtils.m_41813_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/ItemStack;
+      58: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      61: aload_3
+      62: getstatic     #861                // Field net/minecraft/stats/Stats.f_12944_:Lnet/minecraft/resources/ResourceLocation;
+      65: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      68: aload_3
+      69: getstatic     #869                // Field net/minecraft/stats/Stats.f_12982_:Lnet/minecraft/stats/StatType;
+      72: aload         5
+      74: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+      77: invokevirtual #875                // Method net/minecraft/stats/StatType.m_12902_:(Ljava/lang/Object;)Lnet/minecraft/stats/Stat;
+      80: invokevirtual #879                // Method net/minecraft/world/entity/player/Player.m_36246_:(Lnet/minecraft/stats/Stat;)V
+      83: aload_1
+      84: aload_2
+      85: aload_0
+      86: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+      89: invokevirtual #1185               // Method net/minecraft/world/level/block/state/BlockState.m_61122_:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Object;
+      92: checkcast     #959                // class net/minecraft/world/level/block/state/BlockState
+      95: invokevirtual #895                // Method net/minecraft/world/level/Level.m_46597_:(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z
+      98: pop
+      99: aload_1
+     100: aconst_null
+     101: aload_2
+     102: getstatic     #1188               // Field net/minecraft/sounds/SoundEvents.f_11769_:Lnet/minecraft/sounds/SoundEvent;
+     105: getstatic     #901                // Field net/minecraft/sounds/SoundSource.BLOCKS:Lnet/minecraft/sounds/SoundSource;
+     108: fconst_1
+     109: fconst_1
+     110: invokevirtual #905                // Method net/minecraft/world/level/Level.m_5594_:(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V
+     113: aload_1
+     114: aconst_null
+     115: getstatic     #947                // Field net/minecraft/world/level/gameevent/GameEvent.f_157769_:Lnet/minecraft/world/level/gameevent/GameEvent;
+     118: aload_2
+     119: invokevirtual #915                // Method net/minecraft/world/level/Level.m_142346_:(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/gameevent/GameEvent;Lnet/minecraft/core/BlockPos;)V
+     122: aload_1
+     123: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+     126: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+     129: areturn
+
+  private static net.minecraft.world.InteractionResult m_175717_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_1
+       1: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+       4: ifne          90
+       7: aload         5
+       9: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+      12: astore        6
+      14: aload_3
+      15: aload         4
+      17: aload         5
+      19: aload_3
+      20: new           #836                // class net/minecraft/world/item/ItemStack
+      23: dup
+      24: getstatic     #638                // Field net/minecraft/world/item/Items.f_42589_:Lnet/minecraft/world/item/Item;
+      27: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      30: getstatic     #1181               // Field net/minecraft/world/item/alchemy/Potions.f_43599_:Lnet/minecraft/world/item/alchemy/Potion;
+      33: invokestatic  #1198               // Method net/minecraft/world/item/alchemy/PotionUtils.m_43549_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/alchemy/Potion;)Lnet/minecraft/world/item/ItemStack;
+      36: invokestatic  #851                // Method net/minecraft/world/item/ItemUtils.m_41813_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/ItemStack;
+      39: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      42: aload_3
+      43: getstatic     #861                // Field net/minecraft/stats/Stats.f_12944_:Lnet/minecraft/resources/ResourceLocation;
+      46: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      49: aload_3
+      50: getstatic     #869                // Field net/minecraft/stats/Stats.f_12982_:Lnet/minecraft/stats/StatType;
+      53: aload         6
+      55: invokevirtual #875                // Method net/minecraft/stats/StatType.m_12902_:(Ljava/lang/Object;)Lnet/minecraft/stats/Stat;
+      58: invokevirtual #879                // Method net/minecraft/world/entity/player/Player.m_36246_:(Lnet/minecraft/stats/Stat;)V
+      61: aload_0
+      62: aload_1
+      63: aload_2
+      64: invokestatic  #978                // Method net/minecraft/world/level/block/LayeredCauldronBlock.m_153559_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V
+      67: aload_1
+      68: aconst_null
+      69: aload_2
+      70: getstatic     #1201               // Field net/minecraft/sounds/SoundEvents.f_11770_:Lnet/minecraft/sounds/SoundEvent;
+      73: getstatic     #901                // Field net/minecraft/sounds/SoundSource.BLOCKS:Lnet/minecraft/sounds/SoundSource;
+      76: fconst_1
+      77: fconst_1
+      78: invokevirtual #905                // Method net/minecraft/world/level/Level.m_5594_:(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V
+      81: aload_1
+      82: aconst_null
+      83: getstatic     #911                // Field net/minecraft/world/level/gameevent/GameEvent.f_157816_:Lnet/minecraft/world/level/gameevent/GameEvent;
+      86: aload_2
+      87: invokevirtual #915                // Method net/minecraft/world/level/Level.m_142346_:(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/gameevent/GameEvent;Lnet/minecraft/core/BlockPos;)V
+      90: aload_1
+      91: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      94: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+      97: areturn
+
+  private static net.minecraft.world.InteractionResult m_175724_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: aload_2
+       3: aload_3
+       4: aload         4
+       6: aload         5
+       8: new           #836                // class net/minecraft/world/item/ItemStack
+      11: dup
+      12: getstatic     #809                // Field net/minecraft/world/item/Items.f_42447_:Lnet/minecraft/world/item/Item;
+      15: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      18: invokedynamic #1212,  0           // InvokeDynamic #26:test:()Ljava/util/function/Predicate;
+      23: getstatic     #1215               // Field net/minecraft/sounds/SoundEvents.f_11781_:Lnet/minecraft/sounds/SoundEvent;
+      26: invokestatic  #1143               // InterfaceMethod m_175635_:(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;Ljava/util/function/Predicate;Lnet/minecraft/sounds/SoundEvent;)Lnet/minecraft/world/InteractionResult;
+      29: areturn
+
+  private static boolean m_175659_(net.minecraft.world.level.block.state.BlockState);
+    Code:
+       0: aload_0
+       1: getstatic     #1088               // Field net/minecraft/world/level/block/LayeredCauldronBlock.f_153514_:Lnet/minecraft/world/level/block/state/properties/IntegerProperty;
+       4: invokevirtual #1153               // Method net/minecraft/world/level/block/state/BlockState.m_61143_:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+       7: checkcast     #471                // class java/lang/Integer
+      10: invokevirtual #518                // Method java/lang/Integer.intValue:()I
+      13: iconst_3
+      14: if_icmpne     21
+      17: iconst_1
+      18: goto          22
+      21: iconst_0
+      22: ireturn
+
+  private static net.minecraft.world.InteractionResult m_175731_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: aload         5
+       2: invokestatic  #1175               // Method net/minecraft/world/item/alchemy/PotionUtils.m_43579_:(Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/alchemy/Potion;
+       5: getstatic     #1181               // Field net/minecraft/world/item/alchemy/Potions.f_43599_:Lnet/minecraft/world/item/alchemy/Potion;
+       8: if_acmpeq     15
+      11: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+      14: areturn
+      15: aload_1
+      16: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+      19: ifne          105
+      22: aload         5
+      24: invokevirtual #845                // Method net/minecraft/world/item/ItemStack.m_41720_:()Lnet/minecraft/world/item/Item;
+      27: astore        6
+      29: aload_3
+      30: aload         4
+      32: aload         5
+      34: aload_3
+      35: new           #836                // class net/minecraft/world/item/ItemStack
+      38: dup
+      39: getstatic     #659                // Field net/minecraft/world/item/Items.f_42590_:Lnet/minecraft/world/item/Item;
+      42: invokespecial #941                // Method net/minecraft/world/item/ItemStack."<init>":(Lnet/minecraft/world/level/ItemLike;)V
+      45: invokestatic  #851                // Method net/minecraft/world/item/ItemUtils.m_41813_:(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/world/item/ItemStack;
+      48: invokevirtual #855                // Method net/minecraft/world/entity/player/Player.m_21008_:(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V
+      51: aload_3
+      52: getstatic     #861                // Field net/minecraft/stats/Stats.f_12944_:Lnet/minecraft/resources/ResourceLocation;
+      55: invokevirtual #865                // Method net/minecraft/world/entity/player/Player.m_36220_:(Lnet/minecraft/resources/ResourceLocation;)V
+      58: aload_3
+      59: getstatic     #869                // Field net/minecraft/stats/Stats.f_12982_:Lnet/minecraft/stats/StatType;
+      62: aload         6
+      64: invokevirtual #875                // Method net/minecraft/stats/StatType.m_12902_:(Ljava/lang/Object;)Lnet/minecraft/stats/Stat;
+      67: invokevirtual #879                // Method net/minecraft/world/entity/player/Player.m_36246_:(Lnet/minecraft/stats/Stat;)V
+      70: aload_1
+      71: aload_2
+      72: getstatic     #1122               // Field net/minecraft/world/level/block/Blocks.f_152476_:Lnet/minecraft/world/level/block/Block;
+      75: invokevirtual #891                // Method net/minecraft/world/level/block/Block.m_49966_:()Lnet/minecraft/world/level/block/state/BlockState;
+      78: invokevirtual #895                // Method net/minecraft/world/level/Level.m_46597_:(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z
+      81: pop
+      82: aload_1
+      83: aconst_null
+      84: aload_2
+      85: getstatic     #1188               // Field net/minecraft/sounds/SoundEvents.f_11769_:Lnet/minecraft/sounds/SoundEvent;
+      88: getstatic     #901                // Field net/minecraft/sounds/SoundSource.BLOCKS:Lnet/minecraft/sounds/SoundSource;
+      91: fconst_1
+      92: fconst_1
+      93: invokevirtual #905                // Method net/minecraft/world/level/Level.m_5594_:(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V
+      96: aload_1
+      97: aconst_null
+      98: getstatic     #947                // Field net/minecraft/world/level/gameevent/GameEvent.f_157769_:Lnet/minecraft/world/level/gameevent/GameEvent;
+     101: aload_2
+     102: invokevirtual #915                // Method net/minecraft/world/level/Level.m_142346_:(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/gameevent/GameEvent;Lnet/minecraft/core/BlockPos;)V
+     105: aload_1
+     106: getfield      #841                // Field net/minecraft/world/level/Level.f_46443_:Z
+     109: invokestatic  #919                // Method net/minecraft/world/InteractionResult.m_19078_:(Z)Lnet/minecraft/world/InteractionResult;
+     112: areturn
+
+  private static void m_175645_(it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap);
+    Code:
+       0: aload_0
+       1: invokedynamic #1233,  0           // InvokeDynamic #27:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+       6: invokevirtual #562                // Method it/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap.defaultReturnValue:(Ljava/lang/Object;)V
+       9: return
+
+  private static net.minecraft.world.InteractionResult m_175738_(net.minecraft.world.level.block.state.BlockState, net.minecraft.world.level.Level, net.minecraft.core.BlockPos, net.minecraft.world.entity.player.Player, net.minecraft.world.InteractionHand, net.minecraft.world.item.ItemStack);
+    Code:
+       0: getstatic     #826                // Field net/minecraft/world/InteractionResult.PASS:Lnet/minecraft/world/InteractionResult;
+       3: areturn
+
+  static {};
+    Code:
+       0: invokestatic  #1242               // InterfaceMethod m_175617_:()Lit/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap;
+       3: putstatic     #629                // Field f_175606_:Ljava/util/Map;
+       6: invokestatic  #1242               // InterfaceMethod m_175617_:()Lit/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap;
+       9: putstatic     #648                // Field f_175607_:Ljava/util/Map;
+      12: invokestatic  #1242               // InterfaceMethod m_175617_:()Lit/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap;
+      15: putstatic     #788                // Field f_175608_:Ljava/util/Map;
+      18: invokestatic  #1242               // InterfaceMethod m_175617_:()Lit/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap;
+      21: putstatic     #795                // Field f_175609_:Ljava/util/Map;
+      24: invokedynamic #1246,  0           // InvokeDynamic #28:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      29: putstatic     #811                // Field f_175610_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      32: invokedynamic #1250,  0           // InvokeDynamic #29:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      37: putstatic     #806                // Field f_175611_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      40: invokedynamic #1254,  0           // InvokeDynamic #30:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      45: putstatic     #816                // Field f_175612_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      48: invokedynamic #1258,  0           // InvokeDynamic #31:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      53: putstatic     #741                // Field f_175613_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      56: invokedynamic #1262,  0           // InvokeDynamic #32:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      61: putstatic     #691                // Field f_175614_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      64: invokedynamic #1266,  0           // InvokeDynamic #33:m_175710_:()Lnet/minecraft/core/cauldron/CauldronInteraction;
+      69: putstatic     #674                // Field f_175615_:Lnet/minecraft/core/cauldron/CauldronInteraction;
+      72: return
+}

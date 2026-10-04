@@ -1,20 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  javax.annotation.Nullable
- *  net.minecraft.core.BlockPos
- *  net.minecraft.core.NonNullList
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.nbt.Tag
- *  net.minecraft.network.chat.Component
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraft.world.level.block.entity.BlockEntityType
- *  net.minecraft.world.level.block.state.BlockState
- *  net.minecraftforge.items.IItemHandler
- *  net.minecraftforge.items.ItemStackHandler
- */
 package com.icewolf.maidrestaurant.business.block.entity;
 
 import com.icewolf.maidrestaurant.business.core.MaidUtils;

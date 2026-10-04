@@ -35,6 +35,7 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -53,9 +54,11 @@ public class DeliveryBridge {
     private static final String TAG_PLATE_PICKUP_RETRY = "BusinessDeliverPlateRetry";
     private static final String TAG_IS_TAKEOUT = "BusinessDeliverIsTakeout";
     private static final String TAG_STATION_POS = "BusinessDeliverStationPos";
+    private static final String TAG_PLAYER_POS = "BusinessDeliverPlayerPos";
     private static final int STAGE_GO_TO_COUNTER = 0;
     private static final int STAGE_GO_TO_CUSTOMER = 1;
     private static final int STAGE_GO_TO_STATION = 2;
+    private static final int STAGE_GO_TO_PLAYER_POS = 3;
     private static final float MOVEMENT_SPEED = 0.4f;
     private static final double CLOSE_ENOUGH_DIST = 2.0;
     private static final int MAX_PLATE_PICKUP_RETRY = 3;
@@ -146,13 +149,15 @@ public class DeliveryBridge {
 
         // 外卖袋（速递站方向）优先，其次堂食餐盘
         List<BlockPos> bagCounters = TaskManager.getInstance().getCachedCountersWithTakeoutBags(level);
+        List<BlockPos> plateCounters0 = TaskManager.getInstance().getCachedCountersWithPlates(level);
         if (bagCounters != null) {
             for (BlockPos counterPos : bagCounters) {
                 if (idleWaiters.isEmpty()) break;
                 if (TaskManager.getInstance().hasTaskAt(counterPos, TaskManager.TYPE_DELIVERY)) continue;
                 EntityMaid maid = nearestWaiter(counterPos, idleWaiters);
                 if (maid == null) break;
-                if (startDeliveryTo(level, maid, counterPos, manager, true)) {
+                boolean started = startDeliveryTo(level, maid, counterPos, manager, true);
+                if (started) {
                     idleWaiters.remove(maid);
                 }
             }
@@ -197,23 +202,41 @@ public class DeliveryBridge {
                 break;
             }
         }
-        if (!hasActivatedMachine) return false;
+        if (!hasActivatedMachine) {
+            return false;
+        }
 
         BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
-        if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) return false;
-        if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) return false;
+        if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) {
+            return false;
+        }
+        if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) {
+            return false;
+        }
 
         int boundCount = machinePos != null ? MaidUtils.getWorkerCountForMachine(machinePos) : 0;
-        if (boundCount > 0 && !MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) return false;
+        if (boundCount > 0 && !MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) {
+            return false;
+        }
 
-        if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) return false;
+        if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) {
+            return false;
+        }
 
-        // 外卖袋操作台附近必须有酒狐速递站
-        if (isTakeout) {
+        // 判断台上方是否玩家包裹：玩家包裹直接送到玩家送餐点，不需要酒狐速递站
+        boolean isPlayerPkg = false;
+        BlockEntity aboveBe0 = level.getBlockEntity(counterPos.above());
+        if (aboveBe0 != null) {
+            ItemStack aboveBag = getTakeoutBagStack(aboveBe0);
+            CompoundTag aboveTag = aboveBag.getTag();
+            isPlayerPkg = aboveTag != null && aboveTag.getBoolean(PlayerOrderManager.PLAYER_PACKAGE);
+        }
+
+        // 普通外卖袋操作台附近必须有酒狐速递站；玩家包裹不需要
+        if (isTakeout && !isPlayerPkg) {
             com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station =
                 com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, counterPos, 24);
             if (station == null) {
-                MaidRestaurantBusiness.LOGGER.warn("外卖配送: 操作台 {} 有外卖袋但附近没有速递站", counterPos);
                 return false;
             }
         }
@@ -283,6 +306,10 @@ public class DeliveryBridge {
                     if (plateTag != null && plateTag.contains("OrderId")) {
                         orderId = plateTag.getString("OrderId");
                     }
+                    if (plateTag != null && plateTag.getBoolean(PlayerOrderManager.PLAYER_PACKAGE)) {
+                        startGoToPlayerPos(data, maid, plateTag);
+                        return;
+                    }
                     LivingEntity customer = null;
                     if (!orderId.isEmpty()) {
                         customer = findCustomerByOrderId(level, counterPos, orderId);
@@ -301,6 +328,13 @@ public class DeliveryBridge {
                     // 没有餐盘，尝试拿取外卖袋
                     ItemStack takeoutBag = pickUpTakeoutBag(level, counterPos, maid);
                     if (!takeoutBag.isEmpty()) {
+                        // 玩家订单包裹：直接送到玩家送餐点，不进速递站
+                        CompoundTag bagTag0 = takeoutBag.getTag();
+                        if (bagTag0 != null && bagTag0.getBoolean(PlayerOrderManager.PLAYER_PACKAGE)) {
+                            data.putBoolean(TAG_IS_TAKEOUT, true);
+                            startGoToPlayerPos(data, maid, bagTag0);
+                            return;
+                        }
                         // 拿到外卖袋，查找附近的酒狐速递站
                         data.putBoolean(TAG_IS_TAKEOUT, true);
                         com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station = 
@@ -398,7 +432,68 @@ public class DeliveryBridge {
             } else {
                 maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(stationPos, (float)MOVEMENT_SPEED, 1));
             }
+        } else if (stage == STAGE_GO_TO_PLAYER_POS) {
+            // 玩家订单：前往买家选定的送餐点
+            if (!data.contains(TAG_PLAYER_POS)) {
+                // 数据异常：找到女仆身上的玩家包裹，按送达失败半退并掉落
+                CombinedInvWrapper pinv0 = maid.getAvailableInv(false);
+                int s0 = findPlayerPackageSlot(pinv0);
+                if (s0 >= 0) {
+                    ItemStack pkg0 = pinv0.extractItem(s0, Integer.MAX_VALUE, false);
+                    PlayerOrderManager.handleDeliveryFailure(level, pkg0, maid);
+                }
+                finishDelivery(maid, false);
+                return;
+            }
+            CompoundTag dp = data.getCompound(TAG_PLAYER_POS);
+            BlockPos target = new BlockPos(dp.getInt("x"), dp.getInt("y"), dp.getInt("z"));
+            double pdist = maid.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+            if (pdist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+                CombinedInvWrapper pinv = maid.getAvailableInv(false);
+                int slot = findPlayerPackageSlot(pinv);
+                if (slot < 0) {
+                    finishDelivery(maid, false);
+                    return;
+                }
+                ItemStack pkg = pinv.extractItem(slot, Integer.MAX_VALUE, false);
+                boolean ok = PlayerOrderManager.placePackageAt(level, pkg, target);
+                if (ok) {
+                    // 玩家订单不经过速递站，送达成功后在此补一次包装货架补皮革检查（与普通外卖放入速递站等价）
+                    BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
+                    manager.getActiveOrders().remove(counterPos);
+                    manager.getCounterToMachine().remove(counterPos);
+                    finishDelivery(maid, true);
+                    try {
+                        if (machinePos != null) RestockBridge.requestCheck(level, machinePos);
+                    } catch (Throwable t) {}
+                } else {
+                    // 送餐点被占 / 容器满：半退结算，失效包裹掉落到世界由玩家拾取
+                    PlayerOrderManager.handleDeliveryFailure(level, pkg, maid);
+                    finishDelivery(maid, false);
+                }
+            } else {
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(target, (float)MOVEMENT_SPEED, 1));
+            }
         }
+    }
+
+    private static void startGoToPlayerPos(CompoundTag data, EntityMaid maid, CompoundTag packageTag) {
+        CompoundTag dp = packageTag.getCompound(PlayerOrderManager.PLAYER_DELIVERY_POS);
+        data.put(TAG_PLAYER_POS, dp);
+        data.putInt(TAG_STAGE, STAGE_GO_TO_PLAYER_POS);
+        BlockPos target = new BlockPos(dp.getInt("x"), dp.getInt("y"), dp.getInt("z"));
+        maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(target, (float)MOVEMENT_SPEED, 1));
+    }
+
+    private static int findPlayerPackageSlot(CombinedInvWrapper inv) {
+        for (int i = 0; i < inv.getSlots(); i++) {
+            ItemStack s = inv.getStackInSlot(i);
+            CompoundTag t = s.getTag();
+            if (t != null && t.getBoolean(PlayerOrderManager.PLAYER_PACKAGE)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static void deliverToCustomer(ServerLevel level, EntityMaid maid, LivingEntity customer, BlockPos counterPos, BusinessManager manager) {
@@ -724,7 +819,7 @@ public class DeliveryBridge {
 
     /**
      * 好感度收益加成：根据女仆好感度等级给玩家额外金币
-     * 公共方法，供两个送餐系统（DeliveryBridge和MaidDeliverOrderTask）调用
+     * 公共方法，供 DeliveryBridge 统一配送系统调用
      */
     public static void applyFavorabilityBonus(ServerLevel level, EntityMaid maid, ItemStack plateStack, Player deliverPlayer) {
         try {

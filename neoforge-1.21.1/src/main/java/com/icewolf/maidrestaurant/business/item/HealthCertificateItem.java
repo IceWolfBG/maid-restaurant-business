@@ -1,28 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  javax.annotation.Nullable
- *  net.minecraft.ChatFormatting
- *  net.minecraft.core.BlockPos
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.network.chat.Component
- *  net.minecraft.world.InteractionHand
- *  net.minecraft.world.InteractionResult
- *  net.minecraft.world.entity.Entity
- *  net.minecraft.world.entity.LivingEntity
- *  net.minecraft.world.entity.player.Player
- *  net.minecraft.world.item.Item
- *  net.minecraft.world.item.Item$Properties
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.item.TooltipFlag
- *  net.minecraft.world.item.context.UseOnContext
- *  net.minecraft.world.level.Level
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.neoforged.api.distmarker.Dist
- *  net.neoforged.api.distmarker.OnlyIn
- */
 package com.icewolf.maidrestaurant.business.item;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;

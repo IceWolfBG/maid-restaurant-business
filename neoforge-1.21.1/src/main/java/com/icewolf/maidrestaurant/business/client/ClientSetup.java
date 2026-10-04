@@ -42,7 +42,7 @@ public class ClientSetup {
             registerMethod.invoke(null, ModMenuTypes.JIUHU_STATION.get(), jiuhuConstructor);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            com.icewolf.maidrestaurant.business.MaidRestaurantBusiness.LOGGER.error("客户端 Screen 注册失败", e);
         }
     }
 

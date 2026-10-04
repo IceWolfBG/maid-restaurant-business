@@ -7,7 +7,10 @@
     "MaidCookingTaskMixin",
     "StockpotCookTaskMixin",
     "TaskWaiterMixin",
-    "OrderMachineBlockEntityMixin"
+    "OrderMachineBlockEntityMixin",
+    "TakeoutBoxBlockEntityMixin",
+    "TakeoutBagItemMixin",
+    "FoodPlateItemMixin"
   ],
   "client": [],
   "server": [],

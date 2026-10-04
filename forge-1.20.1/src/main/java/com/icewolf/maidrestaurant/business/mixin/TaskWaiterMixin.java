@@ -1,17 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  com.google.common.collect.Lists
- *  com.mastermarisa.maid_restaurant.maid.task.TaskWaiter
- *  com.mojang.datafixers.util.Pair
- *  net.minecraft.world.entity.ai.behavior.BehaviorControl
- *  org.spongepowered.asm.mixin.Mixin
- *  org.spongepowered.asm.mixin.injection.At
- *  org.spongepowered.asm.mixin.injection.Inject
- *  org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
- */
 package com.icewolf.maidrestaurant.business.mixin;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;

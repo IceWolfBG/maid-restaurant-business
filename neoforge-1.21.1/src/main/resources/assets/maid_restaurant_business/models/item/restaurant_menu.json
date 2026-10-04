@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "maid_restaurant_business:item/restaurant_menu"
+  }
+}

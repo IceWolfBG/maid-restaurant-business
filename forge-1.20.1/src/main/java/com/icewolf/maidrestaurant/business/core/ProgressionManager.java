@@ -1,12 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity
- *  net.minecraft.core.BlockPos
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.level.block.entity.BlockEntity
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;

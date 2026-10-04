@@ -1,32 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  cn.breezeth.ordertocook.block.entity.DishwasherBlockEntity
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  com.mojang.authlib.GameProfile
- *  net.minecraft.core.BlockPos
- *  net.minecraft.resources.ResourceLocation
- *  net.minecraft.server.MinecraftServer
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.server.level.ServerPlayer
- *  net.minecraft.world.entity.Entity
- *  net.minecraft.world.entity.item.ItemEntity
- *  net.minecraft.world.entity.player.Player
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.level.Level
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraft.world.level.block.state.BlockState
- *  net.minecraft.world.level.block.state.properties.IntegerProperty
- *  net.minecraft.world.level.block.state.properties.Property
- *  net.minecraft.world.phys.AABB
- *  net.neoforged.neoforge.common.util.FakePlayer
- *  net.neoforged.neoforge.common.util.FakePlayerFactory
- *  net.neoforged.neoforge.items.IItemHandler
- *  net.neoforged.neoforge.items.ItemHandlerHelper
- *  net.neoforged.neoforge.registries.NeoNeoNeoForgeRegistries
- *  net.neoforged.neoforge.server.ServerLifecycleHooks
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.DishwasherBlockEntity;

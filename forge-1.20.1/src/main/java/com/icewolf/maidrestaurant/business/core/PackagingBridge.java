@@ -1,23 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  cn.breezeth.ordertocook.api.CountertopAutomationApi
- *  cn.breezeth.ordertocook.api.CountertopAutomationApi$Action
- *  cn.breezeth.ordertocook.api.CountertopAutomationApi$Result
- *  cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity
- *  cn.breezeth.ordertocook.registry.ModItems
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  net.minecraft.core.BlockPos
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.entity.Entity
- *  net.minecraft.world.item.Item
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.level.Level
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraftforge.items.IItemHandler
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;

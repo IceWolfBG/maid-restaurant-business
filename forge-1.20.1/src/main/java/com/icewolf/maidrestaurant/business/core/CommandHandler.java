@@ -1,20 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.mojang.brigadier.CommandDispatcher
- *  com.mojang.brigadier.arguments.ArgumentType
- *  com.mojang.brigadier.arguments.BoolArgumentType
- *  com.mojang.brigadier.arguments.IntegerArgumentType
- *  com.mojang.brigadier.builder.LiteralArgumentBuilder
- *  com.mojang.brigadier.context.CommandContext
- *  net.minecraft.commands.CommandSourceStack
- *  net.minecraft.commands.Commands
- *  net.minecraft.network.chat.Component
- *  net.minecraftforge.event.RegisterCommandsEvent
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import com.icewolf.maidrestaurant.business.config.AutomationConfig;

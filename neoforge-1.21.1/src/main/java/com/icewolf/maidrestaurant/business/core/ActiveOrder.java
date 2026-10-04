@@ -1,11 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraft.core.BlockPos
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.resources.ResourceLocation
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import java.util.Map;

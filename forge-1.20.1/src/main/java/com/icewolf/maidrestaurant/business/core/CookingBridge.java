@@ -1,32 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity
- *  cn.breezeth.ordertocook.registry.ModItems
- *  com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid
- *  com.mastermarisa.maid_restaurant.api.request.IRequest
- *  com.mastermarisa.maid_restaurant.request.CookRequest
- *  com.mastermarisa.maid_restaurant.utils.CookTasks
- *  com.mastermarisa.maid_restaurant.utils.MaidStorages
- *  com.mastermarisa.maid_restaurant.utils.RequestManager
- *  net.minecraft.core.BlockPos
- *  net.minecraft.core.Vec3i
- *  net.minecraft.nbt.CompoundTag
- *  net.minecraft.resources.ResourceLocation
- *  net.minecraft.server.level.ServerLevel
- *  net.minecraft.world.item.Item
- *  net.minecraft.world.item.ItemStack
- *  net.minecraft.world.item.crafting.Ingredient
- *  net.minecraft.world.item.crafting.Recipe
- *  net.minecraft.world.item.crafting.RecipeType
- *  net.minecraft.world.level.Level
- *  net.minecraft.world.level.block.entity.BlockEntity
- *  net.minecraft.world.phys.AABB
- *  net.minecraftforge.items.IItemHandler
- *  net.minecraftforge.items.ItemHandlerHelper
- *  net.minecraftforge.registries.ForgeRegistries
- */
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
@@ -104,7 +75,31 @@ public class CookingBridge {
     // 食材不足冷却机制
     private static final Map<Long, Long> insufficientIngredientsCooldown = new ConcurrentHashMap<>();
     private static final long INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS = 100L;
-    // ===== 挂单夹预烹饪（仅当该打单机24格内存在 OTC 冰箱时启用，成品全部进冰箱，不预定/绑定操作台）=====
+    // ===== 操作台缺食材转挂单夹的 Action Bar 反馈 =====
+    // 本轮（本tick）操作台因缺食材没发任务的暂存：machinePosLong -> 反馈（缺货操作台 + 最缺食材名 + 目标女仆）
+    private static final Map<Long, IngredientFeedback> pendingIngredientFeedback = new HashMap<>();
+    // Action Bar 同台冷却（12s），避免操作台/挂单夹之间反复横跳
+    private static final Map<Long, Long> clipSwitchActionBarCooldown = new ConcurrentHashMap<>();
+    private static final long CLIP_SWITCH_ACTION_BAR_COOLDOWN_TICKS = 240L; // 12s
+    private static final double ACTION_BAR_PLAYER_RANGE = 24.0;
+
+    private static final class IngredientFeedback {
+        final BlockPos counterPos;
+        final String missingName; // 可能为 null（不知具体缺哪种食材）
+        final UUID maidUUID;       // 挂单夹未接手时，用于补弹气泡的目标女仆
+        final boolean deviceBlocked; // true=因缺厨具/无空闲厨具无法发布
+        final String deviceText;     // 厨具显示名（deviceBlocked=true 时用）
+        IngredientFeedback(BlockPos counterPos, String missingName, UUID maidUUID) {
+            this(counterPos, missingName, maidUUID, false, null);
+        }
+        IngredientFeedback(BlockPos counterPos, String missingName, UUID maidUUID, boolean deviceBlocked, String deviceText) {
+            this.counterPos = counterPos;
+            this.missingName = missingName;
+            this.maidUUID = maidUUID;
+            this.deviceBlocked = deviceBlocked;
+            this.deviceText = deviceText;
+        }
+    }
     // 本tick挂单夹已发布产出缓存，key = machinePos.asLong() + "|" + itemId，value = 已发布产出量
     private static final Map<String, Integer> clipPublishedThisTick = new HashMap<>();
 
@@ -114,6 +109,7 @@ public class CookingBridge {
         if (currentTick != lastPublishedTick) {
             publishedThisTick.clear();
             clipPublishedThisTick.clear();
+            pendingIngredientFeedback.clear();
             lastPublishedTick = currentTick;
         }
         CookingBridge.tickPrepTasks(level);
@@ -155,17 +151,23 @@ public class CookingBridge {
 
         // 挂单夹预烹饪（操作台优先的兜底）：仅当该机器所有操作台本轮都没发布任务时，才提前烹饪挂单夹订单所需食物。
         // 挂单夹必须锚定一个操作台（女仆交互/成品落点），因此只遍历绑定了操作台的打单机。
+        Set<Long> clipTookOver = new HashSet<>();
         try {
             Set<Long> handledMachines = new HashSet<>();
             for (BlockPos machinePos : manager.getCounterToMachine().values()) {
                 if (machinePos == null || !handledMachines.add(machinePos.asLong())) continue;
                 if (machinePostedThisRound.contains(machinePos.asLong())) continue;
-                CookingBridge.processClipOrders(level, machinePos.immutable(), manager, currentTick);
+                if (CookingBridge.processClipOrders(level, machinePos.immutable(), manager, currentTick)) {
+                    clipTookOver.add(machinePos.asLong());
+                }
             }
         }
         catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("Error processing order clips", t);
         }
+
+        // 操作台缺食材反馈收尾：挂单夹接手 -> Action Bar（替代缺料气泡）；未接手 -> 补弹缺食材气泡
+        CookingBridge.resolveIngredientFeedback(level, clipTookOver, currentTick);
     }
 
 
@@ -1146,32 +1148,18 @@ public class CookingBridge {
             // 所有配方都失败，汇总弹一个气泡（厨具不够或食材不够）
             if (!postedThisItem && !idleCooks.isEmpty()) {
                 try {
-                    com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(idleCooks.get(0));
                     if (!missingDevices.isEmpty()) {
+                        // 缺厨具/无空闲厨具：先暂存、不立即弹气泡。本轮挂单夹接手 -> Action Bar 提示切换；
+                        // 挂单夹不接手 -> 由收尾补弹厨具气泡，保证反馈不丢失、不叠加。
                         String[] devArr = missingDevices.toArray(new String[0]);
                         String shown = devArr.length == 1 ? devArr[0] : devArr[0] + "、" + devArr[1];
-                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(idleCooks.get(0), shown);
+                        pendingIngredientFeedback.put(machinePos.asLong(),
+                            new IngredientFeedback(counterPos.immutable(), null, idleCooks.get(0).getUUID(), true, shown));
                     } else {
-                        String[] noIngredientsMessages;
-                        if (lastMissingIngredientsSnapshot.isEmpty()) {
-                            // 不知道具体缺哪种：用完整句，不再拼“缺少/需要”前缀，避免出现“需要食材不够了呢”这类病句
-                            noIngredientsMessages = new String[]{
-                                "食材不够了...(；′⌒`)",
-                                "好像还缺一些食材呢...",
-                                "这个...食材不太够呀",
-                                "食材好像还没备齐呢...(´；ω；`)"
-                            };
-                        } else {
-                            // 有具体食材名（名词列表）时才拼前缀
-                            String names = lastMissingIngredientsSnapshot;
-                            noIngredientsMessages = new String[]{
-                                "缺少" + names + "...(；′⌒`)",
-                                "需要" + names + "呢...",
-                                "这个..." + names + "不太够呀",
-                                names + "好像没有了呢...(´；ω；`)"
-                            };
-                        }
-                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(idleCooks.get(0), "chef_no_ingredients", noIngredientsMessages, 100);
+                        // 缺食材：同样先暂存、不立即弹气泡。本轮挂单夹接手 -> Action Bar；不接手 -> 收尾补弹食材气泡。
+                        String missingName = lastMissingIngredientsSnapshot.isEmpty() ? null : lastMissingIngredientsSnapshot;
+                        pendingIngredientFeedback.put(machinePos.asLong(),
+                            new IngredientFeedback(counterPos.immutable(), missingName, idleCooks.get(0).getUUID()));
                     }
                 } catch (Exception e) {}
             }
@@ -1379,19 +1367,19 @@ public class CookingBridge {
      * 处理一台激活打单机的挂单夹预烹饪（操作台优先的兜底）。
      * 前提：该机器24格内存在 OTC 冰箱（成品有共用落点）；挂单夹订单按剩余时间升序，每轮每机器最多发布1个烹饪任务。
      */
-    private static void processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
+    private static boolean processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
         try {
-            if (!AutomationConfig.autoPreCooking) return;
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return;
-            if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return;
-            if (!ProgressionManager.isAutoPreCookingUnlocked(level, machinePos)) return;
-            if (!OrderBridge.isActivated(level, machinePos)) return;
+            if (!AutomationConfig.autoPreCooking) return false;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return false;
+            if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return false;
+            if (!ProgressionManager.isAutoPreCookingUnlocked(level, machinePos)) return false;
+            if (!OrderBridge.isActivated(level, machinePos)) return false;
             Long cd = insufficientIngredientsCooldown.get(machinePos.asLong());
-            if (cd != null && currentTick < cd) return;
+            if (cd != null && currentTick < cd) return false;
             if (cd != null) insufficientIngredientsCooldown.remove(machinePos.asLong());
 
             List<BlockPos> clips = TaskManager.getInstance().getCachedClipsWithOrder(level, machinePos);
-            if (clips == null || clips.isEmpty()) return;
+            if (clips == null || clips.isEmpty()) return false;
 
             // 成品全部进冰箱：逐单选台时再校验“操作台 + 其24格内有冰箱”，此处不再固定单一锚点台
 
@@ -1409,7 +1397,7 @@ public class CookingBridge {
                 orders.add(new ClipOrder(clipPos.immutable(), nbt, expiry));
             }
             orders.sort(Comparator.comparingLong(o -> o.expiryTick));
-            if (orders.isEmpty()) return;
+            if (orders.isEmpty()) return false;
 
             boolean postedAny = false;
             for (ClipOrder co : orders) {
@@ -1422,9 +1410,101 @@ public class CookingBridge {
                 // 一个都没发出去：食材/厨具不足，按机器冷却，避免高频扫描
                 insufficientIngredientsCooldown.put(machinePos.asLong(), currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
             }
+            return postedAny;
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("挂单夹预烹饪 processClipOrders 出错 machine={}", machinePos, t);
+            return false;
         }
+    }
+
+    /**
+     * 收尾操作台缺食材反馈：挂单夹本轮接手发布任务 -> 发 Action Bar（替代缺料气泡）；未接手 -> 补弹原缺食材气泡。
+     */
+    private static void resolveIngredientFeedback(ServerLevel level, Set<Long> clipTookOver, long currentTick) {
+        try {
+            for (Map.Entry<Long, IngredientFeedback> entry : pendingIngredientFeedback.entrySet()) {
+                Long machineLong = entry.getKey();
+                IngredientFeedback fb = entry.getValue();
+                if (clipTookOver.contains(machineLong)) {
+                    // 挂单夹接手：Action Bar，同台 12s 冷却，避免反复横跳
+                    Long until = clipSwitchActionBarCooldown.get(machineLong);
+                    if (until != null && currentTick < until) continue;
+                    clipSwitchActionBarCooldown.put(machineLong, currentTick + CLIP_SWITCH_ACTION_BAR_COOLDOWN_TICKS);
+                    broadcastClipSwitchActionBar(level, fb);
+                } else {
+                    // 挂单夹未接手：按原因补弹对应气泡（厨具 / 食材），保证玩家仍知道操作台为何停摆
+                    EntityMaid maid = findMaidByUuid(level, fb.maidUUID);
+                    if (maid != null) {
+                        com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.onStateChanged(maid);
+                        if (fb.deviceBlocked) {
+                            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.chefNoDeviceAtAll(maid, fb.deviceText);
+                        } else {
+                            showIngredientBubble(maid, fb.missingName);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("操作台反馈收尾出错", t);
+        }
+    }
+
+    /**
+     * 对该维度内、离缺货操作台约 24 格的玩家发一次 Action Bar 字幕（屏幕中下方）。
+     */
+    private static void broadcastClipSwitchActionBar(ServerLevel level, IngredientFeedback fb) {
+        try {
+            net.minecraft.network.chat.Component msg = net.minecraft.network.chat.Component.literal(
+                "操作台订单暂时无法制作，正在预烹饪挂单夹订单"
+            ).withStyle(net.minecraft.ChatFormatting.GRAY);
+            net.minecraft.world.phys.Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(fb.counterPos);
+            double maxSqr = ACTION_BAR_PLAYER_RANGE * ACTION_BAR_PLAYER_RANGE;
+            for (net.minecraft.server.level.ServerPlayer player : level.players()) {
+                if (player.distanceToSqr(center) <= maxSqr) {
+                    player.displayClientMessage(msg, true);
+                }
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("缺货转挂单夹 Action Bar 发送出错", t);
+        }
+    }
+
+    /**
+     * 缺食材气泡（原 processCounter 缺食材逻辑抽出），供挂单夹未接手时补弹。
+     */
+    private static void showIngredientBubble(EntityMaid maid, String missingName) {
+        try {
+            String[] noIngredientsMessages;
+            if (missingName == null || missingName.isEmpty()) {
+                noIngredientsMessages = new String[]{
+                    "食材不够了...(；′⌒`)",
+                    "好像还缺一些食材呢...",
+                    "这个...食材不太够呀",
+                    "食材好像还没备齐呢...(´；ω；`)"
+                };
+            } else {
+                noIngredientsMessages = new String[]{
+                    "缺少" + missingName + "...(；′⌒`)",
+                    "需要" + missingName + "呢...",
+                    "这个..." + missingName + "不太够呀",
+                    missingName + "好像没有了呢...(´；ω；`)"
+                };
+            }
+            com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper.showCustomBubble(maid, "chef_no_ingredients", noIngredientsMessages, 100);
+        } catch (Exception e) {}
+    }
+
+    /** 按 UUID 从 TaskManager 缓存查找女仆。 */
+    private static EntityMaid findMaidByUuid(ServerLevel level, UUID uuid) {
+        try {
+            List<EntityMaid> maids = TaskManager.getInstance().getCachedMaids(level);
+            if (maids != null) {
+                for (EntityMaid maid : maids) {
+                    if (maid != null && uuid.equals(maid.getUUID())) return maid;
+                }
+            }
+        } catch (Throwable t) {}
+        return null;
     }
 
     /**

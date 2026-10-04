@@ -25,6 +25,7 @@ public class ModCreativeTabs {
                     output.accept(ModItems.SCHEDULE_BOARD.get());
                     output.accept(ModItems.JIUHU_STATION.get());
                     output.accept(ModItems.ORDER_CLIP.get());
+                    output.accept(ModItems.RESTAURANT_MENU.get());
                 })
                 .build()
         );
