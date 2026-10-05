@@ -112,7 +112,8 @@ public class RestaurantOrderScreen extends Screen {
         // 设置模式：只渲染全屏遮罩 + 设置子面板，不再渲染点单主界面，避免两层 GUI 重叠
         if (this.settingsMode) {
             renderSettingsOnly(graphics, mouseX, mouseY, partialTick);
-            super.render(graphics, mouseX, mouseY, partialTick);
+            // 1.21.1 的 Screen.render 开头会自动再调一次 renderBackground（含全屏模糊后处理），
+            // 面板已画完再调会把整帧（含面板）糊掉并叠加菜单底色，形成"虚影"——故不得调用 super.render
             return;
         }
 
@@ -254,7 +255,8 @@ public class RestaurantOrderScreen extends Screen {
             }
         }
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        // 本界面无任何注册 widget（按钮均自绘 + hits 判定），且 1.21.1 的 super.render 会重放
+        // renderBackground（全屏模糊 + 菜单底色）叠在面板之上，绝不调用
     }
 
     /** 设置模式专用：只渲染全屏遮罩 + 设置子面板（自定义点单名称 + 背景图），不渲染点单主界面。 */

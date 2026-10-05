@@ -112,7 +112,8 @@ public class MenuBgFilePickerScreen extends Screen {
                 cx + 40, by + 6, 0xFFE8D9B0);
         this.hits.add(new Hit("cancel", null, cx, by, 80, 20));
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        // 1.21.1 的 super.render 会重放 renderBackground（全屏模糊 + 菜单底色），把已画好的
+        // 面板糊成"虚影"——本界面无注册 widget，直接结束渲染
     }
 
     @Override
