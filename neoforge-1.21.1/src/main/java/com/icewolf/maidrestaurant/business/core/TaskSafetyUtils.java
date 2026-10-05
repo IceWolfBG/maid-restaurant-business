@@ -124,31 +124,29 @@ public class TaskSafetyUtils {
      */
     public static void resetMaidState(EntityMaid maid) {
         if (maid == null) return;
-        
+
+        // 先交给经营模组层面的彻底重置：清女仆餐厅的 TARGET_POS/TARGET_TYPE、BlockUsageManager 占块、
+        // 残留 ServeRequest/CookRequest，以及全部大脑记忆(WALK_TARGET/PATH/LOOK_TARGET 等)。
+        // 这能避免配送/任务结束后，女仆餐厅常驻大脑任务(MaidServeMealTask)从残留送餐请求把女仆重新设回 WALK_TARGET。
         try {
-            // 清除忙碌标记
-            MaidUtils.setOccupied(maid, false);
+            ServerLevel level = (ServerLevel) maid.level();
+            MaidUtils.resetMaidState(level, maid);
         } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.warn("任务安全: 重置女仆忙碌标记失败 {}", t.toString());
+            MaidRestaurantBusiness.LOGGER.warn("任务安全: MaidUtils.resetMaidState 失败，回退轻量清理 {}", t.toString());
+            try {
+                MaidUtils.setOccupied(maid, false);
+            } catch (Throwable ignore) {}
+            try {
+                maid.getNavigation().stop();
+            } catch (Throwable ignore) {}
+            try {
+                Brain<?> brain = maid.getBrain();
+                brain.eraseMemory(MemoryModuleType.WALK_TARGET);
+                brain.eraseMemory(MemoryModuleType.PATH);
+                brain.eraseMemory(MemoryModuleType.LOOK_TARGET);
+            } catch (Throwable ignore) {}
         }
-        
-        try {
-            // 停止导航
-            maid.getNavigation().stop();
-        } catch (Throwable t) {
-            MaidRestaurantBusiness.LOGGER.warn("任务安全: 停止女仆导航失败 {}", t.toString());
-        }
-        
-        try {
-            // 清除大脑记忆
-            Brain<?> brain = maid.getBrain();
-            brain.eraseMemory(MemoryModuleType.WALK_TARGET);
-            brain.eraseMemory(MemoryModuleType.PATH);
-            brain.eraseMemory(MemoryModuleType.LOOK_TARGET);
-        } catch (Throwable t) {
-            // 忽略
-        }
-        
+
         try {
             // 清除持久化数据中的任务标记
             CompoundTag data = maid.getPersistentData();

@@ -1,15 +1,12 @@
 package com.icewolf.maidrestaurant.business.core;
 
-import cn.breezeth.ordertocook.block.FoodPlateBlock;
-import cn.breezeth.ordertocook.block.TakeoutBagBlock;
-import cn.breezeth.ordertocook.block.entity.FoodPlateBlockEntity;
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
-import cn.breezeth.ordertocook.block.entity.TakeoutBagBlockEntity;
 import cn.breezeth.ordertocook.core.ModConstants;
 import cn.breezeth.ordertocook.core.OrderGenerator;
-import cn.breezeth.ordertocook.item.TakeoutBagItem;
-import cn.breezeth.ordertocook.registry.ModBlocks;
 import cn.breezeth.ordertocook.util.CoinUtils;
+import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import com.icewolf.maidrestaurant.business.core.OtcCompat;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
@@ -60,6 +57,7 @@ public final class PlayerOrderManager {
     public static final String M_DELIVERY_POS = "MenuDeliveryPos";
     public static final String M_MENU_LEVEL = "MenuLevel";
     public static final String M_MENU_TITLE = "MenuTitle";
+    public static final String M_MENU_BG = "MenuBg";
     // ===== 订单 / 包裹 NBT 键 =====
     public static final String PLAYER_ORDER = "PlayerOrder";
     public static final String PLAYER_PACKAGE = "PlayerPackage";
@@ -387,9 +385,15 @@ public final class PlayerOrderManager {
     }
 
     // ===== 4. 送达：在送餐点放成包裹方块（容器则入容器） =====
+    // 注意：香草纪元环境下 OTC 为 fabric 版，经信雅互联(Connector) 强制在 Forge 运行。运行时实际加载的
+    // TakeoutBagBlock / TakeoutBagBlockEntity 与 maid 模组处于不同类加载器、且字段类型与 Forge 编译期不一致
+    // （例如 ModBlocks.TAKEOUT_BAG 在 fabric 版是裸 Block 而非 RegistryObject，调用 .get() 会抛 NoSuchFieldError）。
+    // 因此此处严禁直接引用 OTC 的 ModBlocks / TakeoutBagBlock / TakeoutBagBlockEntity / TakeoutBagItem 等类型，
+    // 一律改为：从全局注册表按注册名取方块 + 反射写堆叠，确保跨 loader 安全（农场物语 Forge 版同样适用）。
     public static boolean placePackageAt(ServerLevel level, ItemStack pkg, BlockPos pos) {
         if (pkg.isEmpty()) return false;
 
+        // 1. 送餐点本身是容器（如箱子）：直接入容器（使用 Forge 能力，跨 loader 安全）
         BlockEntity be = level.getBlockEntity(pos);
         if (be != null) {
             IItemHandler handler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, null).orElse(null);
@@ -403,29 +407,70 @@ public final class PlayerOrderManager {
         }
 
         if (!level.getBlockState(pos).canBeReplaced()) return false;
-        boolean isBag = pkg.getItem() instanceof TakeoutBagItem;
-        if (isBag) {
-            BlockState bs = ModBlocks.TAKEOUT_BAG.get().defaultBlockState();
-            if (bs.hasProperty(TakeoutBagBlock.FACING)) {
-                bs = bs.setValue(TakeoutBagBlock.FACING, Direction.NORTH);
+
+        // 2. 判定是外卖袋还是餐盘：优先用我们自己的 NBT 标记，回退按注册名判定（不依赖 instanceof OTC 类型）
+        boolean isBag = isPlayerPackageOrBag(pkg);
+
+        Block block = getOtcBlock(pkg, isBag ? "takeout_bag" : "food_plate_display");
+        if (block == null || block == Blocks.AIR) {
+            MaidRestaurantBusiness.LOGGER.warn("送达: 找不到对应 OTC 方块(是外卖袋={}), 无法在 {} 放置包裹", isBag, pos);
+            return false;
+        }
+        BlockState bs = block.defaultBlockState();
+        // 朝向属性跨 loader 安全：从 BlockState 动态取属性，不引用 OTC 类静态字段
+        var facingProp = bs.getBlock().getStateDefinition().getProperty("facing");
+        if (facingProp instanceof net.minecraft.world.level.block.state.properties.DirectionProperty dp) {
+            bs = bs.setValue(dp, Direction.NORTH);
+        }
+        level.setBlock(pos, bs, Block.UPDATE_ALL);
+
+        // 3. 写入堆叠：用反射调用 setBagStack/setPlateStack（与 getTakeoutBagStack/clearTakeoutBag 一致），
+        //    避免 instanceof TakeoutBagBlockEntity（跨类加载器下类型判断不可靠）
+        BlockEntity placed = level.getBlockEntity(pos);
+        if (placed != null && setStackOnBlockEntityReflective(placed, pkg.copy())) {
+            pkg.shrink(1);
+            return true;
+        }
+        return false;
+    }
+
+    /** 跨 loader 安全：从全局注册表按注册名取 OTC 方块（namespace 与物品保持一致，默认 ordertocook）。 */
+    private static Block getOtcBlock(ItemStack pkg, String path) {
+        ResourceLocation itemRl = BuiltInRegistries.ITEM.getKey(pkg.getItem());
+        String namespace = itemRl.getNamespace();
+        if (namespace == null || namespace.isEmpty() || namespace.equals("minecraft")) {
+            namespace = "ordertocook";
+        }
+        return BuiltInRegistries.BLOCK.get(new ResourceLocation(namespace, path));
+    }
+
+    /** 判定 pkg 是否为玩家外卖袋（玩家订单包裹一定是外卖袋）。优先 NBT 标记，回退注册名。 */
+    private static boolean isPlayerPackageOrBag(ItemStack stack) {
+        CompoundTag t = stack.getTag();
+        if (t != null && (t.getBoolean(PLAYER_PACKAGE) || t.getBoolean(PLAYER_ORDER))) {
+            return true;
+        }
+        String name = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        return name.contains("takeout") || name.contains("bag");
+    }
+
+    /** 跨 loader 安全：用反射把堆叠写入 OTC 方块实体（setBagStack / setPlateStack / 兼容别名）。 */
+    private static boolean setStackOnBlockEntityReflective(BlockEntity be, ItemStack stack) {
+        if (be == null) return false;
+        try {
+            for (java.lang.reflect.Method m : be.getClass().getMethods()) {
+                String n = m.getName();
+                if (n.equals("setBagStack") || n.equals("setTakeoutStack")
+                        || n.equals("setItemStack") || n.equals("setPlateStack")) {
+                    Class<?>[] params = m.getParameterTypes();
+                    if (params.length == 1 && ItemStack.class.isAssignableFrom(params[0])) {
+                        m.invoke(be, stack);
+                        return true;
+                    }
+                }
             }
-            level.setBlock(pos, bs, Block.UPDATE_ALL);
-            if (level.getBlockEntity(pos) instanceof TakeoutBagBlockEntity bagBe) {
-                bagBe.setBagStack(pkg.copy());
-                pkg.shrink(1);
-                return true;
-            }
-        } else {
-            BlockState bs = ModBlocks.FOOD_PLATE_DISPLAY.get().defaultBlockState();
-            if (bs.hasProperty(FoodPlateBlock.FACING)) {
-                bs = bs.setValue(FoodPlateBlock.FACING, Direction.NORTH);
-            }
-            level.setBlock(pos, bs, Block.UPDATE_ALL);
-            if (level.getBlockEntity(pos) instanceof FoodPlateBlockEntity plateBe) {
-                plateBe.setPlateStack(pkg.copy());
-                pkg.shrink(1);
-                return true;
-            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.error("送达: 反射写入包裹堆叠失败", t);
         }
         return false;
     }

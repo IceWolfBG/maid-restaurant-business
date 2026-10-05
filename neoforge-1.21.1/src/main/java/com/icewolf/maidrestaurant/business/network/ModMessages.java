@@ -47,5 +47,43 @@ public class ModMessages {
                 });
             }
         );
+        registrar.playToClient(
+            MenuBgListPacket.TYPE,
+            MenuBgListPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(payload::handleClient)
+        );
+        registrar.playToServer(
+            MenuBgListRequestPacket.TYPE,
+            MenuBgListRequestPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof net.minecraft.server.level.ServerPlayer sp) payload.handle(sp);
+            })
+        );
+        registrar.playToServer(
+            MenuBgRequestPacket.TYPE,
+            MenuBgRequestPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof net.minecraft.server.level.ServerPlayer sp) payload.handle(sp);
+            })
+        );
+        registrar.playToClient(
+            MenuBgDataPacket.TYPE,
+            MenuBgDataPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(payload::handleClient)
+        );
+        registrar.playToServer(
+            MenuBgUploadPacket.TYPE,
+            MenuBgUploadPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof net.minecraft.server.level.ServerPlayer sp) payload.handle(sp);
+            })
+        );
+        registrar.playToServer(
+            MenuBgSetPacket.TYPE,
+            MenuBgSetPacket.STREAM_CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof net.minecraft.server.level.ServerPlayer sp) payload.handle(sp);
+            })
+        );
     }
 }

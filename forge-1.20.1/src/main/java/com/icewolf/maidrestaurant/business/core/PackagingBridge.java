@@ -1,7 +1,10 @@
 package com.icewolf.maidrestaurant.business.core;
 
 import cn.breezeth.ordertocook.block.entity.OrderMachineBlockEntity;
+import cn.breezeth.ordertocook.block.entity.TakeoutBagBlockEntity;
 import cn.breezeth.ordertocook.block.entity.TakeoutBoxBlockEntity;
+import cn.breezeth.ordertocook.core.ModConstants;
+import cn.breezeth.ordertocook.item.TakeoutBagItem;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
@@ -217,6 +220,9 @@ public class PackagingBridge {
             MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 订单没有NBT数据", counterPos);
             return false;
         }
+        // 打包前捕获玩家包裹信息（此时订单仍在槽0；外卖袋在部分 OTC 版本下不会自动带上这些自定义 NBT，
+        // 需在打包后显式补回，确保女仆配送能识别）。与 TakeoutBoxBlockEntityMixin 互为兜底。
+        CompoundTag playerPkg = capturePlayerPackage(nbt);
         // 确保订单NBT中有machineId，用于餐厅统计（解决"不知名餐厅"问题）
         ensureMachineIdInOrder(level, counterPos, nbt, manager);
         boolean isDelivery = nbt.getBoolean("Delivery");
@@ -228,8 +234,77 @@ public class PackagingBridge {
         boolean actual = PackagingCompat.execute(level, counterPos, isDelivery, null, false);
         if (!actual) {
             MaidRestaurantBusiness.LOGGER.warn("打包: 操作台 {} 实际打包执行失败（可能食材不足或玩家提前操作）", counterPos);
+            return false;
         }
-        return actual;
+        // 玩家包裹兜底补标：部分 OTC 版本（Fabric 版经信雅互联强制在 Forge 运行）打包时不会把订单上的自定义 NBT
+        // 过到外卖袋，导致 TakeoutBoxBlockEntityMixin 未能写入 PLAYER_PACKAGE 等字段，女仆无法识别配送。
+        // 这里在打包完成后显式把玩家包裹信息补写进外卖袋（对已被 Mixin 标过的袋子幂等跳过）。
+        stampPlayerBagIfNeeded(level, counterPos, playerPkg);
+        return true;
+    }
+
+    /** 打包前从订单 NBT 捕获玩家包裹信息（仅玩家订单非空）。 */
+    private static CompoundTag capturePlayerPackage(CompoundTag orderNbt) {
+        if (orderNbt == null || !orderNbt.getBoolean(PlayerOrderManager.PLAYER_ORDER)) {
+            return null;
+        }
+        CompoundTag pkg = new CompoundTag();
+        if (orderNbt.contains(ModConstants.NBT_FOOD_LIST)) {
+            pkg.put(ModConstants.NBT_FOOD_LIST, orderNbt.getCompound(ModConstants.NBT_FOOD_LIST).copy());
+        }
+        pkg.putBoolean(PlayerOrderManager.PLAYER_ORDER, true);
+        pkg.putBoolean(PlayerOrderManager.PLAYER_PACKAGE, true);
+        if (orderNbt.hasUUID(PlayerOrderManager.BUYER_UUID)) {
+            pkg.putUUID(PlayerOrderManager.BUYER_UUID, orderNbt.getUUID(PlayerOrderManager.BUYER_UUID));
+        }
+        if (orderNbt.contains(PlayerOrderManager.BUYER_NAME)) {
+            pkg.putString(PlayerOrderManager.BUYER_NAME, orderNbt.getString(PlayerOrderManager.BUYER_NAME));
+        }
+        if (orderNbt.contains(PlayerOrderManager.PLAYER_DELIVERY_POS)) {
+            pkg.put(PlayerOrderManager.PLAYER_DELIVERY_POS, orderNbt.getCompound(PlayerOrderManager.PLAYER_DELIVERY_POS).copy());
+        }
+        if (orderNbt.contains(ModConstants.NBT_ORDER_ID)) {
+            pkg.putString(ModConstants.NBT_ORDER_ID, orderNbt.getString(ModConstants.NBT_ORDER_ID));
+        }
+        if (orderNbt.contains(ModConstants.NBT_EXPIRY_TICK)) {
+            pkg.putLong(ModConstants.NBT_EXPIRY_TICK, orderNbt.getLong(ModConstants.NBT_EXPIRY_TICK));
+        }
+        if (orderNbt.contains(ModConstants.NBT_PRESTIGE)) {
+            pkg.putInt(ModConstants.NBT_PRESTIGE, orderNbt.getInt(ModConstants.NBT_PRESTIGE));
+        }
+        if (orderNbt.contains(ModConstants.NBT_MACHINE_POS)) {
+            pkg.putLong(ModConstants.NBT_MACHINE_POS, orderNbt.getLong(ModConstants.NBT_MACHINE_POS));
+        }
+        if (orderNbt.contains(ModConstants.NBT_MACHINE_DIM)) {
+            pkg.putString(ModConstants.NBT_MACHINE_DIM, orderNbt.getString(ModConstants.NBT_MACHINE_DIM));
+        }
+        return pkg;
+    }
+
+    /** 打包完成后，把玩家包裹信息补写进生成的外卖袋（若 Mixin 已标过则跳过）。 */
+    private static void stampPlayerBagIfNeeded(ServerLevel level, BlockPos counterPos, CompoundTag playerPkg) {
+        if (playerPkg == null) return;
+        BlockEntity aboveBe = level.getBlockEntity(counterPos.above());
+        if (!(aboveBe instanceof TakeoutBagBlockEntity bagBe)) return;
+        ItemStack bag = bagBe.getBagStack();
+        if (bag.isEmpty() || !(bag.getItem() instanceof TakeoutBagItem)) return;
+        CompoundTag bagNbt = bag.getTag();
+        if (bagNbt != null && bagNbt.getBoolean(PlayerOrderManager.PLAYER_PACKAGE)) {
+            return; // 已被 Mixin 标过，避免重复写入
+        }
+        CompoundTag merged = bagNbt != null ? bagNbt.copy() : new CompoundTag();
+        for (String key : playerPkg.getAllKeys()) {
+            merged.put(key, playerPkg.get(key));
+        }
+        bag.setTag(merged);
+        bagBe.setBagStack(bag);
+        // 通知托管：订单已进入已打包状态（与 Mixin 行为对齐）
+        try {
+            String oid = playerPkg.getString(ModConstants.NBT_ORDER_ID);
+            if (!oid.isEmpty()) {
+                PlayerOrderEscrow.get(level.getServer()).markPacked(oid);
+            }
+        } catch (Throwable ignored) {}
     }
 
     /**

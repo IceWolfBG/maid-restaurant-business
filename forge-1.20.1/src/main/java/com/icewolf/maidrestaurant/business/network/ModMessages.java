@@ -29,5 +29,29 @@ public class ModMessages {
             MenuRenamePacket::encode,
             MenuRenamePacket::decode,
             MenuRenamePacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgListPacket.class,
+            MenuBgListPacket::encode,
+            MenuBgListPacket::decode,
+            MenuBgListPacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgListRequestPacket.class,
+            MenuBgListRequestPacket::encode,
+            MenuBgListRequestPacket::decode,
+            MenuBgListRequestPacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgRequestPacket.class,
+            MenuBgRequestPacket::encode,
+            MenuBgRequestPacket::decode,
+            MenuBgRequestPacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgDataPacket.class,
+            MenuBgDataPacket::encode,
+            MenuBgDataPacket::decode,
+            MenuBgDataPacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgUploadPacket.class,
+            MenuBgUploadPacket::encode,
+            MenuBgUploadPacket::decode,
+            MenuBgUploadPacket::handle);
+        INSTANCE.registerMessage(id++, MenuBgSetPacket.class,
+            MenuBgSetPacket::encode,
+            MenuBgSetPacket::decode,
+            MenuBgSetPacket::handle);
     }
 }

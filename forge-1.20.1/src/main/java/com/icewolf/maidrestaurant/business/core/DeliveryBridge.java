@@ -61,6 +61,8 @@ public class DeliveryBridge {
     private static final int STAGE_GO_TO_PLAYER_POS = 3;
     private static final float MOVEMENT_SPEED = 0.4f;
     private static final double CLOSE_ENOUGH_DIST = 2.0;
+    // 玩家外卖袋放下距离：比交接点更宽松（站到送餐点方块顶面上会先吃掉 1 格垂直距离）
+    private static final double PLAYER_DELIVERY_PLACE_DIST = 3.0;
     private static final int MAX_PLATE_PICKUP_RETRY = 3;
 
     public static void tickDelivery(ServerLevel level, BusinessManager manager) {
@@ -447,8 +449,8 @@ public class DeliveryBridge {
             }
             CompoundTag dp = data.getCompound(TAG_PLAYER_POS);
             BlockPos target = new BlockPos(dp.getInt("x"), dp.getInt("y"), dp.getInt("z"));
-            double pdist = maid.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
-            if (pdist <= CLOSE_ENOUGH_DIST * CLOSE_ENOUGH_DIST) {
+            double pdist = maid.distanceToSqr(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
+            if (pdist <= PLAYER_DELIVERY_PLACE_DIST * PLAYER_DELIVERY_PLACE_DIST) {
                 CombinedInvWrapper pinv = maid.getAvailableInv(false);
                 int slot = findPlayerPackageSlot(pinv);
                 if (slot < 0) {

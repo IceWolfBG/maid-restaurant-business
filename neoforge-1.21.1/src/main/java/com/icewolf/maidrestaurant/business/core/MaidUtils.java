@@ -338,6 +338,32 @@ public class MaidUtils {
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.warn("resetMaidState: clear cook requests failed", t);
             }
+            // 7.5 清除女仆餐厅的残留送餐请求（ServeRequest），避免 MaitServeMealTask
+            //     在配送/任务结束后仍从残留请求把女仆重新设回 WALK_TARGET 走向配送点。
+            //     （BlockUsageManager 已在步骤6统一释放，这里对每条请求的目标位再做一次保险释放）
+            try {
+                Class<?> requestManager = Class.forName("com.mastermarisa.maid_restaurant.utils.RequestManager");
+                Class<?> serveRequestClass = Class.forName("com.mastermarisa.maid_restaurant.request.ServeRequest");
+                int serveType = serveRequestClass.getField("TYPE").getInt(null);
+                java.lang.reflect.Method pop = requestManager.getMethod("pop", EntityMaid.class, int.class);
+                Class<?> blockUsageManager = Class.forName("com.mastermarisa.maid_restaurant.utils.BlockUsageManager");
+                java.lang.reflect.Method removeUser = blockUsageManager.getMethod("removeUser", BlockPos.class, UUID.class);
+                UUID maidUUID = maid.getUUID();
+                Object req;
+                int guard = 0;
+                while (guard++ < 64 && (req = pop.invoke(null, maid, serveType)) != null) {
+                    try {
+                        java.util.List<?> targets = (java.util.List<?>) serveRequestClass.getField("targets").get(req);
+                        if (targets != null) {
+                            for (Object t : targets) {
+                                removeUser.invoke(null, (BlockPos) t, maidUUID);
+                            }
+                        }
+                    } catch (Throwable ignore) {}
+                }
+            } catch (Throwable t) {
+                MaidRestaurantBusiness.LOGGER.warn("resetMaidState: clear serve requests failed", t);
+            }
             // 8. 最彻底的重置：强制停止骑行、清除所有大脑记忆、重置AI状态
             try {
                 maid.stopRiding();
