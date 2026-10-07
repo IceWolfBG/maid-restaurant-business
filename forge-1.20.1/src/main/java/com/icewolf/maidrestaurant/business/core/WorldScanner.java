@@ -23,6 +23,11 @@ import net.minecraftforge.fml.common.Mod;
 public class WorldScanner {
     private static final Map<ServerLevel, Set<BlockPos>> trackedPositions = new ConcurrentHashMap<ServerLevel, Set<BlockPos>>();
 
+    /** 服务器启动时清空全部旧世界的方块实体索引，新区块加载时重建（见 {@link RuntimeState}）。 */
+    public static void clearAll() {
+        trackedPositions.clear();
+    }
+
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         LevelAccessor levelAccessor = event.getLevel();

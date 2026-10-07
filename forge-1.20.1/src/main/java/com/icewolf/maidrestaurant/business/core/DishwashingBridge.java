@@ -60,6 +60,12 @@ public class DishwashingBridge {
     private static final int MAX_PLATES_PER_WASH = 16;
     private static final Map<BlockPos, DishTask> dishTasks = new HashMap<BlockPos, DishTask>();
     private static final Map<BlockPos, CollectPlateTask> collectTasks = new HashMap<BlockPos, CollectPlateTask>();
+
+    /** 服务器启动时清空洗碗/收盘流程任务（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        dishTasks.clear();
+        collectTasks.clear();
+    }
     private static Method isDirtyStageMethod = null;
     private static boolean reflectionInit = false;
 
@@ -155,7 +161,7 @@ public class DishwashingBridge {
                 it.remove();
                 continue;
             }
-            TaskManager.getInstance().heartbeat(maid.getUUID(), level.getGameTime());
+            TaskManager.getInstance().heartbeat(maid.getUUID(), TaskManager.getInstance().getCurrentTick());
             long now = level.getGameTime();
             
             // 总超时保护：300tick（15秒）
@@ -221,7 +227,7 @@ public class DishwashingBridge {
                 continue;
             }
             // TaskManager心跳更新
-            TaskManager.getInstance().heartbeat(maid.getUUID(), level.getGameTime());
+            TaskManager.getInstance().heartbeat(maid.getUUID(), TaskManager.getInstance().getCurrentTick());
             long now = level.getGameTime();
             
             // 目标消失检测：洗碗机是否还存在（每10tick检测一次）

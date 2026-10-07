@@ -1,21 +1,73 @@
 {
   "parent": "minecraft:block/block",
   "textures": {
-    "front": "maid_restaurant_business:block/schedule_board",
-    "side": "minecraft:block/spruce_planks",
-    "particle": "minecraft:block/spruce_planks"
+    "texture": "maid_restaurant_business:block/schedule_board",
+    "particle": "maid_restaurant_business:block/schedule_board"
   },
   "elements": [
     {
-      "from": [3, 4.5, 15],
-      "to": [13, 11.5, 16],
+      "name": "parchment_core",
+      "from": [2, 5, 15],
+      "to": [14, 10, 15.5],
       "faces": {
-        "north": { "uv": [0, 0, 16, 16], "texture": "#front" },
-        "south": { "uv": [0, 0, 16, 16], "texture": "#front" },
-        "east": { "uv": [0, 0, 16, 16], "texture": "#side" },
-        "west": { "uv": [0, 0, 16, 16], "texture": "#side" },
-        "up": { "uv": [0, 0, 16, 16], "texture": "#side" },
-        "down": { "uv": [0, 0, 16, 16], "texture": "#side" }
+        "north": { "uv": [0, 0, 9, 3.75], "texture": "#texture" },
+        "east": { "uv": [14, 0, 14.375, 3.75], "texture": "#texture" },
+        "south": { "uv": [0, 4, 9, 7.75], "texture": "#texture" },
+        "west": { "uv": [14.625, 0, 15, 3.75], "texture": "#texture" },
+        "up": { "uv": [0, 14.75, 9, 15.125], "texture": "#texture" },
+        "down": { "uv": [0, 15.375, 9, 15.75], "texture": "#texture" }
+      }
+    },
+    {
+      "name": "left_wood_pillar",
+      "from": [1, 4, 14.5],
+      "to": [2, 11, 16],
+      "faces": {
+        "north": { "uv": [10.25, 0, 11, 5.25], "texture": "#texture" },
+        "east": { "uv": [12.625, 0, 13.75, 5.25], "texture": "#texture" },
+        "south": { "uv": [9.25, 0, 10, 5.25], "texture": "#texture" },
+        "west": { "uv": [11.25, 0, 12.375, 5.25], "texture": "#texture" },
+        "up": { "uv": [9.25, 5.5, 10, 6.625], "texture": "#texture" },
+        "down": { "uv": [10.25, 5.5, 11, 6.625], "texture": "#texture" }
+      }
+    },
+    {
+      "name": "right_wood_pillar",
+      "from": [14, 4, 14.5],
+      "to": [15, 11, 16],
+      "faces": {
+        "north": { "uv": [10.25, 0, 11, 5.25], "texture": "#texture" },
+        "east": { "uv": [11.25, 0, 12.375, 5.25], "texture": "#texture" },
+        "south": { "uv": [9.25, 0, 10, 5.25], "texture": "#texture" },
+        "west": { "uv": [12.625, 0, 13.75, 5.25], "texture": "#texture" },
+        "up": { "uv": [9.25, 5.5, 10, 6.625], "texture": "#texture" },
+        "down": { "uv": [10.25, 5.5, 11, 6.625], "texture": "#texture" }
+      }
+    },
+    {
+      "name": "bottom_wood_rail",
+      "from": [2, 4, 14.5],
+      "to": [14, 5, 16],
+      "faces": {
+        "north": { "uv": [0, 11.375, 9, 12.125], "texture": "#texture" },
+        "east": { "uv": [11.25, 5.5, 12.375, 6.25], "texture": "#texture" },
+        "south": { "uv": [0, 13.75, 9, 14.5], "texture": "#texture" },
+        "west": { "uv": [11.25, 5.5, 12.375, 6.25], "texture": "#texture" },
+        "up": { "uv": [0, 12.375, 9, 13.5], "texture": "#texture" },
+        "down": { "uv": [0, 13.75, 9, 14.5], "texture": "#texture" }
+      }
+    },
+    {
+      "name": "top_wood_beam",
+      "from": [2, 10, 14.5],
+      "to": [14, 11, 16],
+      "faces": {
+        "north": { "uv": [0, 8, 9, 8.75], "texture": "#texture" },
+        "east": { "uv": [12.625, 5.5, 13.75, 6.25], "texture": "#texture" },
+        "south": { "uv": [0, 10.375, 9, 11.125], "texture": "#texture" },
+        "west": { "uv": [12.625, 5.5, 13.75, 6.25], "texture": "#texture" },
+        "up": { "uv": [0, 9, 9, 10.125], "texture": "#texture" },
+        "down": { "uv": [0, 10.375, 9, 11.125], "texture": "#texture" }
       }
     }
   ]

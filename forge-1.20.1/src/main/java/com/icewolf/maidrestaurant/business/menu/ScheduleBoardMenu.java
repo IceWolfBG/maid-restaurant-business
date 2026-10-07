@@ -68,7 +68,7 @@ public class ScheduleBoardMenu extends AbstractContainerMenu {
     public boolean isAutoDelivery() { return blockEntity != null && blockEntity.isAutoDelivery(); }
     public boolean isAutoPackaging() { return blockEntity != null && blockEntity.isAutoPackaging(); }
     public boolean isAutoCooking() { return blockEntity != null && blockEntity.isAutoCooking(); }
-    public boolean isAutoPrep() { return blockEntity != null && blockEntity.isAutoPrep(); }
+    public boolean isAutoPreCooking() { return blockEntity != null && blockEntity.isAutoPreCooking(); }
     public boolean isAutoCollect() { return blockEntity != null && blockEntity.isAutoCollect(); }
     public boolean isAutoWash() { return blockEntity != null && blockEntity.isAutoWash(); }
     public int getMinPlatesToWash() { return blockEntity != null ? blockEntity.getMinPlatesToWash() : 3; }

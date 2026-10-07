@@ -71,6 +71,27 @@ public class CookingBridge {
     // ===== 挂单夹预烹饪（仅当该打单机24格内存在 OTC 冰箱时启用，成品全部进冰箱，不预定/绑定操作台）=====
     // 本tick挂单夹已发布产出缓存，key = machinePos.asLong() + "|" + itemId
     private static final Map<String, Integer> clipPublishedThisTick = new HashMap<>();
+
+    /**
+     * 服务器启动时清空所有流程任务与运行时缓存（见 {@link RuntimeState}）。
+     * 反射类缓存 fridgeFieldCache 与具体世界无关，保留。
+     */
+    public static void clearRuntimeState() {
+        prepTasks.clear();
+        businessCookMaids.clear();
+        pendingServeRequest.clear();
+        pendingRemoval.clear();
+        publishedThisTick.clear();
+        lastMissingIngredients.clear();
+        insufficientIngredientsCooldown.clear();
+        pendingIngredientFeedback.clear();
+        clipSwitchActionBarCooldown.clear();
+        clipPublishedThisTick.clear();
+        fridgeScanCache.clear();
+        fluidAvailableCache.clear();
+        fluidAvailableTick.clear();
+    }
+
     // 记录最近一次食材不足时缺少的食材名称（最多3种）
     private static List<String> lastMissingIngredients = new ArrayList<>();
 
@@ -124,19 +145,22 @@ public class CookingBridge {
                 if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) {
                     continue;
                 }
-                // 食材不足冷却检查
+                // 食材不足冷却检查：仅拦截真正处于冷却中的操作台（与 forge 1.20.1 对齐）。
+                // 关键修复：冷却到期即清除、且本帧 processCounter 失败也不再挂新冷却，
+                // 否则订单刚放入操作台时首帧若因瞬时条件未满足而返回 false，会被锁 5 秒（INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS），
+                // 造成"放入订单后厨师要等几秒才发布任务"。缺料气泡节流由 processClipOrders / resolveIngredientFeedback 用 machinePos 作 key 单独处理。
                 long counterKey = counterPos.asLong();
                 Long cooldownEnd = insufficientIngredientsCooldown.get(counterKey);
                 if (cooldownEnd != null && currentTick < cooldownEnd) {
                     continue;
                 }
-                boolean postedAny = CookingBridge.processCounter(level, counterPos, machinePos, manager);
-                // 如果发布了任务，清除冷却并记录该机器本轮已发任务
-                if (postedAny) {
+                if (cooldownEnd != null) {
                     insufficientIngredientsCooldown.remove(counterKey);
+                }
+                boolean postedAny = CookingBridge.processCounter(level, counterPos, machinePos, manager);
+                // 若本帧成功发布任务，记录该机器本轮已发任务；失败不再挂冷却，下一轮继续尝试
+                if (postedAny) {
                     machinePostedThisRound.add(machinePos.asLong());
-                } else {
-                    insufficientIngredientsCooldown.put(counterKey, currentTick + INSUFFICIENT_INGREDIENTS_COOLDOWN_TICKS);
                 }
             }
             catch (Throwable t) {
@@ -1331,7 +1355,7 @@ public class CookingBridge {
     private static boolean processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
         try {
             if (!AutomationConfig.autoPreCooking) return false;
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return false;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_PRE_COOKING)) return false;
             if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return false;
             if (!ProgressionManager.isAutoPreCookingUnlocked(level, machinePos)) return false;
             if (!OrderBridge.isActivated(level, machinePos)) return false;

@@ -123,6 +123,13 @@ public class OrderFetchBridge {
     // 锁过期阈值，略大于取单任务总时长保底 TOTAL_TIMEOUT_TICKS(600)，正常流程内绝不过期
     private static final long LOCK_TTL_TICKS = 700L;
 
+    /** 服务器启动时清空成品候选缓存与订单锁定（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        readyCache.clear();
+        readyCacheTick.clear();
+        lockedAt.clear();
+    }
+
     /** 打单机订单刷新 / 挂单夹变化 / 取单成功时调用，令该机器的成品候选缓存立即失效。 */
     public static void invalidate(ServerLevel level, BlockPos machine) {
         if (level == null || machine == null || level.isClientSide) {
@@ -209,7 +216,10 @@ public class OrderFetchBridge {
                 }
                 // 僵尸锁：持锁女仆已消失 / 被外部重置且未走 finish，过期释放，允许重新派单
                 lockedAt.remove(lockKey);
-                MaidRestaurantBusiness.LOGGER.warn("取单入台: 订单锁 {}tick 未释放，判定僵尸锁并重新派单: {}", lockAge, lockKey);
+                if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                        "zombie_lock:" + lockKey, level.getGameTime())) {
+                    MaidRestaurantBusiness.LOGGER.warn("取单入台: 订单锁 {}tick 未释放，判定僵尸锁并重新派单: {}", lockAge, lockKey);
+                }
             }
             // 派单前实时复核：打单机来源仍要求成品齐；挂单夹来源不再卡成品（有空台即可转台占台等菜）
             if (!cand.fromClip && !OrderBridge.hasReadyFood(level, machine, cand.nbt)) {

@@ -174,7 +174,10 @@ public class WalkInGreetBridge {
         // 幽灵忙碌检测：被标记忙碌但没有任何实际任务时立即清理，否则跳过本轮
         if (MaidUtils.isOccupied(maid)) {
             if (!MaidUtils.hasTaskTracker(maid.getUUID())) {
-                MaidRestaurantBusiness.LOGGER.warn("到店接待: 女仆 {} 被标记忙碌但无实际任务，清理忙碌标记", maid.getName().getString());
+                if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                        "greet_ghost_busy:" + maid.getUUID(), level.getGameTime())) {
+                    MaidRestaurantBusiness.LOGGER.warn("到店接待: 女仆 {} 被标记忙碌但无实际任务，清理忙碌标记", maid.getName().getString());
+                }
                 MaidUtils.setOccupied(maid, false);
             } else {
                 return;

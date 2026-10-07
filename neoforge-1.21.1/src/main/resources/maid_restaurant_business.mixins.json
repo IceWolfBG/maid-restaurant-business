@@ -12,7 +12,9 @@
     "MaidNodeEvaluatorMixin",
     "TakeoutBoxBlockEntityMixin",
     "TakeoutBagItemMixin",
-    "FoodPlateItemMixin"
+    "FoodPlateItemMixin",
+    "MaidApproachCookBlockTaskMixin",
+    "MaidSearchCookBlockTaskMixin"
   ],
   "client": [],
   "server": [],

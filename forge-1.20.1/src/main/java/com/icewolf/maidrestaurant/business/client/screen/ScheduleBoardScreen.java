@@ -21,7 +21,7 @@ public class ScheduleBoardScreen extends AbstractContainerScreen<ScheduleBoardMe
     private Button autoDeliveryBtn;
     private Button autoPackagingBtn;
     private Button autoCookingBtn;
-    private Button autoPrepBtn;
+    private Button autoPreCookingBtn;
     private Button autoCollectBtn;
     private Button autoWashBtn;
     private Button minPlatesMinusBtn;
@@ -91,11 +91,11 @@ public class ScheduleBoardScreen extends AbstractContainerScreen<ScheduleBoardMe
             btn.setMessage(Component.literal("烹饪: " + getOnOff(newVal)));
         }).bounds(leftX, funcStartY + rowGap, 85, btnHeight).build());
 
-        // 自动备菜
-        autoPrepBtn = addRenderableWidget(Button.builder(Component.literal("备菜: " + getOnOff(menu.isAutoPrep())), btn -> {
-            boolean newVal = !menu.isAutoPrep();
-            ModMessages.INSTANCE.sendToServer(new ScheduleBoardUpdatePacket(menu.getBlockPos(), ScheduleBoardUpdatePacket.TYPE_AUTO_PREP, newVal));
-            btn.setMessage(Component.literal("备菜: " + getOnOff(newVal)));
+        // 自动预烹饪
+        autoPreCookingBtn = addRenderableWidget(Button.builder(Component.literal("预烹饪: " + getOnOff(menu.isAutoPreCooking())), btn -> {
+            boolean newVal = !menu.isAutoPreCooking();
+            ModMessages.INSTANCE.sendToServer(new ScheduleBoardUpdatePacket(menu.getBlockPos(), ScheduleBoardUpdatePacket.TYPE_AUTO_PRE_COOKING, newVal));
+            btn.setMessage(Component.literal("预烹饪: " + getOnOff(newVal)));
         }).bounds(rightX, funcStartY + rowGap, 85, btnHeight).build());
 
         // 自动收盘子

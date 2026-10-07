@@ -67,6 +67,14 @@ public class CookingDeviceStatsManager {
         return instance;
     }
 
+    /**
+     * 服务器启动时丢弃单例，清空上一存档按机器统计的厨具数据（见 {@link RuntimeState}）。
+     * 类级缓存 BLOCK_TASK_CACHE / BE_AWARE_UIDS 与具体世界无关，保留。
+     */
+    public static void resetInstance() {
+        instance = null;
+    }
+
     /** 配方所需厨具 -> UID（数量管理与任务计数共同的权威 key）；无法识别或返回空串时归一为 null。 */
     public static String getDeviceUid(RecipeType<?> recipeType) {
         if (recipeType == null) return null;

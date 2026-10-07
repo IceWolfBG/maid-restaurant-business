@@ -50,6 +50,17 @@ public class MaidUtils {
     private static final Map<UUID, Long> idleSuspectSince = new HashMap<>();
     private static final Map<UUID, Long> ghostSuspectSince = new HashMap<>();
 
+    /**
+     * 服务器启动时清空女仆占用、任务跟踪与自愈嫌疑状态（见 {@link RuntimeState}）。
+     * maidBindings / maidBindingSources 由女仆饰品（持久化）推导、重进后仍有效，保留并会被定期校准。
+     */
+    public static void clearRuntimeState() {
+        occupiedMaids.clear();
+        taskTracker.clear();
+        idleSuspectSince.clear();
+        ghostSuspectSince.clear();
+    }
+
     // 女仆与打单机的绑定关系（通过健康证或公示栏绑定）
     private static final Map<UUID, BlockPos> maidBindings = new HashMap<>();
     // 绑定来源记录（用于调试和去重）
@@ -488,9 +499,12 @@ public class MaidUtils {
             );
             
             if (moveDist < minMoveDistance) {
-                // 女仆卡住了，重置
-                MaidRestaurantBusiness.LOGGER.warn("女仆卡住自愈: 女仆 {} 任务类型={} 超时{}tick 仅移动{}方块，正在重置",
-                    maid.getName().getString(), info.taskType, currentTick - info.startTime, moveDist);
+                // 女仆卡住了，重置（日志节流，10秒一条，动作每次执行）
+                if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                        "stuck_selfheal:" + maid.getUUID(), currentTick)) {
+                    MaidRestaurantBusiness.LOGGER.warn("女仆卡住自愈: 女仆 {} 任务类型={} 超时{}tick 仅移动{}方块，正在重置",
+                        maid.getName().getString(), info.taskType, currentTick - info.startTime, moveDist);
+                }
                 MaidUtils.resetMaidState(level, maid);
                 resetCount++;
             } else {
@@ -755,8 +769,11 @@ public class MaidUtils {
                             // 首次疑似，进入宽限，不立即重置
                             idleSuspectSince.put(maidUUID, now);
                         } else if (now - first >= SELF_HEAL_GRACE_TICKS) {
-                            MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住（持续{}tick），正在重置",
-                                maid.getName().getString(), now - first);
+                            if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                                    "idle_stuck_selfheal:" + maidUUID, now)) {
+                                MaidRestaurantBusiness.LOGGER.warn("女仆空闲卡住自愈: 女仆 {} 被标记为不忙碌但AI状态卡住（持续{}tick），正在重置",
+                                    maid.getName().getString(), now - first);
+                            }
                             resetMaidState(level, maid);
                             idleSuspectSince.remove(maidUUID);
                             ghostSuspectSince.remove(maidUUID);
@@ -775,8 +792,11 @@ public class MaidUtils {
                         // 首次疑似，进入宽限（烹饪阶段切换/请求间隙是合法瞬时状态）
                         ghostSuspectSince.put(maidUUID, now);
                     } else if (now - first >= SELF_HEAL_GRACE_TICKS) {
-                        MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但持续{}tick无任何任务/烹饪/导航信号，清理忙碌标记",
-                            maid.getName().getString(), now - first);
+                        if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                                "ghost_busy_selfheal:" + maidUUID, now)) {
+                            MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 女仆 {} 被标记为忙碌但持续{}tick无任何任务/烹饪/导航信号，清理忙碌标记",
+                                maid.getName().getString(), now - first);
+                        }
                         setOccupied(maid, false);
                         // 同时调用TaskSafetyUtils彻底重置女仆状态
                         try {
@@ -784,7 +804,10 @@ public class MaidUtils {
                             java.lang.reflect.Method resetMethod = safetyUtils.getMethod("resetMaidState", EntityMaid.class);
                             resetMethod.invoke(null, maid);
                         } catch (Throwable t) {
-                            MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 调用TaskSafetyUtils.resetMaidState失败", t);
+                            if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                                    "ghost_selfheal_reset_fail:" + maidUUID, now)) {
+                                MaidRestaurantBusiness.LOGGER.warn("女仆幽灵忙碌自愈: 调用TaskSafetyUtils.resetMaidState失败", t);
+                            }
                         }
                         ghostSuspectSince.remove(maidUUID);
                         idleSuspectSince.remove(maidUUID);
@@ -1140,7 +1163,7 @@ public class MaidUtils {
     public static final int SCHED_AUTO_DELIVERY = 1;
     public static final int SCHED_AUTO_PACKAGING = 2;
     public static final int SCHED_AUTO_COOKING = 3;
-    public static final int SCHED_AUTO_PREP = 4;
+    public static final int SCHED_AUTO_PRE_COOKING = 4;
     public static final int SCHED_AUTO_COLLECT = 5;
     public static final int SCHED_AUTO_WASH = 6;
     public static final int SCHED_AUTO_ACCEPT = 7;
@@ -1176,7 +1199,7 @@ public class MaidUtils {
             case SCHED_AUTO_DELIVERY: return board.isAutoDelivery();
             case SCHED_AUTO_PACKAGING: return board.isAutoPackaging();
             case SCHED_AUTO_COOKING: return board.isAutoCooking();
-            case SCHED_AUTO_PREP: return board.isAutoPrep();
+            case SCHED_AUTO_PRE_COOKING: return board.isAutoPreCooking();
             case SCHED_AUTO_COLLECT: return board.isAutoCollect();
             case SCHED_AUTO_WASH: return board.isAutoWash();
             case SCHED_AUTO_ACCEPT: return board.isAutoAccept();

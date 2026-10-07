@@ -110,7 +110,10 @@ public class MaidCookingTaskMixin {
                 if (!hasChairPos) reason += " noChairPos";
                 if (cookState != MaidStateManager.CookState.COOK) reason += " cookState=" + cookState;
                 
-                if (request != null && request.remain > 0) {
+                // 仅当 targetType==2（已进入正在烹饪阶段后停止）才算真正的异常停止。
+                // targetType=1 时，是脑调度器在女仆走向厨具阶段提前尝试启动本任务、
+                // checkExtraStartConditions 自检失败主动调用 stop，属正常启动前检查，不应误报。
+                if (targetType == 2 && request != null && request.remain > 0) {
                     // 任务还没完成就停止了
                     if (lastLog == null || currentTick - lastLog > ABNORMAL_STOP_LOG_COOLDOWN) {
                         lastAbnormalStopLog.put(maidUUID, currentTick);

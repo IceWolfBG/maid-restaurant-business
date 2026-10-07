@@ -8,6 +8,7 @@ import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
 import com.icewolf.maidrestaurant.business.config.TakeoutConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
+import com.icewolf.maidrestaurant.business.core.RuntimeState;
 import com.icewolf.maidrestaurant.business.network.ModMessages;
 import com.icewolf.maidrestaurant.business.registry.ModBlockEntities;
 import com.icewolf.maidrestaurant.business.registry.ModBlocks;
@@ -64,6 +65,8 @@ public class MaidRestaurantBusiness {
 
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
+        // 先重置上一存档残留的单例与 static 运行时态，再新建管理器（构造内会懒汉创建全新 TaskManager）
+        RuntimeState.onServerStarting();
         manager = new BusinessManager(event.getServer());
     }
 

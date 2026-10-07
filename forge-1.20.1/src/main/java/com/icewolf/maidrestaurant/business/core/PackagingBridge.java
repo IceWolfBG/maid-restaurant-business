@@ -33,6 +33,11 @@ public class PackagingBridge {
     private static final int STATE_PACK = 1;
     private static final Map<BlockPos, PackTask> packTasks = new HashMap<BlockPos, PackTask>();
 
+    /** 服务器启动时清空装盘流程任务（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        packTasks.clear();
+    }
+
     public static void tickPackaging(ServerLevel level, BusinessManager manager) {
         PackagingBridge.tickPackTasks(level, manager);
         int counterCount = manager.getCounterToMachine().size();

@@ -35,11 +35,11 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 public class ScheduleBoardBlock extends BaseEntityBlock {
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
     
-    // 外框10x7x1，内框9x6x0.5凸出，碰撞箱用外框大小
-    private static final VoxelShape NORTH = Block.box(3.0, 4.5, 15.0, 13.0, 11.5, 16.0);
-    private static final VoxelShape SOUTH = Block.box(3.0, 4.5, 0.0, 13.0, 11.5, 1.0);
-    private static final VoxelShape WEST = Block.box(15.0, 4.5, 3.0, 16.0, 11.5, 13.0);
-    private static final VoxelShape EAST = Block.box(0.0, 4.5, 3.0, 1.0, 11.5, 13.0);
+    // 壁挂排班表薄板：宽14（x1~15）、高7（y4~11）、厚1.5，贴在方块朝外一侧
+    private static final VoxelShape NORTH = Block.box(1.0, 4.0, 14.5, 15.0, 11.0, 16.0);
+    private static final VoxelShape SOUTH = Block.box(1.0, 4.0, 0.0, 15.0, 11.0, 1.5);
+    private static final VoxelShape WEST = Block.box(14.5, 4.0, 1.0, 16.0, 11.0, 15.0);
+    private static final VoxelShape EAST = Block.box(0.0, 4.0, 1.0, 1.5, 11.0, 15.0);
 
     public ScheduleBoardBlock() {
         super(BlockBehaviour.Properties.of().strength(0.5f).sound(SoundType.WOOD).noOcclusion());

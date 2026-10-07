@@ -36,7 +36,7 @@ public class ScheduleBoardUpdatePacket implements CustomPacketPayload {
     public static final int TYPE_AUTO_DELIVERY = 1;
     public static final int TYPE_AUTO_PACKAGING = 2;
     public static final int TYPE_AUTO_COOKING = 3;
-    public static final int TYPE_AUTO_PREP = 4;
+    public static final int TYPE_AUTO_PRE_COOKING = 4;
     public static final int TYPE_AUTO_COLLECT = 5;
     public static final int TYPE_AUTO_WASH = 6;
     public static final int TYPE_MIN_PLATES = 7;
@@ -79,7 +79,7 @@ public class ScheduleBoardUpdatePacket implements CustomPacketPayload {
             case TYPE_AUTO_DELIVERY: board.setAutoDelivery(this.boolValue); break;
             case TYPE_AUTO_PACKAGING: board.setAutoPackaging(this.boolValue); break;
             case TYPE_AUTO_COOKING: board.setAutoCooking(this.boolValue); break;
-            case TYPE_AUTO_PREP: board.setAutoPrep(this.boolValue); break;
+            case TYPE_AUTO_PRE_COOKING: board.setAutoPreCooking(this.boolValue); break;
             case TYPE_AUTO_COLLECT: board.setAutoCollect(this.boolValue); break;
             case TYPE_AUTO_WASH: board.setAutoWash(this.boolValue); break;
             case TYPE_MIN_PLATES: board.setMinPlatesToWash(this.intValue); break;

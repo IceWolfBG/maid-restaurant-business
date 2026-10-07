@@ -103,6 +103,26 @@ public class CookingBridge {
     // 本tick挂单夹已发布产出缓存，key = machinePos.asLong() + "|" + itemId，value = 已发布产出量
     private static final Map<String, Integer> clipPublishedThisTick = new HashMap<>();
 
+    /**
+     * 服务器启动时清空所有流程任务与运行时缓存（见 {@link RuntimeState}）。
+     * 反射类缓存 fridgeFieldCache 与具体世界无关，保留。
+     */
+    public static void clearRuntimeState() {
+        prepTasks.clear();
+        businessCookMaids.clear();
+        pendingServeRequest.clear();
+        pendingRemoval.clear();
+        publishedThisTick.clear();
+        lastMissingIngredients.clear();
+        insufficientIngredientsCooldown.clear();
+        pendingIngredientFeedback.clear();
+        clipSwitchActionBarCooldown.clear();
+        clipPublishedThisTick.clear();
+        fridgeScanCache.clear();
+        fluidAvailableCache.clear();
+        fluidAvailableTick.clear();
+    }
+
     public static void tickCooking(ServerLevel level, BusinessManager manager) {
         // 清空本tick已发布任务缓存（每个tick只清空一次）
         long currentTick = level.getGameTime();
@@ -1370,7 +1390,7 @@ public class CookingBridge {
     private static boolean processClipOrders(ServerLevel level, BlockPos machinePos, BusinessManager manager, long currentTick) {
         try {
             if (!AutomationConfig.autoPreCooking) return false;
-            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_COOKING)) return false;
+            if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_PRE_COOKING)) return false;
             if (!ProgressionManager.isCookAndPrepUnlocked(level, machinePos)) return false;
             if (!ProgressionManager.isAutoPreCookingUnlocked(level, machinePos)) return false;
             if (!OrderBridge.isActivated(level, machinePos)) return false;

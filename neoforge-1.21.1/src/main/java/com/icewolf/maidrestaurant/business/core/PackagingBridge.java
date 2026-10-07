@@ -35,6 +35,11 @@ public class PackagingBridge {
     private static final int STATE_PACK = 1;
     private static final Map<BlockPos, PackTask> packTasks = new HashMap<BlockPos, PackTask>();
 
+    /** 服务器启动时清空装盘流程任务（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        packTasks.clear();
+    }
+
     // counterToMachine映射缓存更新间隔（tick）
     private static final long COUNTER_MAP_UPDATE_INTERVAL = 100L; // 5秒更新一次
     private static long lastCounterMapUpdate = 0;

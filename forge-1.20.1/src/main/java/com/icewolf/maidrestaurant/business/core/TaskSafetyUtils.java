@@ -28,6 +28,12 @@ public class TaskSafetyUtils {
     
     // 消失检测缓存：maidUUID -> lastCheckTick
     private static final Map<UUID, Long> lastDisappearCheck = new HashMap<>();
+
+    /** 服务器启动时清空交互失败记录与消失检测缓存（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        interactFailCounts.clear();
+        lastDisappearCheck.clear();
+    }
     
     // 最大交互失败次数
     private static final int MAX_INTERACT_FAILS = 3;

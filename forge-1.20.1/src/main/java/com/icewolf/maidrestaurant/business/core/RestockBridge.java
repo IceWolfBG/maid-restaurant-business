@@ -62,6 +62,12 @@ public class RestockBridge {
     // 进行中的补货任务，key=货架位置
     private static final Map<BlockPos, RestockTask> tasks = new HashMap<>();
 
+    /** 服务器启动时清空补货待处理集合与流程任务（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        pendingByDim.clear();
+        tasks.clear();
+    }
+
     /** 酒狐速递站一笔外卖结算完成后调用：给关联打单机打一次补货检查标记。 */
     public static void requestCheck(ServerLevel level, BlockPos machinePos) {
         if (level == null || machinePos == null) return;
@@ -212,7 +218,7 @@ public class RestockBridge {
                 it.remove();
                 continue;
             }
-            TaskManager.getInstance().heartbeat(maid.getUUID(), level.getGameTime());
+            TaskManager.getInstance().heartbeat(maid.getUUID(), TaskManager.getInstance().getCurrentTick());
             long now = level.getGameTime();
 
             // 总超时保底（400tick=20秒）

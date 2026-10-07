@@ -54,6 +54,13 @@ public class OrderBridge {
     private static final Map<String, List<BlockPos>> counterScanCache = new HashMap<>();
     private static final Map<String, Long> counterScanTick = new HashMap<>();
     private static final long COUNTER_SCAN_INTERVAL = 20L;
+
+    /** 服务器启动时清空订单刷新时间与操作台扫描缓存（见 {@link RuntimeState}）。 */
+    public static void clearRuntimeState() {
+        orderRefreshTimes.clear();
+        counterScanCache.clear();
+        counterScanTick.clear();
+    }
     private static final int COUNTER_SCAN_RADIUS = 24;
     private static final int COUNTER_SCAN_VERTICAL = 8;
 
@@ -198,7 +205,10 @@ public class OrderBridge {
                     }
                 }
             } catch (Throwable t) {
-                MaidRestaurantBusiness.LOGGER.warn("自动接单: 检查容器 {} 时出错: {}", check, t.toString());
+                if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                        "readyfood_container:" + check.asLong(), level.getGameTime())) {
+                    MaidRestaurantBusiness.LOGGER.warn("自动接单: 检查容器 {} 时出错: {}", check, t.toString());
+                }
             }
         }
 

@@ -10,7 +10,10 @@
     "OrderMachineBlockEntityMixin",
     "TakeoutBoxBlockEntityMixin",
     "TakeoutBagItemMixin",
-    "FoodPlateItemMixin"
+    "FoodPlateItemMixin",
+    "MaidNodeEvaluatorMixin",
+    "MaidApproachCookBlockTaskMixin",
+    "MaidSearchCookBlockTaskMixin"
   ],
   "client": [],
   "server": [],

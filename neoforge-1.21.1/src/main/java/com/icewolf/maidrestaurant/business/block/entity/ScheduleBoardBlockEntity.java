@@ -32,7 +32,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     public static final String TAG_AUTO_DELIVERY = "AutoDelivery";
     public static final String TAG_AUTO_PACKAGING = "AutoPackaging";
     public static final String TAG_AUTO_COOKING = "AutoCooking";
-    public static final String TAG_AUTO_PREP = "AutoPrep";
+    public static final String TAG_AUTO_PRE_COOKING = "AutoPreCooking";
     public static final String TAG_AUTO_COLLECT = "AutoCollect";
     public static final String TAG_AUTO_WASH = "AutoWash";
     public static final String TAG_MIN_PLATES_TO_WASH = "MinPlatesToWash";
@@ -60,7 +60,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     private boolean autoDelivery = true;
     private boolean autoPackaging = true;
     private boolean autoCooking = true;
-    private boolean autoPrep = true;
+    private boolean autoPreCooking = true;
     private boolean autoCollect = true;
     private boolean autoWash = true;
     private int minPlatesToWash = 3;
@@ -195,8 +195,8 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
     public boolean isAutoCooking() { return autoCooking; }
     public void setAutoCooking(boolean v) { this.autoCooking = v; syncToClient(); }
     
-    public boolean isAutoPrep() { return autoPrep; }
-    public void setAutoPrep(boolean v) { this.autoPrep = v; syncToClient(); }
+    public boolean isAutoPreCooking() { return autoPreCooking; }
+    public void setAutoPreCooking(boolean v) { this.autoPreCooking = v; syncToClient(); }
     
     public boolean isAutoCollect() { return autoCollect; }
     public void setAutoCollect(boolean v) { this.autoCollect = v; syncToClient(); }
@@ -446,7 +446,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         this.autoDelivery = tag.contains(TAG_AUTO_DELIVERY) ? tag.getBoolean(TAG_AUTO_DELIVERY) : true;
         this.autoPackaging = tag.contains(TAG_AUTO_PACKAGING) ? tag.getBoolean(TAG_AUTO_PACKAGING) : true;
         this.autoCooking = tag.contains(TAG_AUTO_COOKING) ? tag.getBoolean(TAG_AUTO_COOKING) : true;
-        this.autoPrep = tag.contains(TAG_AUTO_PREP) ? tag.getBoolean(TAG_AUTO_PREP) : true;
+        this.autoPreCooking = tag.contains(TAG_AUTO_PRE_COOKING) ? tag.getBoolean(TAG_AUTO_PRE_COOKING) : true;
         this.autoCollect = tag.contains(TAG_AUTO_COLLECT) ? tag.getBoolean(TAG_AUTO_COLLECT) : true;
         this.autoWash = tag.contains(TAG_AUTO_WASH) ? tag.getBoolean(TAG_AUTO_WASH) : true;
         this.minPlatesToWash = tag.contains(TAG_MIN_PLATES_TO_WASH) ? tag.getInt(TAG_MIN_PLATES_TO_WASH) : 3;
@@ -468,7 +468,7 @@ public class ScheduleBoardBlockEntity extends BlockEntity {
         tag.putBoolean(TAG_AUTO_DELIVERY, this.autoDelivery);
         tag.putBoolean(TAG_AUTO_PACKAGING, this.autoPackaging);
         tag.putBoolean(TAG_AUTO_COOKING, this.autoCooking);
-        tag.putBoolean(TAG_AUTO_PREP, this.autoPrep);
+        tag.putBoolean(TAG_AUTO_PRE_COOKING, this.autoPreCooking);
         tag.putBoolean(TAG_AUTO_COLLECT, this.autoCollect);
         tag.putBoolean(TAG_AUTO_WASH, this.autoWash);
         tag.putInt(TAG_MIN_PLATES_TO_WASH, this.minPlatesToWash);

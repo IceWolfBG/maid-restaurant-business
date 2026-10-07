@@ -194,16 +194,16 @@ public class TaskManager {
     private final Map<String, Long> failureBackoffUntil = new HashMap<>();
     private static final long FAILURE_BACKOFF_TICKS = 200L; // 10秒
 
-    // 厨具占用超时时间（tick，20tick=1秒）
-    // 如果一个厨具被占用超过这个时间且没有对应任务在执行，强制释放
-    private static final long DEVICE_OCCUPY_TIMEOUT = 200L; // 10秒
+    // ASSIGNED 阶段硬上限（tick）：任务创建后超过该时长仍未进入 IN_PROGRESS，
+    // 即使女仆仍持有 CookRequest，也判定为真卡死并失败（正常取食材/赶路远用不到这么久）。
+    private static final long ASSIGNED_HARD_TIMEOUT = 1800L; // 90秒
 
     // 厨具占用信息
     public static class DeviceOccupancyInfo {
         public final BlockPos devicePos;
         public final String taskId;
         public final UUID maidUUID;
-        public final long occupyTime;
+        private long occupyTime;
 
         public DeviceOccupancyInfo(BlockPos devicePos, String taskId, UUID maidUUID, long occupyTime) {
             this.devicePos = devicePos;
@@ -221,7 +221,15 @@ public class TaskManager {
         }
         return instance;
     }
-    
+
+    /**
+     * 服务器启动时丢弃单例：清除上一存档残留的任务、缓存与时间戳，
+     * 下次 getInstance 时以全新状态重建（见 {@link RuntimeState}）。
+     */
+    public static void resetInstance() {
+        instance = null;
+    }
+
     /**
      * 设置BusinessManager引用，用于自动接单等功能
      */
@@ -428,8 +436,17 @@ public class TaskManager {
      * 任务失败（如目标消失、验证失败等）
      */
     public void failTask(UUID maidUUID, String reason) {
-        String taskId = tasksByMaid.remove(maidUUID);
+        String taskId = tasksByMaid.get(maidUUID);
         if (taskId == null) return;
+        TaskInfo guardTask = tasks.get(taskId);
+        // ★铁律：烹饪任务一旦进入 IN_PROGRESS（正在烹饪、食材已下锅），任何自动逻辑都绝不允许取消，
+        // 否则锅里食材卡死、整个厨具报废；ASSIGNED（尚未下锅）阶段才允许失败重新分配。
+        if (guardTask != null && TYPE_COOKING.equals(guardTask.taskType)
+                && guardTask.status == TaskStatus.IN_PROGRESS) {
+            guardTask.lastHeartbeat = currentTick;
+            return;
+        }
+        tasksByMaid.remove(maidUUID);
         TaskInfo task = tasks.remove(taskId);
         if (task != null) {
             Set<String> targetTasks = tasksByTarget.get(task.targetPos);
@@ -665,9 +682,17 @@ public class TaskManager {
                                 EntityMaid maid = (EntityMaid) entity;
                                 CookRequest request = (CookRequest) RequestManager.peek(maid, CookRequest.TYPE);
                                 if (request != null) {
-                                    // 女仆有CookRequest，正在烹饪流程中，延长超时时间
-                                    task.assignTime = currentTick;
-                                    task.lastHeartbeat = currentTick;
+                                    // 硬上限兜底：任务创建超过 ASSIGNED_HARD_TIMEOUT 仍未进入 IN_PROGRESS，
+                                    // 即使女仆仍持有 CookRequest，也判定为真卡死并失败（正常取食材/赶路用不到这么久）。
+                                    if (currentTick - task.createTime > ASSIGNED_HARD_TIMEOUT) {
+                                        toFail.add(task.taskId);
+                                        MaidRestaurantBusiness.LOGGER.warn("[TaskManager] ASSIGNED任务硬超时: id={} 女仆={} 创建已{}tick（硬上限{}），判定卡死自动失败",
+                                            task.taskId, task.assignedMaid, currentTick - task.createTime, ASSIGNED_HARD_TIMEOUT);
+                                    } else {
+                                        // 女仆有CookRequest，正在烹饪流程中，延长超时时间
+                                        task.assignTime = currentTick;
+                                        task.lastHeartbeat = currentTick;
+                                    }
                                     continue;
                                 }
                             }
@@ -732,25 +757,17 @@ public class TaskManager {
         List<BlockPos> toRelease = new ArrayList<>();
         for (Map.Entry<BlockPos, DeviceOccupancyInfo> entry : occupiedDevices.entrySet()) {
             DeviceOccupancyInfo info = entry.getValue();
-            // 检查关联的任务是否还存在
             TaskInfo task = info.taskId != null ? tasks.get(info.taskId) : null;
-            boolean taskExists = task != null;
-            // 如果任务存在且正在执行中（IN_PROGRESS），不释放厨具
-            // 因为烹饪等任务可能需要很长时间，心跳会持续更新
-            boolean taskInProgress = taskExists && task.status == TaskStatus.IN_PROGRESS;
-            // 检查是否超时（只有任务不存在或不在执行中时才检查超时）
-            boolean timeout = !taskInProgress && (currentTick - info.occupyTime > DEVICE_OCCUPY_TIMEOUT);
-
-            if (!taskExists || timeout) {
+            // 厨具生命周期完全绑定任务：只要关联任务仍存在（ASSIGNED/IN_PROGRESS），就不主动释放，
+            // 统一由 completeTask/failTask/discardTask 负责释放；这里只清理“任务已不存在”的孤儿占用。
+            // 彻底避免“女仆还在赶来/正在烹饪，厨具被固定超时提前释放”导致的状态错乱与死循环。
+            if (task == null) {
                 toRelease.add(entry.getKey());
-                MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 占用超时或任务不存在，强制释放（任务存在={} 执行中={} 超时={} 占用时长={}tick）",
-                    entry.getKey(), taskExists, taskInProgress, timeout, currentTick - info.occupyTime);
+                MaidRestaurantBusiness.LOGGER.warn("[TaskManager厨具] 厨具 {} 的关联任务已不存在，清理孤儿占用", entry.getKey());
             }
         }
         for (BlockPos pos : toRelease) {
             occupiedDevices.remove(pos);
-        }
-        if (!toRelease.isEmpty()) {
         }
     }
 

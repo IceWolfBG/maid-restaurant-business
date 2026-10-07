@@ -117,7 +117,10 @@ public class DeliveryBridge {
                                   data.contains("BusinessWashCounter") ||
                                   data.contains("BusinessCookCounter");
                 if (!hasTask && !MaidUtils.hasTaskTracker(maid.getUUID())) {
-                    MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 被标记为忙碌但没有实际任务，立即清理忙碌标记", maid.getName().getString());
+                    if (com.icewolf.maidrestaurant.business.util.LogThrottle.allow(
+                            "deliver_ghost_busy:" + maid.getUUID(), level.getGameTime())) {
+                        MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆 {} 被标记为忙碌但没有实际任务，立即清理忙碌标记", maid.getName().getString());
+                    }
                     MaidUtils.setOccupied(maid, false);
                     idleWaiters.add(maid);
                 }

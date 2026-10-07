@@ -13,7 +13,7 @@ public class ScheduleBoardUpdatePacket {
     public static final int TYPE_AUTO_DELIVERY = 1;
     public static final int TYPE_AUTO_PACKAGING = 2;
     public static final int TYPE_AUTO_COOKING = 3;
-    public static final int TYPE_AUTO_PREP = 4;
+    public static final int TYPE_AUTO_PRE_COOKING = 4;
     public static final int TYPE_AUTO_COLLECT = 5;
     public static final int TYPE_AUTO_WASH = 6;
     public static final int TYPE_MIN_PLATES = 7;
@@ -70,7 +70,7 @@ public class ScheduleBoardUpdatePacket {
                 case TYPE_AUTO_DELIVERY: board.setAutoDelivery(msg.boolValue); break;
                 case TYPE_AUTO_PACKAGING: board.setAutoPackaging(msg.boolValue); break;
                 case TYPE_AUTO_COOKING: board.setAutoCooking(msg.boolValue); break;
-                case TYPE_AUTO_PREP: board.setAutoPrep(msg.boolValue); break;
+                case TYPE_AUTO_PRE_COOKING: board.setAutoPreCooking(msg.boolValue); break;
                 case TYPE_AUTO_COLLECT: board.setAutoCollect(msg.boolValue); break;
                 case TYPE_AUTO_WASH: board.setAutoWash(msg.boolValue); break;
                 case TYPE_MIN_PLATES: board.setMinPlatesToWash(msg.intValue); break;
