@@ -8,7 +8,6 @@ import com.icewolf.maidrestaurant.business.block.OrderClipBlock;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.config.AutomationConfig;
 import com.icewolf.maidrestaurant.business.config.GameplayConfig;
-import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -228,7 +227,12 @@ public class OrderFetchBridge {
             if (counter == null) {
                 return; // 没有空台，这台机器本轮不必再看后续候选
             }
-            EntityMaid cook = findFreeCook(level, machine, allMaids, !cand.fromClip);
+            // 打单机单要先去打单机抽单进背包，需要背包空槽；夹单是夹→台直接传送，不经过背包
+            // 半径同源：夹单只需覆盖操作台；打单机单需同时覆盖打单机(取单)与操作台(放单)
+            BlockPos[] reachTargets = cand.fromClip
+                    ? new BlockPos[]{counter}
+                    : new BlockPos[]{machine, counter};
+            EntityMaid cook = findFreeCook(level, machine, allMaids, !cand.fromClip, reachTargets);
             if (cook == null) {
                 return; // 没有可用厨师，等下一轮
             }
@@ -648,7 +652,8 @@ public class OrderFetchBridge {
 
     /** 找一台机器可用的空闲厨师（绑定时仅绑定者、员工上限、MACHINE 单需背包有空槽），取离机器最近者。 */
     private static EntityMaid findFreeCook(ServerLevel level, BlockPos machine,
-                                          List<EntityMaid> allMaids, boolean needFreeSlot) {
+                                          List<EntityMaid> allMaids, boolean needFreeSlot,
+                                          BlockPos... reachTargets) {
         EntityMaid best = null;
         double bestDist = Double.MAX_VALUE;
         int boundCount = MaidUtils.getWorkerCountForMachine(machine);
@@ -677,6 +682,10 @@ public class OrderFetchBridge {
                 continue;
             }
             if (needFreeSlot && !hasFreeSlot(maid)) {
+                continue;
+            }
+            // 半径同源：取单源点与操作台都必须在该厨师工作半径内，避免取了单送不到台
+            if (reachTargets != null && !MaidUtils.isWithinMaidRange(maid, reachTargets)) {
                 continue;
             }
             double dist = maid.distanceToSqr(machine.getX() + 0.5, machine.getY(), machine.getZ() + 0.5);

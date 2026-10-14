@@ -288,24 +288,15 @@ public class MaidUtils {
             } catch (Throwable t) {
                 MaidRestaurantBusiness.LOGGER.warn("resetMaidState: erase brain memories failed", t);
             }
-            // 4. 用反射清除女仆餐厅的记忆模块（CHAIR_POS, CACHED_WORK_BLOCK）
+            // 4. 清除女仆餐厅的记忆模块（CHAIR_POS, CACHED_WORK_BLOCK）。
+            //    这两个字段在 1.21.1 是 DeferredHolder，必须 .get() 取出真正的 MemoryModuleType；
+            //    旧反射 field.get(null) 拿到的是 DeferredHolder 包裹对象，instanceof MemoryModuleType
+            //    恒为 false，导致自愈时厨凳/工作位记忆从未被擦除（女仆自愈后仍走回旧位）。
             try {
-                Class<?> modEntities = Class.forName("com.mastermarisa.maid_restaurant.init.ModEntities");
-                String[] memoryNames = {"CHAIR_POS", "CACHED_WORK_BLOCK"};
-                for (String name : memoryNames) {
-                    try {
-                        java.lang.reflect.Field field = modEntities.getDeclaredField(name);
-                        field.setAccessible(true);
-                        Object memoryModule = field.get(null);
-                        if (memoryModule instanceof MemoryModuleType) {
-                            maid.getBrain().eraseMemory((MemoryModuleType<?>) memoryModule);
-                        }
-                    } catch (Throwable t) {
-                        MaidRestaurantBusiness.LOGGER.warn("resetMaidState: erase memory {} failed", name, t);
-                    }
-                }
+                maid.getBrain().eraseMemory(com.mastermarisa.maid_restaurant.init.ModEntities.CHAIR_POS.get());
+                maid.getBrain().eraseMemory(com.mastermarisa.maid_restaurant.init.ModEntities.CACHED_WORK_BLOCK.get());
             } catch (Throwable t) {
-                MaidRestaurantBusiness.LOGGER.warn("resetMaidState: ModEntities reflection failed", t);
+                MaidRestaurantBusiness.LOGGER.warn("resetMaidState: erase restaurant memory failed", t);
             }
             // 5. 停止导航
             try {
@@ -646,13 +637,9 @@ public class MaidUtils {
      */
     public static void updateBindingsFromBaubles(ServerLevel level) {
         try {
-            List<EntityMaid> allMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                allMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, new net.minecraft.world.phys.AABB(
-                    Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-                    Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
-                )));
-            }
+            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
+            // （无限AABB会被Sable等性能模组拦截并刷错误日志，且本身返回0个女仆）
+            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
             
             
             for (EntityMaid maid : allMaids) {
@@ -748,13 +735,9 @@ public class MaidUtils {
     public static int checkAndResetIdleStuckMaids(ServerLevel level) {
         int resetCount = 0;
         try {
-            List<EntityMaid> allMaids = new ArrayList<>();
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                allMaids.addAll(lvl.getEntitiesOfClass(EntityMaid.class, new net.minecraft.world.phys.AABB(
-                    Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-                    Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
-                )));
-            }
+            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
+            // （无限AABB会被Sable等性能模组拦截并刷错误日志，且本身返回0个女仆）
+            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
             long now = level.getGameTime();
 
             for (EntityMaid maid : allMaids) {
@@ -860,19 +843,11 @@ public class MaidUtils {
         try {
             if (maid.getNavigation().isInProgress()) return true;
         } catch (Throwable t) {}
-        // 7a. 女仆餐厅烹饪大脑信号：目标厨具位 / 餐椅位（反射读取，避免 DeferredHolder 泛型耦合）
+        // 7a. 女仆餐厅烹饪大脑信号：目标厨具位 / 餐椅位（均为 DeferredHolder，需 .get()）
         try {
-            Class<?> modEntities = Class.forName("com.mastermarisa.maid_restaurant.init.ModEntities");
-            for (String name : new String[]{"TARGET_POS", "CHAIR_POS"}) {
-                try {
-                    java.lang.reflect.Field f = modEntities.getDeclaredField(name);
-                    f.setAccessible(true);
-                    Object memory = f.get(null);
-                    if (memory instanceof MemoryModuleType
-                        && maid.getBrain().hasMemoryValue((MemoryModuleType<?>) memory)) {
-                        return true;
-                    }
-                } catch (Throwable ignore) {}
+            if (maid.getBrain().hasMemoryValue(com.mastermarisa.maid_restaurant.init.ModEntities.TARGET_POS.get())
+                || maid.getBrain().hasMemoryValue(com.mastermarisa.maid_restaurant.init.ModEntities.CHAIR_POS.get())) {
+                return true;
             }
         } catch (Throwable t) {}
         // 7b. 烹饪状态机处于 COOK
@@ -906,6 +881,25 @@ public class MaidUtils {
         return false;
     }
 
+    /**
+     * 判断目标是否全部在女仆的工作半径内（与女仆餐厅本体同源，直接调用 TLM 的
+     * EntityMaid.isWithinRestriction）。家模式下目标必须在工作点的限制半径内；
+     * 跟随模式（无限制）下恒为 true。任一目标在半径外即返回 false。
+     * 单个目标判断出错时不拦截（返回 true），避免 API 差异导致女仆完全无法派单。
+     */
+    public static boolean isWithinMaidRange(EntityMaid maid, BlockPos... targets) {
+        if (targets == null) return true;
+        for (BlockPos target : targets) {
+            if (target == null) continue;
+            try {
+                if (!maid.isWithinRestriction(target)) return false;
+            } catch (Throwable t) {
+                return true;
+            }
+        }
+        return true;
+    }
+
     public static EntityMaid findMaid(ServerLevel level, BlockPos center, int range, String taskUid) {
         List<EntityMaid> maids = (List)level.getEntitiesOfClass(EntityMaid.class, new AABB(center).inflate((double)range));
         EntityMaid nearest = null;
@@ -917,6 +911,10 @@ public class MaidUtils {
             double dist;
             // 检查TaskManager任务：避免返回有卡住任务的女仆
             if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
+            // 半径同源：目标必须在该女仆工作半径内，避免派了任务走不过去被拉回
+            if (!MaidUtils.isWithinMaidRange(m, center)) {
+                continue;
+            }
             if (MaidUtils.isMaidBusy(m) || taskUid != null && !taskUid.equals(MaidUtils.getTaskUid(m)) || !((dist = (dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5)) * dx + (dy = MaidUtils.getY((Entity)m) - (double)center.getY()) * dy + (dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5)) * dz) < minDist)) continue;
             minDist = dist;
             nearest = m;
@@ -976,6 +974,11 @@ public class MaidUtils {
             if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
             isWaiter++;
             
+            // 半径同源：目标必须在该女仆工作半径内
+            if (!MaidUtils.isWithinMaidRange(m, center)) {
+                continue;
+            }
+            
             // 检查是否忙碌
             if (MaidUtils.isMaidBusy(m)) continue;
             if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
@@ -995,6 +998,9 @@ public class MaidUtils {
                 if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
                 if (!TASK_WAITER.equals(MaidUtils.getTaskUid(m))) continue;
                 if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+                if (!MaidUtils.isWithinMaidRange(m, center)) {
+                    continue;
+                }
                 double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
                 double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
                 double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
@@ -1056,6 +1062,11 @@ public class MaidUtils {
             if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
             isCook++;
             
+            // 半径同源：目标必须在该女仆工作半径内
+            if (!MaidUtils.isWithinMaidRange(m, center)) {
+                continue;
+            }
+            
             // 检查是否忙碌
             if (MaidUtils.isMaidBusy(m)) continue;
             if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
@@ -1075,6 +1086,9 @@ public class MaidUtils {
                 if (TaskManager.getInstance().hasMaidTask(m.getUUID())) continue;
                 if (!TASK_COOK.equals(MaidUtils.getTaskUid(m))) continue;
                 if (!isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+                if (!MaidUtils.isWithinMaidRange(m, center)) {
+                    continue;
+                }
                 double dx = MaidUtils.getX((Entity)m) - ((double)center.getX() + 0.5);
                 double dy = MaidUtils.getY((Entity)m) - ((double)center.getY());
                 double dz = MaidUtils.getZ((Entity)m) - ((double)center.getZ() + 0.5);
@@ -1106,7 +1120,42 @@ public class MaidUtils {
         // 没有绑定女仆，回退到自动分配
         return findWaiterMaid(level, center, range);
     }
-    
+
+    /**
+     * 在给定候选侍者中，挑选职业/绑定匹配、且工作半径覆盖"操作台 + 终点"的最近侍者。
+     * 专用于配送双目标：① 操作台永远要求在半径内（且在 range 内）；
+     * ② endPos 解析到了才要求在半径内；endPos 为 null（终点业务失败）时只看①，
+     * 让女仆走到操作台后由执行阶段的"找不到顾客/速递站"气泡处理。
+     */
+    public static EntityMaid pickSmartWaiterAmong(ServerLevel level, List<EntityMaid> candidates,
+            BlockPos counterPos, BlockPos endPos, int range, BlockPos machinePos) {
+        if (candidates == null || candidates.isEmpty() || counterPos == null) return null;
+        EntityMaid nearest = null;
+        double minDist = Double.MAX_VALUE;
+        boolean boundEnabled = machinePos != null && getWorkerCountForMachine(machinePos) > 0;
+        for (EntityMaid m : candidates) {
+            if (!TASK_WAITER.equals(getTaskUid(m))) continue;
+            // 绑定口径：有绑定员工时只选绑定到该打单机的
+            if (boundEnabled && !isMaidBoundToMachine(m.getUUID(), machinePos)) continue;
+            double dx = getX((Entity) m) - (counterPos.getX() + 0.5);
+            double dy = getY((Entity) m) - counterPos.getY();
+            double dz = getZ((Entity) m) - (counterPos.getZ() + 0.5);
+            double dist = dx * dx + dy * dy + dz * dz;
+            boolean counterOk = isWithinMaidRange(m, counterPos);
+            boolean endOk = (endPos == null) || isWithinMaidRange(m, endPos);
+            // ① 操作台：永远校验（范围 + 半径）
+            if (dist > (double) range * range) continue;
+            if (!counterOk) continue;
+            // ② 终点：仅在解析到（非 null）时校验
+            if (!endOk) continue;
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = m;
+            }
+        }
+        return nearest;
+    }
+
     public static EntityMaid findCookMaidSmart(ServerLevel level, BlockPos center, int range, BlockPos machinePos) {
         if (machinePos != null && getWorkerCountForMachine(machinePos) > 0) {
             EntityMaid bound = findBoundCookMaid(level, center, range, machinePos);

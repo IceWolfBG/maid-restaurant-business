@@ -72,9 +72,9 @@ public final class ServingPointGhostRenderer {
         }
 
         if (target != null) {
+            // flush 由渲染器内部按光影分支处理：光影下不手动 endBatch（避免投阴影）
             WorldMenuPreviewRenderer.renderItemFloating(
                     poseStack, buffer, target, mc, new ItemStack(ModItems.RESTAURANT_MENU.get()));
-            buffer.endBatch();
         }
     }
 }

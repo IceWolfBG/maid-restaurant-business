@@ -103,17 +103,13 @@ public class PackagingBridge {
             // TaskManager心跳更新
             TaskManager.getInstance().heartbeat(maid.getUUID(), manager.getTickCounter());
             long now = level.getGameTime();
-            if (task.startTime == 0L) {
-                task.startTime = now;
-            }
             switch (task.state) {
                 case 0: {
-                    boolean timeout;
+                    // 仅当女仆真正走到操作台附近才开始打包；不再有"3s 后强制打包"兜底，
+                    // 避免女仆还没走到就被强制打包。若长时间走不到，由 TaskManager
+                    // 打包任务超时（默认600tick=30s）判定失败、重新分配，不会卡死。
                     boolean near = MaidUtils.isNear(maid, counterPos, 3.0);
-                    boolean bl = timeout = now - task.startTime > 60L;
-                    if (near || timeout) {
-                        if (timeout) {
-                        }
+                    if (near) {
                         task.state = 1;
                         break;
                     }
@@ -383,7 +379,6 @@ public class PackagingBridge {
     private static class PackTask {
         int state = 0;
         long lastChange = 0L;
-        long startTime = 0L;
         final WeakReference<EntityMaid> maidRef;
 
         PackTask(EntityMaid maid, BlockPos machinePos, long currentTick) {

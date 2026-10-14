@@ -16,8 +16,10 @@ import net.minecraft.world.phys.Vec3;
  * 在世界坐标把一个 ItemStack 渲染成悬浮贴图（始终面向玩家、轻微上下浮动）。
  * 用于饭店菜单在选上菜点时于目标方块上方显示菜单预览。
  *
- * 本工具为营业中自行实现的轻量渲染辅助，仅使用 Minecraft 通用渲染 API，
- * 不依赖任何外部 mod 的渲染实现。
+ * 渲染管线对齐女仆餐厅本体（1.20.1 WorldItemRenderer）：仅把物品几何写入主 buffer，
+ * 不在 AFTER_TRANSLUCENT_BLOCKS 阶段手动 endBatch。该阶段手动 flush 会让光影
+ * （Iris/Oculus）把菜单物品当作世界几何投射/接收阴影；几何交由 LevelRenderer 在该阶段
+ * 统一提交即可，物品只进入正常实体层、不产生阴影。
  */
 public final class WorldMenuPreviewRenderer {
     private WorldMenuPreviewRenderer() {}

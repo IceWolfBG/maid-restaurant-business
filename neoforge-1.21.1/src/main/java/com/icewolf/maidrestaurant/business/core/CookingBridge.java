@@ -1027,6 +1027,10 @@ public class CookingBridge {
                     missingDevices.add(deviceDisplayName(deviceTask));
                     continue;
                 }
+                // 半径同源：锅工作位必须在该厨师半径内（兜底 findCookingDevice 可能返回半径外的锅）
+                if (!MaidUtils.isWithinMaidRange(targetMaid, cookPos)) {
+                    continue;
+                }
                 CookRequest request = new CookRequest();
                 request.id = match.recipeId;
                 request.type = match.recipeType;
@@ -1604,6 +1608,10 @@ public class CookingBridge {
                         missingDevices.add(deviceDisplayName(deviceTask));
                         continue;
                     }
+                    // 半径同源：锅工作位必须在该厨师半径内（兜底 findCookingDevice 可能返回半径外的锅）
+                    if (!MaidUtils.isWithinMaidRange(targetMaid, cookPos)) {
+                        continue;
+                    }
                     if (TaskManager.getInstance().isDeviceOccupied(cookPos)) {
                         continue;
                     }
@@ -1899,72 +1907,37 @@ public class CookingBridge {
             List<String> namedLabels = new ArrayList<>();
             buildNamedCandidates(recipe, namedItems, namedLabels);
 
-            // OTC 冰箱检索需要的物品 id 集合：普通食材 + 碗/汤底/油脂候选
-            java.util.Set<String> fridgeIds = new java.util.HashSet<>();
-            for (Object ingObj : recipe.getIngredients()) {
-                if (ingObj instanceof Ingredient ing && !ing.isEmpty()) {
-                    for (ItemStack match : ing.getItems()) {
-                        ResourceLocation mid = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(match.getItem());
-                        if (mid != null) fridgeIds.add(mid.toString());
-                    }
-                }
-            }
-            for (Item it : namedItems) {
-                ResourceLocation mid = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it);
-                if (mid != null) fridgeIds.add(mid.toString());
-            }
-
-            // ③ 共享容器（操作台 ±24 / y±8），按 Item 汇总
-            Map<Item, Integer> shared = new HashMap<>();
-            for (BlockPos check : BlockPos.betweenClosed(counterPos.offset(-24, -8, -24), counterPos.offset(24, 8, 24))) {
-                IItemHandler inv;
-                if (check.equals(counterPos) || (inv = MaidStorages.tryGetHandler((Level) level, check)) == null) continue;
-                for (int slot = 0; slot < inv.getSlots(); ++slot) {
-                    ItemStack stack = inv.getStackInSlot(slot);
-                    if (stack.isEmpty()) continue;
-                    shared.merge(stack.getItem(), stack.getCount(), Integer::sum);
-                }
-            }
-            // OTC 冰箱等食材来源（IngredientSourceCompatApi）
-            try {
-                Class<?> ingredientSourceApi = Class.forName("cn.breezeth.ordertocook.api.IngredientSourceCompatApi");
-                java.lang.reflect.Method countAllNearby = ingredientSourceApi.getMethod("countAllNearby", Level.class, BlockPos.class, int.class, java.util.Collection.class);
-                if (!fridgeIds.isEmpty()) {
-                    Object fridgeResult = countAllNearby.invoke(null, level, counterPos, 24, fridgeIds);
-                    if (fridgeResult instanceof Map<?, ?> fridgeMap) {
-                        for (Map.Entry<?, ?> entry : fridgeMap.entrySet()) {
-                            if (entry.getKey() == null || !(entry.getValue() instanceof Integer cnt) || cnt <= 0) continue;
-                            ResourceLocation fridgeRl = ResourceLocation.tryParse(entry.getKey().toString());
-                            Item it = fridgeRl == null ? null : net.minecraft.core.registries.BuiltInRegistries.ITEM.get(fridgeRl);
-                            if (it == net.minecraft.world.item.Items.AIR) it = null;
-                            if (it != null) shared.merge(it, cnt, Integer::sum);
-                        }
-                    }
-                }
-            } catch (ClassNotFoundException e) {
-                // 旧版 OTC 没有该 API，正常
-            } catch (Throwable t) {
-                MaidRestaurantBusiness.LOGGER.warn("烹饪食材检测: 冰箱检索出错", t);
-            }
+            // ③ 食材可达范围统一在④按"每个厨师各自的真实取物范围"判定（与本体 MaidGetFromStorageTask 同源），
+            //    不再在循环外做整店(操作台±24)共享扫描，从根上消除"决策期24格放行、执行期(锅位±12/±2)取不到"。
+            //    注意：OTC 冰箱(RefrigeratorBlockEntity)不暴露 IItemHandler，本体 MaidStorages 执行期取不到，
+            //    故不计入自动化食材判定（否则会派单后女仆取不到、原地不动）；冰箱仍由玩家手动打开存取。
 
             // ④ 逐厨师判定（候选由发布段传入，已是 TaskCook 职业 + 空闲 + 24格内，顺序即派单优先级）：
-            //    每位厨师用"公共容器 + 她自己背包 + 她自己空桶的流体兜底"各算能做几锅，私料只记在她名下。
-            Map<Item, Integer> totalAvailable = new HashMap<>(shared);
+            //    每位厨师的可用食材 = 她自己真实可达范围(与本体 MaidGetFromStorageTask 逐格同源：中心居家锅位/非居家脚下、
+            //    水平=getRestrictRadius、垂直=2)内的容器 + 她自己背包 + 她自己空桶的流体兜底。
+            //    所有厨师可达范围的并集用于缺料反查；容器按"位置"去重（同一容器被多人范围覆盖只计一次，避免数量虚高），
+            //    背包各自独立直接累加。
+            java.util.Map<BlockPos, IItemHandler> unionByPos = new java.util.LinkedHashMap<>();
+            java.util.Map<Item, Integer> backpackUnion = new java.util.HashMap<>();
             for (EntityMaid maid : candidateCooks) {
                 if (maid == null || !maid.isAlive()) continue;
+                BlockPos searchCenter = maid.isHomeModeEnable() ? maid.getRestrictCenter() : maid.blockPosition().below();
+                int h = (int) maid.getRestrictRadius();
+                if (h < 0) h = 0;
+                Map<Item, Integer> maidAvailable = new HashMap<>();
+                scanReachableContainers(level, counterPos, searchCenter, h, maidAvailable, unionByPos);
                 IItemHandler maidInv = MaidUtils.getInventory(maid);
-                Map<Item, Integer> maidAvailable = new HashMap<>(shared);
                 if (maidInv != null) {
                     for (int slot = 0; slot < maidInv.getSlots(); ++slot) {
                         ItemStack stack = maidInv.getStackInSlot(slot);
                         if (stack.isEmpty()) continue;
                         maidAvailable.merge(stack.getItem(), stack.getCount(), Integer::sum);
-                        totalAvailable.merge(stack.getItem(), stack.getCount(), Integer::sum);
+                        backpackUnion.merge(stack.getItem(), stack.getCount(), Integer::sum);
                     }
                 }
-                // 存储附属在场时：仅当"该厨师"背包有空桶、附近流体存储有足量水/岩浆，才为她虚拟汤底桶
+                // 存储附属在场时：仅当"该厨师"背包有空桶、其可达范围内流体存储有足量水/岩浆，才为她虚拟汤底桶
                 // （未安装存储附属时该方法什么都不做，维持必须已有现成桶的原版行为）
-                applyStorageFluidBonus(level, counterPos, required, maidInv, maidAvailable, maid.getUUID());
+                applyStorageFluidBonus(level, maid, required, maidInv, maidAvailable, maid.getUUID());
                 int canMake = countCooksByGreedy(required, maidAvailable, maxCount);
                 result.put(maid.getUUID(), Math.max(0, canMake));
             }
@@ -1977,7 +1950,14 @@ public class CookingBridge {
                 if (c != null && c > 0) { anyCanMake = true; break; }
             }
             if (!anyCanMake) {
-                Map<Item, Integer> virtual = new HashMap<>(totalAvailable);
+                // 缺料反查口径 = 所有厨师可达范围的并集（容器按位置去重）+ 背包
+                Map<Item, Integer> virtual = new HashMap<>(backpackUnion);
+                for (IItemHandler h : unionByPos.values()) {
+                    for (int slot = 0; slot < h.getSlots(); ++slot) {
+                        ItemStack stack = h.getStackInSlot(slot);
+                        if (!stack.isEmpty()) virtual.merge(stack.getItem(), stack.getCount(), Integer::sum);
+                    }
+                }
                 java.util.Set<String> usedNames = new java.util.HashSet<>();
                 int guard = 0;
                 while (lastMissingIngredients.size() < 3 && guard++ < required.size() + 2) {
@@ -2010,6 +1990,27 @@ public class CookingBridge {
         } catch (Throwable t) {
             MaidRestaurantBusiness.LOGGER.error("烹饪食材检测: getCookCountByMaid抛出异常，配方={}", recipeId, t);
             return new java.util.LinkedHashMap<>();
+        }
+    }
+
+    /**
+     * 扫描某位厨师"真实可达"的容器，与本体 MaidGetFromStorageTask 逐格同源：
+     * 中心=center，水平=h（getRestrictRadius，车万重写返回 RESTRICT_RADIUS），垂直=2；容器识别用 MaidStorages.tryGetHandler（与执行期同一个）。
+     * 物品数量并入 intoMaid（供该厨师判定）；容器按位置并入 unionByPos（供缺料反查，同一容器只计一次）。
+     */
+    private static void scanReachableContainers(ServerLevel level, BlockPos counterPos, BlockPos center, int h,
+                                                Map<Item, Integer> intoMaid,
+                                                java.util.Map<BlockPos, IItemHandler> unionByPos) {
+        if (center == null || h <= 0) return;
+        for (BlockPos check : BlockPos.betweenClosed(center.offset(-h, -2, -h), center.offset(h, 2, h))) {
+            IItemHandler inv;
+            if (check.equals(counterPos) || (inv = MaidStorages.tryGetHandler((Level) level, check)) == null) continue;
+            unionByPos.putIfAbsent(check.immutable(), inv);
+            for (int slot = 0; slot < inv.getSlots(); ++slot) {
+                ItemStack stack = inv.getStackInSlot(slot);
+                if (stack.isEmpty()) continue;
+                intoMaid.merge(stack.getItem(), stack.getCount(), Integer::sum);
+            }
         }
     }
 
@@ -2128,7 +2129,7 @@ public class CookingBridge {
      * 就把对应满桶虚拟计入她的可用材料，让需要汤底的汤锅任务能发布；真正的接水由存储附属在运行时完成。
      * 未安装存储附属时本方法什么都不做（维持原版必须已有现成桶的行为）。奶等生物制品不是流体，不在此处理。
      */
-    private static void applyStorageFluidBonus(ServerLevel level, BlockPos center, List<StackPredicate> required,
+    private static void applyStorageFluidBonus(ServerLevel level, EntityMaid maid, List<StackPredicate> required,
                                                IItemHandler maidInv, Map<Item, Integer> available, java.util.UUID self) {
         try {
             if (storageModLoadedCache == null) {
@@ -2149,6 +2150,10 @@ public class CookingBridge {
                 }
             }
             if (rsAvailableOrFillableMethod == null) return;
+
+            // 与该厨师取物同源：中心居家锅位/非居家脚下，水平=getRestrictRadius，垂直=2
+            BlockPos center = maid.isHomeModeEnable() ? maid.getRestrictCenter() : maid.blockPosition().below();
+            int fluidH = (int) maid.getRestrictRadius();
 
             ItemStack waterBucket = new ItemStack(net.minecraft.world.item.Items.WATER_BUCKET);
             ItemStack lavaBucket = new ItemStack(net.minecraft.world.item.Items.LAVA_BUCKET);
@@ -2174,8 +2179,8 @@ public class CookingBridge {
                 // 厨师背包必须有空桶（她要拿去流体存储接）
                 boolean hasEmptyBucket = maidHasItem(maidInv, net.minecraft.world.item.Items.BUCKET);
                 if (!hasEmptyBucket) continue;
-                // 操作台附近流体存储必须有足量对应流体
-                boolean fluidNear = nearbyFluidAvailable(level, center, fluid, amount, self);
+                // 该厨师可达范围内流体存储必须有足量对应流体
+                boolean fluidNear = nearbyFluidAvailable(level, center, fluidH, 2, fluid, amount, self);
                 if (!fluidNear) continue;
 
                 // 虚拟计入1个满桶（一口锅一个汤底；空桶接完会返还，可反复使用）
@@ -2207,10 +2212,10 @@ public class CookingBridge {
      * 附近是否有流体存储“现有足量”或“空但可直接注满”指定流体；与存储附属执行期发现判定同源。
      * 结果按(维度,中心,流体,女仆)缓存20tick，避免每个食物重复扫描；女仆入键以正确处理他人预留。
      */
-    private static boolean nearbyFluidAvailable(ServerLevel level, BlockPos center,
+    private static boolean nearbyFluidAvailable(ServerLevel level, BlockPos center, int h, int v,
                                                 net.minecraft.world.level.material.Fluid fluid, int amount, java.util.UUID self) {
         try {
-            String key = level.dimension().location() + "|" + center.asLong() + "|"
+            String key = level.dimension().location() + "|" + center.asLong() + "|" + h + "|"
                     + (fluid == net.minecraft.world.level.material.Fluids.WATER ? "w" : "l") + "|" + self;
             long now = level.getGameTime();
             Long cachedTick = fluidAvailableTick.get(key);
@@ -2218,9 +2223,8 @@ public class CookingBridge {
                 return Boolean.TRUE.equals(fluidAvailableCache.get(key));
             }
             boolean found = false;
-            int range = PerformanceConfig.dishScanRange;
             net.neoforged.neoforge.fluids.FluidStack probe = new net.neoforged.neoforge.fluids.FluidStack(fluid, amount);
-            for (BlockPos check : BlockPos.betweenClosed(center.offset(-range, -4, -range), center.offset(range, 4, range))) {
+            for (BlockPos check : BlockPos.betweenClosed(center.offset(-h, -v, -h), center.offset(h, v, h))) {
                 Object ok = rsAvailableOrFillableMethod.invoke(null, level, check.immutable(), probe, amount, self);
                 if (Boolean.TRUE.equals(ok)) {
                     found = true;
@@ -2436,6 +2440,7 @@ public class CookingBridge {
         ICookTask cookTask = CookTasks.getTask(type);
         if (cookTask != null) {
             try {
+                // 工作半径（车万重写 getRestrictRadius 返回 RESTRICT_RADIUS，与取食材同源）
                 int h = (int) maid.getRestrictRadius();
                 if (h <= 0) {
                     h = PerformanceConfig.dishScanRange;

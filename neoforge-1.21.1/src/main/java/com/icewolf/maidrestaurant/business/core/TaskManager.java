@@ -1029,12 +1029,9 @@ public class TaskManager {
             int yRange = 32;
             
             if (activatedMachines.isEmpty()) {
-                BlockPos spawn = level.getSharedSpawnPos();
-                result = level.getEntitiesOfClass(
-                    com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid.class,
-                    new AABB(spawn.getX() - 2000, spawn.getY() - 256, spawn.getZ() - 2000,
-                        spawn.getX() + 2000, spawn.getY() + 256, spawn.getZ() + 2000)
-                );
+                // 无激活打单机时不会派发任何任务，无需检索女仆；
+                // 原先以世界出生点为中心 ±2000 的超大范围实体扫描扫到也不派发，纯耗性能，已移除。
+                result = new ArrayList<>();
             } else {
                 for (BlockPos machinePos : activatedMachines) {
                     if (machinePos == null) continue;

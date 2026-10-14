@@ -244,6 +244,10 @@ public class WalkInGreetBridge {
                 continue;
             }
             for (LivingEntity npc : npcs) {
+                // 半径同源：顾客、落单操作台、兜底挂单夹都必须在该女仆工作半径内，避免中途卡住
+                if (!MaidUtils.isWithinMaidRange(maid, npc.blockPosition(), counter, clip)) {
+                    continue;
+                }
                 double d = maid.distanceToSqr(npc);
                 if (d < bestDist) {
                     bestDist = d;

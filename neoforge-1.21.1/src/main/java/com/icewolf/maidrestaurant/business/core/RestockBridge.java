@@ -143,23 +143,8 @@ public class RestockBridge {
 
         int need = MAX_SHELF_PAPERS - targetPapers; // 只补最近这一个货架到满
 
-        // ③ 枚举厨师同款容器里的皮革（±24/y±8），记录有皮革的容器并按到目标货架距离排序
-        List<BlockPos> leatherContainers = new ArrayList<>();
-        int containerLeather = 0;
-        for (BlockPos pos : BlockPos.betweenClosed(machinePos.offset(-24, -8, -24),
-                                                   machinePos.offset(24, 8, 24))) {
-            IItemHandler inv = MaidStorages.tryGetHandler((Level) level, pos);
-            if (inv == null) continue;
-            int c = MaidUtils.countItem(inv, LEATHER_ID);
-            if (c > 0) {
-                leatherContainers.add(pos.immutable());
-                containerLeather += c;
-            }
-        }
+        // ③ 枚举空闲侍者候选（中心化缓存 + 职业/绑定/占用过滤，与洗碗一致），按到目标货架距离排序
         final BlockPos sortCenter = targetShelf;
-        leatherContainers.sort((a, b) -> Double.compare(a.distSqr(sortCenter), b.distSqr(sortCenter)));
-
-        // ④ 枚举空闲侍者候选（中心化缓存 + 职业/绑定/占用过滤，与洗碗一致），按到目标货架距离排序
         List<EntityMaid> candidates = new ArrayList<>();
         for (EntityMaid candidate : TaskManager.getInstance().getCachedMaidsForMachine(level, machinePos)) {
             if (candidate == null || !candidate.isAlive()) continue;
@@ -170,37 +155,70 @@ public class RestockBridge {
             if (MaidUtils.isOccupied(candidate)) continue;
             candidates.add(candidate);
         }
-        candidates.sort((a, b) -> Double.compare(a.blockPosition().distSqr(sortCenter), b.blockPosition().distSqr(sortCenter)));
+        candidates.sort((a, b) -> Double.compare(a.blockPosition().distSqr(sortCenter),
+                                                  b.blockPosition().distSqr(sortCenter)));
 
-        // ⑤ 逐个体判定：公共容器皮革 + 该侍者自己背包皮革，选第一个拿得到皮革的侍者
+        // ④ 逐侍者判定：只统计"她自己真实可达范围内的皮革容器 + 她自己背包皮革"——
+        //    可达范围与执行期取物同源（中心=居家工作中心/非居家脚下，水平=getRestrictRadius，垂直=2），
+        //    与烹饪 CookingBridge 方案 A 口径一致。她够不到的容器不会派给她，避免"机器24格放行、
+        //    执行期走不到、原地不动"；选第一个拿得到皮革的侍者。
         EntityMaid maid = null;
-        int maidLeather = 0;
+        List<BlockPos> maidLeatherContainers = null;
         for (EntityMaid candidate : candidates) {
             IItemHandler candidateInv = MaidUtils.getInventory(candidate);
             int own = candidateInv == null ? 0 : MaidUtils.countItem(candidateInv, LEATHER_ID);
-            if (containerLeather + own > 0) {
+            List<BlockPos> reachable = findReachableLeatherContainers(level, candidate, sortCenter);
+            if (own > 0 || !reachable.isEmpty()) {
                 maid = candidate;
-                maidLeather = own;
+                maidLeatherContainers = reachable;
                 break;
             }
         }
         if (maid == null) {
-            // 有候选侍者但公共容器和她们背包都没有皮革：对最近的候选提示一次（错误类气泡自带同类去重）
+            // 所有候选侍者背包和"她们各自可达范围"都没有皮革（含只在机器24内、但谁都够不到的情况）：
+            // 对最近的候选提示一次（错误类气泡自带同类去重）。
             if (!candidates.isEmpty()) {
                 MaidChatBubbleHelper.waiterRestockNoLeather(candidates.get(0));
             }
             return;
         }
 
-        // ⑥ 建任务（状态机会先用她背包皮革，不足再去容器取）
+        // ⑤ 建任务（状态机会先用她背包皮革，不足再去她可达范围内的容器取）
         String taskId = TaskManager.getInstance().createTask(TaskManager.TYPE_RESTOCK, targetShelf, machinePos);
         if (taskId != null) {
-            tasks.put(targetShelf, new RestockTask(targetShelf, machinePos, maid, need, leatherContainers));
+            tasks.put(targetShelf, new RestockTask(targetShelf, machinePos, maid, need, maidLeatherContainers));
             TaskManager.getInstance().assignTask(maid.getUUID(), TaskManager.TYPE_RESTOCK, level);
         }
         try {
             MaidChatBubbleHelper.waiterRestocking(maid);
         } catch (Throwable t) {}
+    }
+
+    /**
+     * 扫描某侍者"可达范围"内的皮革容器——逐格复刻本体 MaidGetFromStorageTask 取物搜索：
+     * 中心=居家工作中心/非居家脚下（BehaviorUtils.getSearchPos），水平=getRestrictRadius，垂直=2；
+     * 容器识别用 MaidStorages.tryGetHandler（与执行期同一个，含厨房站 RefinedStorageItemHandler）。
+     * 返回该侍者真正走得到、且里面有皮革的容器，按到目标货架距离由近到远排序。
+     */
+    private static List<BlockPos> findReachableLeatherContainers(ServerLevel level, EntityMaid maid,
+                                                                 BlockPos targetShelf) {
+        List<BlockPos> result = new ArrayList<>();
+        try {
+            BlockPos center = maid.isHomeModeEnable() ? maid.getRestrictCenter() : maid.blockPosition().below();
+            int h = (int) maid.getRestrictRadius();
+            if (h < 0) h = 0;
+            for (BlockPos pos : BlockPos.betweenClosed(center.offset(-h, -2, -h), center.offset(h, 2, h))) {
+                IItemHandler inv = MaidStorages.tryGetHandler((Level) level, pos);
+                if (inv == null) continue;
+                if (MaidUtils.countItem(inv, LEATHER_ID) > 0) {
+                    result.add(pos.immutable());
+                }
+            }
+        } catch (Throwable t) {
+            MaidRestaurantBusiness.LOGGER.warn("[补货] 可达皮革容器扫描出错", t);
+        }
+        result.sort((a, b) -> Double.compare(a.distSqr(targetShelf), b.distSqr(targetShelf)));
+        return result;
     }
 
     // ==================== 任务状态机 ====================
@@ -221,8 +239,8 @@ public class RestockBridge {
             TaskManager.getInstance().heartbeat(maid.getUUID(), TaskManager.getInstance().getCurrentTick());
             long now = level.getGameTime();
 
-            // 总超时保底（400tick=20秒）
-            if (now - task.startTime > 400L) {
+            // 总超时保底（500tick=25秒：去容器200 + 去货架200 + 余量）
+            if (now - task.startTime > 500L) {
                 MaidRestaurantBusiness.LOGGER.warn("[补货] 任务总超时，强制结束 女仆={} 货架={}", maid.getName().getString(), task.shelfPos);
                 TaskManager.getInstance().failTask(maid.getUUID(), "restock timeout");
                 task.cleanup();
@@ -234,7 +252,20 @@ public class RestockBridge {
                 case STATE_GO_TO_CONTAINER: {
                     IItemHandler maidInv = MaidUtils.getInventory(maid);
                     int held = maidInv == null ? 0 : MaidUtils.countItem(maidInv, LEATHER_ID);
-                    if (held >= task.need || task.containerQueue.isEmpty()) {
+                    if (held >= task.need) {
+                        task.state = STATE_GO_TO_SHELF;
+                        task.lastChange = now;
+                        break;
+                    }
+                    if (task.containerQueue.isEmpty()) {
+                        // 所有容器都试完：完全没拿到皮革（held=0）则直接结束，空手去货架放不了东西、没有意义；
+                        // 拿到部分（held>0）仍去货架把手里的放掉。
+                        if (held <= 0) {
+                            TaskManager.getInstance().failTask(maid.getUUID(), "restock no leather");
+                            task.cleanup();
+                            it.remove();
+                            break;
+                        }
                         task.state = STATE_GO_TO_SHELF;
                         task.lastChange = now;
                         break;
@@ -243,17 +274,50 @@ public class RestockBridge {
                     IItemHandler inv = MaidStorages.tryGetHandler((Level) level, container);
                     if (inv == null || MaidUtils.countItem(inv, LEATHER_ID) <= 0) {
                         task.containerQueue.remove(0);
+                        task.swungAtContainer = false; // 换下一个容器，重置摆臂标记
                         break;
                     }
                     if (MaidUtils.isNear(maid, container, 3.0)) {
-                        MaidUtils.takeItem(inv, maidInv, LEATHER_ID, task.need - held);
-                        task.containerQueue.remove(0);
+                        // 对齐女仆餐厅本体取食材（MaidGetFromStorageTask.accept）：到达容器后“一次性拿够”
+                        // 所需皮革，takeItem 内部按槽位取至上限。原本每 10tick 只拿 1 个，补满 10 个会被
+                        // 10tick 调度放大成 10×10tick≈5 秒，女仆会在容器前呆站约 5 秒。
+                        int remaining = task.need - held;
+                        int taken = MaidUtils.takeItem(inv, maidInv, LEATHER_ID, remaining);
+                        if (taken > 0 && !task.swungAtContainer) {
+                            task.swungAtContainer = true; // 与本体一致：本容器取物只摆一次手
+                            try { maid.swing(InteractionHand.OFF_HAND); } catch (Throwable t) {}
+                        }
                         task.lastChange = now;
+                        // 当前容器拿空 / 背包拿不动：弹出队首，下一拍去队列里下一个容器
+                        if (taken <= 0 || MaidUtils.countItem(inv, LEATHER_ID) <= 0) {
+                            task.containerQueue.remove(0);
+                            task.swungAtContainer = false;
+                        }
+                        // 已拿够或已无容器可去：当场判定，省掉最多一次 10tick 轮询等待
+                        int nowHeld = MaidUtils.countItem(maidInv, LEATHER_ID);
+                        boolean containersDone = task.containerQueue.isEmpty();
+                        if (nowHeld <= 0 && containersDone) {
+                            // 容器全试完且没拿到任何皮革：直接结束，空手去货架放不了东西、没有意义
+                            TaskManager.getInstance().failTask(maid.getUUID(), "restock no leather");
+                            task.cleanup();
+                            it.remove();
+                            break;
+                        }
+                        if (nowHeld >= task.need || containersDone) {
+                            task.state = STATE_GO_TO_SHELF;
+                            task.lastChange = now;
+                            if (papersProperty(level.getBlockState(task.shelfPos)) != null
+                                    && !MaidUtils.isNear(maid, task.shelfPos, 3.0)) {
+                                MaidUtils.moveToSide(maid, task.shelfPos, 0.3);
+                            }
+                        }
                         break;
                     }
-                    if (now - task.lastChange > 100L) {
-                        // 走到这个容器超时，换下一个容器
+                    if (!task.isMoving(maid, now)) {
+                        // 连续 100tick（5秒）没移动才判超时（真正卡住 / 走不到），换下一个容器；
+                        // 移动期间不断刷新计时，长距离走路不会被误判超时。
                         task.containerQueue.remove(0);
+                        task.swungAtContainer = false;
                         task.lastChange = now;
                         break;
                     }
@@ -274,9 +338,10 @@ public class RestockBridge {
                         task.lastChange = now;
                         break;
                     }
-                    if (now - task.lastChange > 200L) {
-                        MaidRestaurantBusiness.LOGGER.warn("[补货] 去货架移动超时，结束 女仆={} 货架={}", maid.getName().getString(), task.shelfPos);
-                        TaskManager.getInstance().failTask(maid.getUUID(), "move to shelf timeout");
+                    if (!task.isMoving(maid, now)) {
+                        // 连续 100tick（5秒）没移动才判超时（真正卡住 / 走不到），结束任务
+                        MaidRestaurantBusiness.LOGGER.warn("[补货] 去货架移动停滞超时（连续5秒不移动），结束 女仆={} 货架={}", maid.getName().getString(), task.shelfPos);
+                        TaskManager.getInstance().failTask(maid.getUUID(), "move to shelf stuck");
                         task.cleanup();
                         it.remove();
                         break;
@@ -356,7 +421,14 @@ public class RestockBridge {
         final List<BlockPos> containerQueue;
         int state;
         long lastChange;
+        boolean swungAtContainer; // 当前容器取物是否已摆过手臂（每个容器只摆一次，避免每tick取物多重摆臂）
         final long startTime;
+        // 停滞检测：女仆“上次位置”和“上次移动时刻”。连续 STUCK_TIMEOUT tick 位置基本不变才判超时；
+        // 移动期间（位置持续变化）不断刷新，长距离走路不会被误判超时。
+        double lastX, lastY, lastZ;
+        long lastMoveTick;
+        private static final long STUCK_TIMEOUT = 100L; // 连续 5 秒不移动才超时
+        private static final double MOVE_EPSILON = 0.03D; // 位移超过此值视为在移动
 
         RestockTask(BlockPos shelfPos, BlockPos machinePos, EntityMaid maid, int need, List<BlockPos> containers) {
             this.shelfPos = shelfPos;
@@ -368,7 +440,29 @@ public class RestockBridge {
             this.state = STATE_GO_TO_CONTAINER;
             this.lastChange = maid.level().getGameTime();
             this.startTime = maid.level().getGameTime();
+            this.lastX = maid.getX();
+            this.lastY = maid.getY();
+            this.lastZ = maid.getZ();
+            this.lastMoveTick = maid.level().getGameTime();
             MaidUtils.setOccupied(maid, true);
+        }
+
+        /**
+         * 停滞检测：女仆本拍相对上次记录是否在移动。在移动则刷新计时，返回 true；
+         * 连续 STUCK_TIMEOUT tick 未移动返回 false（真正卡住，调用方应放弃当前容器/目标）。
+         */
+        boolean isMoving(EntityMaid maid, long now) {
+            double dx = maid.getX() - lastX;
+            double dy = maid.getY() - lastY;
+            double dz = maid.getZ() - lastZ;
+            if (dx * dx + dy * dy + dz * dz > MOVE_EPSILON * MOVE_EPSILON) {
+                lastX = maid.getX();
+                lastY = maid.getY();
+                lastZ = maid.getZ();
+                lastMoveTick = now;
+                return true;
+            }
+            return now - lastMoveTick <= STUCK_TIMEOUT;
         }
 
         void cleanup() {

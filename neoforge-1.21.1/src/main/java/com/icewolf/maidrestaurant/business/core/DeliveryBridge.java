@@ -11,7 +11,6 @@ import com.icewolf.maidrestaurant.business.MaidRestaurantBusiness;
 import com.icewolf.maidrestaurant.business.util.MaidChatBubbleHelper;
 import com.icewolf.maidrestaurant.business.config.AutomationConfig;
 import com.icewolf.maidrestaurant.business.config.GameplayConfig;
-import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.core.CustomerCompat;
 import com.mastermarisa.maid_restaurant.maid.TaskWaiter;
 import com.mastermarisa.maid_restaurant.utils.BehaviorUtils;
@@ -156,8 +155,8 @@ public class DeliveryBridge {
             for (BlockPos counterPos : bagCounters) {
                 if (idleWaiters.isEmpty()) break;
                 if (TaskManager.getInstance().hasTaskAt(counterPos, TaskManager.TYPE_DELIVERY)) continue;
-                EntityMaid maid = nearestWaiter(counterPos, idleWaiters);
-                if (maid == null) break;
+                EntityMaid maid = pickDeliveryWaiter(level, counterPos, manager, idleWaiters, true);
+                if (maid == null) continue;
                 if (startDeliveryTo(level, maid, counterPos, manager, true)) {
                     idleWaiters.remove(maid);
                 }
@@ -168,8 +167,8 @@ public class DeliveryBridge {
             for (BlockPos counterPos : plateCounters) {
                 if (idleWaiters.isEmpty()) break;
                 if (TaskManager.getInstance().hasTaskAt(counterPos, TaskManager.TYPE_DELIVERY)) continue;
-                EntityMaid maid = nearestWaiter(counterPos, idleWaiters);
-                if (maid == null) break;
+                EntityMaid maid = pickDeliveryWaiter(level, counterPos, manager, idleWaiters, false);
+                if (maid == null) continue;
                 if (startDeliveryTo(level, maid, counterPos, manager, false)) {
                     idleWaiters.remove(maid);
                 }
@@ -177,17 +176,52 @@ public class DeliveryBridge {
         }
     }
 
-    private static EntityMaid nearestWaiter(BlockPos counterPos, java.util.List<EntityMaid> maids) {
-        EntityMaid best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (EntityMaid maid : maids) {
-            double dist = counterPos.distSqr(maid.blockPosition());
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = maid;
+    /**
+     * 为某操作台挑选配送侍者，与打包/洗碗同口径（MaidUtils.findWaiterMaidSmart）：
+     * 打单机有绑定员工时只在绑定侍者中挑，无绑定则自动分配最近空闲侍者。
+     * 候选再限定为本轮空闲列表，做范围/忙碌/绑定双重过滤，避免把绑定门店的柜台派给
+     * 非绑定侍者，或把同一侍者派给多个柜台。无合适侍者时返回 null，由调用方跳过该柜台。
+     */
+    private static EntityMaid pickDeliveryWaiter(ServerLevel level, BlockPos counterPos, BusinessManager manager,
+            java.util.List<EntityMaid> idleWaiters, boolean isTakeout) {
+        if (idleWaiters.isEmpty()) return null;
+        BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
+        BlockPos endPos = resolveDeliveryEnd(level, counterPos, isTakeout);
+        // 遍历本轮空闲侍者：操作台永远校验、终点解析到才校验，避免"先选一个再判"漏掉可覆盖终点的人
+        return MaidUtils.pickSmartWaiterAmong(level, idleWaiters, counterPos, endPos, 24, machinePos);
+    }
+
+    /**
+     * 解析操作台上方包裹的配送终点。
+     * 玩家包裹→送餐点；普通外卖袋→酒狐速递站；堂食餐盘→按 OrderId 找顾客。
+     * 返回 null 表示终点解析不到（业务失败），此时仅校验操作台、由执行阶段气泡处理。
+     */
+    private static BlockPos resolveDeliveryEnd(ServerLevel level, BlockPos counterPos, boolean isTakeout) {
+        BlockEntity aboveBe = level.getBlockEntity(counterPos.above());
+        if (aboveBe == null) return null;
+        ItemStack aboveStack = getTakeoutBagStack(aboveBe);
+        CompoundTag aboveTag = com.icewolf.maidrestaurant.business.util.ItemStackUtils.getTag(aboveStack);
+        if (aboveTag == null) return null;
+
+        // 玩家包裹：读送餐点
+        if (aboveTag.getBoolean(PlayerOrderManager.PLAYER_PACKAGE)) {
+            CompoundTag dp = aboveTag.getCompound(PlayerOrderManager.PLAYER_DELIVERY_POS);
+            if (dp.contains("x")) {
+                return new BlockPos(dp.getInt("x"), dp.getInt("y"), dp.getInt("z"));
             }
+            return null;
         }
-        return best;
+        // 普通外卖袋：找速递站
+        if (isTakeout) {
+            com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity station =
+                    com.icewolf.maidrestaurant.business.block.entity.JiuhuStationBlockEntity.findNearbyStation(level, counterPos, 24);
+            return station != null ? station.getBlockPos() : null;
+        }
+        // 堂食餐盘：读 OrderId 找顾客
+        String orderId = aboveTag.contains("OrderId") ? aboveTag.getString("OrderId") : "";
+        if (orderId.isEmpty()) return null;
+        LivingEntity customer = findCustomerByOrderId(level, counterPos, orderId);
+        return customer != null ? customer.blockPosition() : null;
     }
 
     /**
@@ -195,24 +229,18 @@ public class DeliveryBridge {
      * 校验不通过或任务认领失败时不发寻路、并回滚忙碌标记，返回 false。
      */
     private static boolean startDeliveryTo(ServerLevel level, EntityMaid maid, BlockPos counterPos, BusinessManager manager, boolean isTakeout) {
-        // 附近必须有激活打单机
-        boolean hasActivatedMachine = false;
-        for (BlockPos mp : manager.getActivatedMachines()) {
-            if (mp.distSqr((Vec3i) counterPos) <= 64.0) {
-                hasActivatedMachine = true;
-                break;
-            }
-        }
-        if (!hasActivatedMachine) return false;
-
+        // 直接复用操作台归属的打单机（counterToMachine 按水平24/垂直±8建立，与打包同源），
+        // 不再用三维8格独立扫描，避免操作台落在8~24格时打包正常、配送却被误拦。
+        // 无归属或归属机器未激活时本轮不派，下周期(20tick≈1s)归属重建后自动重试。
         BlockPos machinePos = manager.getCounterToMachine().get(counterPos);
-        if (machinePos != null && !ProgressionManager.isDeliveryUnlocked(level, machinePos)) return false;
-        if (machinePos != null && !MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) return false;
+        if (machinePos == null || !OrderBridge.isActivated(level, machinePos)) return false;
+        if (!ProgressionManager.isDeliveryUnlocked(level, machinePos)) return false;
+        if (!MaidUtils.isScheduleBoardEnabled(level, machinePos, MaidUtils.SCHED_AUTO_DELIVERY)) return false;
 
-        int boundCount = machinePos != null ? MaidUtils.getWorkerCountForMachine(machinePos) : 0;
+        int boundCount = MaidUtils.getWorkerCountForMachine(machinePos);
         if (boundCount > 0 && !MaidUtils.isMaidBoundToMachine(maid.getUUID(), machinePos)) return false;
 
-        if (machinePos != null && !MaidUtils.canAcceptWorker(level, machinePos)) return false;
+        if (!MaidUtils.canAcceptWorker(level, machinePos)) return false;
 
         // 判断台上方是否玩家包裹：玩家包裹直接送到玩家送餐点，不需要酒狐速递站
         boolean isPlayerPkg = false;
@@ -914,8 +942,6 @@ public class DeliveryBridge {
                     if (!(plateBe instanceof FoodPlateBlockEntity)) continue;
                     FoodPlateBlockEntity plateEntity = (FoodPlateBlockEntity) plateBe;
                     if (plateEntity.getPlateStack().isEmpty()) continue;
-                    // 跳过顾客正在吃的餐盘，只收待配送的餐盘
-                    if (plateEntity.isEatingSequenceActive()) continue;
                     if (dist < nearestDist) {
                         nearestDist = dist;
                         nearest = counterPos;
@@ -936,8 +962,6 @@ public class DeliveryBridge {
         FoodPlateBlockEntity plateBe = (FoodPlateBlockEntity) be;
         ItemStack plateStack = plateBe.getPlateStack().copy();
         if (plateStack.isEmpty()) return ItemStack.EMPTY;
-        // 跳过顾客正在吃的餐盘，只收待配送的餐盘
-        if (plateBe.isEatingSequenceActive()) return ItemStack.EMPTY;
         ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, (ItemStack) plateStack, true);
         if (!remainder.isEmpty()) {
             MaidRestaurantBusiness.LOGGER.warn("送餐: 女仆背包已满, 无法拿起餐盘");
@@ -1088,46 +1112,22 @@ public class DeliveryBridge {
     private static ItemStack pickUpTakeoutBag(ServerLevel level, BlockPos counterPos, EntityMaid maid) {
         CombinedInvWrapper inv = maid.getAvailableInv(false);
         if (inv == null) return ItemStack.EMPTY;
-        try {
-            for (int dy = 0; dy <= 2; ++dy) {
-                for (int dx = -2; dx <= 2; ++dx) {
-                    for (int dz = -2; dz <= 2; ++dz) {
-                        BlockPos abovePos = counterPos.offset(dx, dy, dz);
-                        BlockEntity be = level.getBlockEntity(abovePos);
-                        if (!(be instanceof cn.breezeth.ordertocook.block.entity.TakeoutBagBlockEntity bagBe)) continue;
-                        
-                        ItemStack bagStack = bagBe.getBagStack().copy();
-                        if (bagStack.isEmpty()) continue;
-                        
-                        ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, bagStack, true);
-                        if (!remainder.isEmpty()) {
-                            MaidRestaurantBusiness.LOGGER.warn("外卖配送: 女仆背包已满, 无法拿起外卖袋");
-                            return ItemStack.EMPTY;
-                        }
-                        
-                        bagBe.setBagStack(ItemStack.EMPTY);
-                        level.removeBlock(abovePos, false);
-                        ItemHandlerHelper.insertItemStacked((IItemHandler) inv, bagStack, false);
-                        return bagStack;
-                    }
-                }
-            }
-            // 检查周围的掉落物
-            for (net.minecraft.world.entity.item.ItemEntity itemEntity : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(counterPos).inflate(3.0))) {
-                ItemStack stack = itemEntity.getItem();
-                if (isTakeoutBag(stack)) {
-                    ItemStack copy = stack.copy();
-                    ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, true);
-                    if (!remainder.isEmpty()) continue;
-                    itemEntity.discard();
-                    ItemHandlerHelper.insertItemStacked((IItemHandler) inv, copy, false);
-                    return copy;
-                }
-            }
-        } catch (Exception e) {
-            MaidRestaurantBusiness.LOGGER.error("外卖袋拿取错误: {}", e.toString());
+        // 只检查操作台正上方一个格子（打包好的外卖袋就在这里），与 pickUpPlate 一致。
+        // 不再扫描周围 5x3x5、也不扫地面掉落物，避免跑到邻近操作台或空地拿错袋。
+        BlockPos abovePos = counterPos.above();
+        BlockEntity be = level.getBlockEntity(abovePos);
+        if (!(be instanceof cn.breezeth.ordertocook.block.entity.TakeoutBagBlockEntity bagBe)) return ItemStack.EMPTY;
+        ItemStack bagStack = bagBe.getBagStack().copy();
+        if (bagStack.isEmpty()) return ItemStack.EMPTY;
+        ItemStack remainder = ItemHandlerHelper.insertItemStacked((IItemHandler) inv, bagStack, true);
+        if (!remainder.isEmpty()) {
+            MaidRestaurantBusiness.LOGGER.warn("外卖配送: 女仆背包已满, 无法拿起外卖袋");
+            return ItemStack.EMPTY;
         }
-        return ItemStack.EMPTY;
+        bagBe.setBagStack(ItemStack.EMPTY);
+        level.removeBlock(abovePos, false);
+        ItemHandlerHelper.insertItemStacked((IItemHandler) inv, bagStack, false);
+        return bagStack;
     }
 
     /**
