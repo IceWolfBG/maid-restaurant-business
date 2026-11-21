@@ -1,0 +1,7 @@
+server/
+runtime-inputs/
+__pycache__/
+runtime-*.log
+runtime-results.json
+runtime-progress.json
+runtime.pid

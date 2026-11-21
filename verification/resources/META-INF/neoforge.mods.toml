@@ -1,0 +1,13 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="loadedscan_regression"
+version="1.0.0"
+displayName="Loaded Maid Scan Regression Harness (TEST ONLY)"
+[[dependencies.loadedscan_regression]]
+modId="touhou_little_maid"
+type="required"
+versionRange="[1.5.3,)"
+ordering="AFTER"
+side="SERVER"
