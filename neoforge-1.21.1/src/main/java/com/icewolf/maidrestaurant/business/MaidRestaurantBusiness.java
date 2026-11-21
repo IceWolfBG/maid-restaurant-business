@@ -1,5 +1,6 @@
 package com.icewolf.maidrestaurant.business;
 
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.icewolf.maidrestaurant.business.block.entity.OrderClipBlockEntity;
 import com.icewolf.maidrestaurant.business.config.BatchCookingConfig;
 import com.icewolf.maidrestaurant.business.config.AutomationConfig;
@@ -8,6 +9,7 @@ import com.icewolf.maidrestaurant.business.config.PerformanceConfig;
 import com.icewolf.maidrestaurant.business.config.TaskSafetyConfig;
 import com.icewolf.maidrestaurant.business.core.ActivationCache;
 import com.icewolf.maidrestaurant.business.core.BusinessManager;
+import com.icewolf.maidrestaurant.business.core.MaidUtils;
 import com.icewolf.maidrestaurant.business.core.RuntimeState;
 import com.icewolf.maidrestaurant.business.network.ModMessages;
 import com.icewolf.maidrestaurant.business.registry.ModBlockEntities;
@@ -22,6 +24,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -88,6 +91,13 @@ public class MaidRestaurantBusiness {
     public void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
             ActivationCache.clearLevel(serverLevel);
+        }
+    }
+
+    @SubscribeEvent
+    public void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
+        if (event.getLevel() instanceof ServerLevel && event.getEntity() instanceof EntityMaid maid) {
+            MaidUtils.onMaidLeaveLevel(maid);
         }
     }
 

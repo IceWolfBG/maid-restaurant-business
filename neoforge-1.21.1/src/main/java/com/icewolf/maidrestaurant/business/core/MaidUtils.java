@@ -61,6 +61,30 @@ public class MaidUtils {
         ghostSuspectSince.clear();
     }
 
+    /** Drop transient state when an entity leaves; keep inventory and binding data intact. */
+    public static void onMaidLeaveLevel(EntityMaid maid) {
+        occupiedMaids.remove(maid);
+        taskTracker.remove(maid.getUUID());
+        idleSuspectSince.remove(maid.getUUID());
+        ghostSuspectSince.remove(maid.getUUID());
+    }
+
+    /**
+     * Snapshot this level's loaded entities without a spatial query or chunk loading.
+     * This also discovers maids saved before this addon was installed. Do not replace
+     * this with a player/machine radius or an entity-join-only cache.
+     */
+    static List<EntityMaid> getLoadedMaids(ServerLevel level) {
+        List<EntityMaid> maids = new ArrayList<>();
+        for (Entity entity : level.getAllEntities()) {
+            if (entity instanceof EntityMaid maid && maid.level() == level
+                    && maid.isAlive() && !maid.isRemoved()) {
+                maids.add(maid);
+            }
+        }
+        return maids;
+    }
+
     // 女仆与打单机的绑定关系（通过健康证或公示栏绑定）
     private static final Map<UUID, BlockPos> maidBindings = new HashMap<>();
     // 绑定来源记录（用于调试和去重）
@@ -456,9 +480,8 @@ public class MaidUtils {
         if (taskTracker.isEmpty()) return 0;
         
         int resetCount = 0;
-        List<UUID> toRemove = new ArrayList<>();
-        
-        for (Map.Entry<UUID, MaidTaskInfo> entry : taskTracker.entrySet()) {
+        // resetMaidState removes taskTracker entries; iterate a snapshot.
+        for (Map.Entry<UUID, MaidTaskInfo> entry : new ArrayList<>(taskTracker.entrySet())) {
             UUID maidUUID = entry.getKey();
             MaidTaskInfo info = entry.getValue();
             
@@ -466,14 +489,11 @@ public class MaidUtils {
             if (currentTick - info.startTime < stuckTimeoutTicks) continue;
             
             // 找到女仆实体
-            Entity maidEntity = null;
-            for (ServerLevel lvl : level.getServer().getAllLevels()) {
-                maidEntity = lvl.getEntity(maidUUID);
-                if (maidEntity != null) break;
-            }
+            Entity maidEntity = level.getEntity(maidUUID);
             
             if (maidEntity == null || !(maidEntity instanceof EntityMaid)) {
-                toRemove.add(maidUUID);
+                // Other dimensions are handled by their own BusinessManager pass.
+                // Unloaded entities are cleaned up by EntityLeaveLevelEvent.
                 continue;
             }
             
@@ -505,10 +525,6 @@ public class MaidUtils {
                 info.startZ = currentZ;
                 info.startTime = currentTick;
             }
-        }
-        
-        for (UUID uuid : toRemove) {
-            taskTracker.remove(uuid);
         }
         
         return resetCount;
@@ -637,9 +653,7 @@ public class MaidUtils {
      */
     public static void updateBindingsFromBaubles(ServerLevel level) {
         try {
-            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
-            // （无限AABB会被Sable等性能模组拦截并刷错误日志，且本身返回0个女仆）
-            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
+            List<EntityMaid> allMaids = getLoadedMaids(level);
             
             
             for (EntityMaid maid : allMaids) {
@@ -735,9 +749,7 @@ public class MaidUtils {
     public static int checkAndResetIdleStuckMaids(ServerLevel level) {
         int resetCount = 0;
         try {
-            // 使用TaskManager的缓存女仆列表，避免无限大AABB搜索导致多人服务器性能问题
-            // （无限AABB会被Sable等性能模组拦截并刷错误日志，且本身返回0个女仆）
-            List<EntityMaid> allMaids = TaskManager.getInstance().getCachedMaids(level);
+            List<EntityMaid> allMaids = getLoadedMaids(level);
             long now = level.getGameTime();
 
             for (EntityMaid maid : allMaids) {
@@ -746,6 +758,7 @@ public class MaidUtils {
 
                 // 检测1：被标记为不忙碌，但大脑残留行走/路径记忆
                 if (!isOccupied(maid)) {
+                    ghostSuspectSince.remove(maidUUID);
                     if (isMaidBusy(maid) && !isMaidActuallyWorking(maid, level)) {
                         Long first = idleSuspectSince.get(maidUUID);
                         if (first == null) {
@@ -769,6 +782,7 @@ public class MaidUtils {
                 }
 
                 // 检测2：被标记为忙碌，但查不到任何在制任务/烹饪/导航信号（任务异常结束）
+                idleSuspectSince.remove(maidUUID);
                 if (!isMaidActuallyWorking(maid, level)) {
                     Long first = ghostSuspectSince.get(maidUUID);
                     if (first == null) {

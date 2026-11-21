@@ -1,0 +1,22 @@
+[
+  {
+    "file": "neoforge-21.1.248-installer.jar",
+    "url": "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.248/neoforge-21.1.248-installer.jar",
+    "sha256": "68eeab77059ba53df1812f1afa5bf530ab2566a3cdcd5f924aa6e71be42e410c"
+  },
+  {
+    "file": "maid_restaurant_business-1.21.1-neoforge-0.2.4-fix2.jar",
+    "url": "https://github.com/IceWolfBG/maid-restaurant-business/releases/download/release/neoforge-1.21.1-0.2.4-fix2/maid_restaurant_business-1.21.1-neoforge-0.2.4-fix2.jar",
+    "sha256": "29b848b3a4cf1cf58f9497e1faa971d9cc02b52dde60c1f35e17fb792333a27e"
+  },
+  {
+    "file": "maid_restaurant_business-1.21.1-neoforge-0.2.4-fix3.jar",
+    "url": "https://github.com/IceWolfBG/maid-restaurant-business/releases/download/release/neoforge-1.21.1-0.2.4-fix3/maid_restaurant_business-1.21.1-neoforge-0.2.4-fix3.jar",
+    "sha256": "47c64cf9b6ceaa51d67003ba3cbe867418418812ae7d90445fb67246f0568016"
+  },
+  {
+    "file": "sable-neoforge-1.21.1-2.0.6.jar",
+    "url": "https://cdn.modrinth.com/data/T9PomCSv/versions/fg9dTRz9/sable-neoforge-1.21.1-2.0.6.jar",
+    "sha256": "9c199157843bf953a47dff625fc5bb41c01a90538d35ad18e6996bbcb8a617c2"
+  }
+]

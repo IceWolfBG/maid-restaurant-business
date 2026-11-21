@@ -1,0 +1,18 @@
+// Test-only source set. Never included in the distributable mod.
+allprojects {
+    afterEvaluate {
+        sourceSets {
+            regression {
+                java.srcDir '../verification/java'
+                resources.srcDir '../verification/resources'
+                compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+                runtimeClasspath += output + compileClasspath
+            }
+        }
+        tasks.register('regressionJar', Jar) {
+            dependsOn tasks.named('regressionClasses')
+            from sourceSets.regression.output
+            archiveFileName = 'loadedscan-regression.jar'
+        }
+    }
+}
